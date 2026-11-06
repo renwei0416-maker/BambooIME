@@ -41,7 +41,7 @@ Android 输入法，源自 **灵韵输入法（LyraIME）**，引擎为 **Rime**
    - 候选字不会随发送一起上屏（可关）；
    - 结果以纯文本上屏，不会被再次解析成触发码。
 
-详细配置见 Release 附件《苍竹增强配置说明.md》。
+详细配置见 Release 附件 `BambooIME-1.0.0-config-guide.md`。
 
 ### 安全与隐私
 
