@@ -77,9 +77,14 @@
 
 ## 已知限制
 
-- 双引号/浮层预览未实现：`结果先预览再上屏` 目前只提示后直接上屏。
-- API Key 明文存在 `bamboo_actions` 偏好里，尚未接 Keystore 加密。
+- 浮层预览未实现：`结果先预览再上屏` 目前只提示后直接上屏。
 - 触发码在**拼写框为空**时不生效（避免误吞正常打字）。
+
+## 相关文档
+
+- 主题动作名（`BambooRevert` / `BambooClear` / `BambooAiSend` …）：[`BAMBOO-TOKENS.md`](BAMBOO-TOKENS.md)
+- 手写板：[`BAMBOO-HANDWRITING.md`](BAMBOO-HANDWRITING.md)
+- 发版与构建：[`RELEASE.md`](RELEASE.md)
 
 ## 新增：非编码时的「最后一句」
 
