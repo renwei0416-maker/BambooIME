@@ -121,6 +121,10 @@ class KeyView(
         hasDouble = key.hasAction(KeyBehavior.DOUBLE_CLICK)
         hasLazyDouble = key.hasAction(KeyBehavior.LAZY_DOUBLE_CLICK)
         hasPopup = key.popup.isNotEmpty()
+        hasSwipeAction = key.hasAction(KeyBehavior.SWIPE_UP) ||
+            key.hasAction(KeyBehavior.SWIPE_DOWN) ||
+            key.hasAction(KeyBehavior.SWIPE_LEFT) ||
+            key.hasAction(KeyBehavior.SWIPE_RIGHT)
 
         onPress = {
             if (keyboard.firstPressedKeyIndex == -1) keyboard.firstPressedKeyIndex = id

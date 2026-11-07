@@ -87,6 +87,23 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
     private var modelLoaded = false
     private var lastCandidates: List<HandwritingRecognizer.Candidate> = emptyList()
 
+    /** 候选条里「当前项」的下标：空格上屏它，高亮也画在它身上。 */
+    private var selectedIndex = 0
+
+    /** 每个候选格子的视图引用，滑动时只改颜色不重建视图。 */
+    private val cells = mutableListOf<CandidateCell>()
+
+    /** 真正承载候选条的横向滚动容器（滚动时据此算「当前项」）。 */
+    private var candidateScroll: HorizontalScrollView? = null
+
+    private data class CandidateCell(
+        val item: android.view.View,
+        val text: android.widget.TextView,
+        val pinyin: android.widget.TextView?,
+        val charCount: Int,
+        val textValue: String,
+    )
+
     /**
      * 已累计的字（多种假设，按优先后顺序）。
      *
@@ -151,11 +168,13 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
 
         private const val TAG_SPACE = "bamboo_space"
 
+        // 数字页：0-9 与小数点位置固定；第 4 列紧挨数字块，从上到下就是 + - × /；
+        // 其余格子只放能直接拼算式的符号（括号、等号、百分号、根号、乘方、正负、常数）。
         private val PAGE_NUMBER = listOf(
-            "1", "2", "3", "÷", "(", ")",
-            "4", "5", "6", "×", "<", ">",
-            "7", "8", "9", "-", "[", "]",
-            "0", ".", "=", "+", ",", ";",
+            "1", "2", "3", "+", "(", ")",
+            "4", "5", "6", "-", "=", "%",
+            "7", "8", "9", "×", "√", "^",
+            "0", ".", "±", "/", "π", "∞",
         )
         /**
          * 右侧两列一一对应：左中文、右英文，同一行是同一个符号的全角/半角写法。
@@ -418,10 +437,13 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
             clipToOutline = true
         }
 
-        // ---------------- 候选条（下移 2dp，字号 20sp） ----------------
-        val candTextSize = 20f
-        val barHeight = (TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, candTextSize, dm) * 1.12f)
-            .toInt() + dp(8)
+        // ---------------- 候选条（字号 18sp，整条高度比原来矮 20%） ----------------
+        val candTextSize = 18f
+        // 原高度 = 20sp×1.12 + 8dp + 8dp
+        val barHeightPx = (
+            (TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, candTextSize, dm) * 1.12f) +
+                dp(8) + dp(8)
+            ).times(0.8f).toInt()
         candidateRow = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -444,12 +466,18 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
                     HorizontalScrollView(context).apply {
                         isHorizontalScrollBarEnabled = false
                         isFillViewport = true
+                        // 记住这个才是真正在用的候选滚动容器（上面 L2xx 那个是兜底布局里的）
+                        candidateScroll = this
+                        setOnScrollChangeListener { _, _, _, _, _ ->
+                            // 实时同步：谁的中心进入「第一个候选那块区域 A」的中心 ±15%，谁就是当前项
+                            syncSelectionFromScroll()
+                        }
                         addView(candidateRow, LinearLayout.LayoutParams(WRAP_CONTENT, MATCH_PARENT))
                     },
                     LinearLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT),
                 )
             },
-            LinearLayout.LayoutParams(MATCH_PARENT, barHeight + dp(8)).apply {
+            LinearLayout.LayoutParams(MATCH_PARENT, barHeightPx).apply {
                 setMargins(0, 0, 0, gap)
             },
         )
@@ -530,7 +558,7 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
                 background = keyDrawable("key_back_color", colorKeyBg, dp(1), cornerPx)
                 setOnClickListener { sendEnter() }
             },
-            LinearLayout.LayoutParams(MATCH_PARENT, dp(54)).apply { setMargins(0, 0, 0, 0) },
+            LinearLayout.LayoutParams(MATCH_PARENT, dp(44)).apply { setMargins(0, 0, 0, 0) },
         )
         contentFrame.addView(body, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
         refillSymbolColumn()
@@ -543,7 +571,7 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
             setPadding(dp(3), dp(2), dp(3), dp(2))
         }
         panelTabs = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-        panel.addView(panelTabs, LinearLayout.LayoutParams(MATCH_PARENT, dp(44)))
+        panel.addView(panelTabs, LinearLayout.LayoutParams(MATCH_PARENT, dp(33)))
         // 网格放进 ScrollView：行高固定，行数再多也只是变长可滑，不会被压扁
         panelGrid = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         panelScroll = ScrollView(context).apply {
@@ -563,7 +591,7 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
         }
         leftWrap.addView(contentFrame, LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f))
         root.addView(leftWrap, LinearLayout.LayoutParams(0, MATCH_PARENT, 1f))
-        root.addView(rightColumn, LinearLayout.LayoutParams(dp(78), MATCH_PARENT))
+        root.addView(rightColumn, LinearLayout.LayoutParams(dp(58), MATCH_PARENT))
 
         // ---------------- 底部工具栏 ----------------
         val tools = LinearLayout(context).apply {
@@ -619,7 +647,7 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
             val lp = tools.getChildAt(i).layoutParams as? LinearLayout.LayoutParams ?: continue
             lp.setMargins(0, 0, if (i == tools.childCount - 1) 0 else gap, 0)
         }
-        leftWrap.addView(tools, LinearLayout.LayoutParams(MATCH_PARENT, dp(54)))
+        leftWrap.addView(tools, LinearLayout.LayoutParams(MATCH_PARENT, dp(44)))
 
         // 提示行：没有内容时彻底不占高度
         messageText = TextView(context).apply {
@@ -753,7 +781,7 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
 
     private fun symbolCell(sym: String) = TextView(context).apply {
         text = sym
-        textSize = 17f
+        textSize = 15f
         typeface = Typeface.DEFAULT_BOLD
         gravity = Gravity.CENTER
         includeFontPadding = false
@@ -1025,50 +1053,51 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
             return
         }
         setMessage(null)
+        cells.clear()
+        selectedIndex = 0
         list.forEachIndexed { index, c ->
-            val highlighted = index == 0
+            val charCount = c.text.codePointCount(0, c.text.length)
+            val pinyinText = if (HandwritingPrefs.showPinyin && charCount <= 2) {
+                HanziPinyin.ofText(c.text)
+            } else {
+                null
+            }
+            val textView = TextView(context).apply {
+                text = c.text
+                textSize = 18f
+                includeFontPadding = false
+                maxLines = 1
+                setTextColor(colorKeyText)
+            }
+            val pinyinView = if (!pinyinText.isNullOrEmpty()) {
+                TextView(context).apply {
+                    text = pinyinText
+                    textSize = 10f
+                    includeFontPadding = false
+                    maxLines = 1
+                    setTextColor(colorSub)
+                }
+            } else {
+                null
+            }
             val item = LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
                 setPadding(dp(13), 0, dp(13), 0)
-                // 第一候选整格填色，表示“按空格就是它”
-                if (highlighted) {
-                    background = GradientDrawable().apply {
-                        setColor(colorHighlight)
-                        cornerRadius = dp(6).toFloat()
-                    }
+                isClickable = true
+                setOnClickListener {
+                    // 点谁，高亮先挪到谁身上（A 方案：点即上屏，但视觉上先给到反馈）
+                    selectedIndex = index
+                    applySelection()
+                    commit(c.text)
                 }
-                setOnClickListener { commit(c.text) }
             }
-            item.addView(
-                TextView(context).apply {
-                    text = c.text
-                    textSize = 20f
-                    includeFontPadding = false
-                    maxLines = 1
-                    setTextColor(if (highlighted) colorHighlightText else colorKeyText)
-                },
-            )
-            // 单字：每个候选都标读音；两个字：只标首候选；三个字以上：都不标。
-            val charCount = c.text.codePointCount(0, c.text.length)
-            val showPinyinHere = HandwritingPrefs.showPinyin &&
-                (charCount == 1 || (charCount == 2 && highlighted))
-            if (showPinyinHere) {
-                val pinyin = HanziPinyin.ofText(c.text)
-                if (!pinyin.isNullOrEmpty()) {
-                    item.addView(
-                        TextView(context).apply {
-                            text = pinyin
-                            textSize = 11f
-                            includeFontPadding = false
-                            maxLines = 1
-                            setTextColor(if (highlighted) colorHighlightText else colorSub)
-                        },
-                        LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply {
-                            marginStart = dp(3)
-                        },
-                    )
-                }
+            item.addView(textView)
+            if (pinyinView != null) {
+                item.addView(
+                    pinyinView,
+                    LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { marginStart = dp(3) },
+                )
             }
             candidateRow.addView(
                 item,
@@ -1076,8 +1105,80 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
                     setMargins(dp(2), dp(2), dp(2), dp(2))
                 },
             )
+            cells += CandidateCell(item, textView, pinyinView, charCount, c.text)
         }
+        applySelection()
+    }
 
+    /**
+     * 实时同步「当前项」：以「第一个候选原本占据的那块区域 A」为锚点。
+     *
+     * 规则：
+     * - A = 候选生成后第 1 个候选那一整块，宽度随它有几个字而定，渲染后固定不动；
+     * - A 的中心 ±15% A 宽就是「该高亮」的范围；
+     * - 左右滑动都按「谁的格心离 A 的中心更近」判定，落在容差内才换；
+     * - 没有任何候选落在容差内（正卡在两格之间）→ 保持上一个高亮，避免抖动。
+     *
+     * 坐标：子 View 的 left/width 是内容坐标，不随 scrollX 变，所以 A 的中心是常量；
+     * 滑动后用 scrollX 把它换算成「当前该对齐到的内容位置」。
+     */
+    private fun syncSelectionFromScroll() {
+        if (cells.isEmpty()) return
+        val sv = candidateScroll ?: return
+        if (sv.width <= 0 || candidateRow.width <= 0) return
+        val anchorCell = cells.firstOrNull() ?: return
+        if (anchorCell.item.width <= 0) return
+        val anchorWidth = anchorCell.item.width
+        val anchorCenter = anchorCell.item.left + anchorWidth / 2
+        val target = sv.scrollX + anchorCenter
+        val tolerance = (anchorWidth * 0.15f).toInt().coerceAtLeast(1)
+        var best = -1
+        var bestDist = Int.MAX_VALUE
+        cells.forEachIndexed { i, cell ->
+            if (cell.item.width == 0) return@forEachIndexed
+            val dist = kotlin.math.abs(cell.item.left + cell.item.width / 2 - target)
+            if (dist <= tolerance && dist < bestDist) {
+                bestDist = dist
+                best = i
+            }
+        }
+        if (best < 0) return
+        if (best != selectedIndex) {
+            selectedIndex = best
+            applySelection()
+            HandwritingLog.d(
+                "hl",
+                "anchor select idx=$best dist=$bestDist tol=$tolerance anchorW=$anchorWidth x=${sv.scrollX}",
+            )
+        }
+    }
+
+    /**
+     * 把高亮画到 selectedIndex 上。
+     *
+     * 只改背景/文字色，不重建视图，滑动时不会跳动。
+     */
+    private fun applySelection() {
+        if (cells.isEmpty()) return
+        selectedIndex = selectedIndex.coerceIn(0, cells.lastIndex)
+        cells.forEachIndexed { i, cell ->
+            val on = i == selectedIndex
+            cell.item.background = if (on) {
+                GradientDrawable().apply {
+                    setColor(colorHighlight)
+                    cornerRadius = dp(6).toFloat()
+                }
+            } else {
+                null
+            }
+            cell.text.setTextColor(if (on) colorHighlightText else colorKeyText)
+            cell.pinyin?.let { pv ->
+                pv.setTextColor(if (on) colorHighlightText else colorSub)
+                // 单字：每个候选都带读音；两字：只有「当前项」带读音；三字及以上不显示
+                val showPinyin = cell.charCount == 1 || (on && cell.charCount == 2)
+                pv.visibility = if (showPinyin) android.view.View.VISIBLE else android.view.View.GONE
+            }
+        }
     }
 
     /** 在候选条里显示一句灰字（占候选条原有高度，不改变手写区大小）。 */
@@ -1093,8 +1194,10 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
 
     /** 空格：有候选时上屏首选，否则上普通空格。 */
     private fun commitSpace() {
-        val top = lastCandidates.firstOrNull()
-        if (top != null) commit(top.text) else commit(" ")
+        // 空格上屏「当前高亮」那一项（滑动后就是滑到 A 位置的那个），没有候选时打普通空格
+        val picked = cells.getOrNull(selectedIndex)?.textValue
+            ?: lastCandidates.firstOrNull()?.text
+        if (picked != null) commit(picked) else commit(" ")
     }
 
     private fun commit(text: String) {

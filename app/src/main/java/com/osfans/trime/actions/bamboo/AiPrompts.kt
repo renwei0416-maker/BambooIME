@@ -4,7 +4,7 @@ package com.osfans.trime.actions.bamboo
  * AI 模式的提示词表。
  *
  * 与 rime-actions 的 `actions/ai/prompts/<名字>` 完全对应：名字就是模式名，
- * 名字为空（`@ai`）时用 `default`。这里的 8 套是默认值，用户可在设置里逐条改，
+ * 名字为空（`@ai`）时用 `default`。这里的 9 套是默认值，用户可在设置里逐条改，
  * 也可以新增模式（新快捷码 + 新提示词）。
  */
 object AiPrompts {
@@ -32,6 +32,10 @@ object AiPrompts {
             "reply" to
                 "用户会给你别人说过的一段话。结合上文写一条得体的回复，语气按原话的场合来定，简短直接，不要客套堆砌。" +
                 "只输出回复正文，不要解释、不要加引号。",
+            "chat" to
+                "你是一个专业贴心的聊天机器人，根据用户给你发的内容进行彼此对聊。不管用户给你发什么都要进行回复，" +
+                "哪怕是你无法理解的或者太发散的和上文无关的，你都要能延伸话题。将对话愉快的延续下去。" +
+                "本模式下尽量读取上文，结合上文综合思考后回复。",
         )
 
     /** 默认快捷码：触发码 = 前缀 + 终结键，例如 `rs;`。 */
@@ -45,6 +49,7 @@ object AiPrompts {
             "proofread" to "jd;",
             "expand" to "kx;",
             "reply" to "hf;",
+            "chat" to "lt;",
         )
 
     fun codeOf(name: String): String = defaultCodes[name] ?: "${name.take(2)};"
@@ -60,6 +65,7 @@ object AiPrompts {
             "proofread" to "校对",
             "expand" to "扩写",
             "reply" to "回复",
+            "chat" to "聊天",
         )
 
     fun displayNameOf(name: String): String = displayNames[name] ?: name

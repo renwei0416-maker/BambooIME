@@ -42,6 +42,7 @@ open class GestureFrame(context: Context) : FrameLayout(context) {
 
     private var lastTapTime = 0L
     private var lastSwipeBehavior: KeyBehavior = KeyBehavior.CLICK
+    private var maxMove = 0f
 
     private val lifecycleScope by lazy {
         findViewTreeLifecycleOwner()?.lifecycleScope
@@ -77,6 +78,9 @@ open class GestureFrame(context: Context) : FrameLayout(context) {
     var hasLazyDouble = false
     var hasPopup = false
 
+    /** 这个键是否绑了滑动手势（绑了就不该在按住后继续连发） */
+    var hasSwipeAction = false
+
     init {
         // disable system sound effect and haptic feedback
         isSoundEffectsEnabled = false
@@ -104,6 +108,7 @@ open class GestureFrame(context: Context) : FrameLayout(context) {
                 slideActivated = false
                 swipeTriggered = false
                 lastSwipeBehavior = KeyBehavior.CLICK
+                maxMove = 0f
 
                 drawableHotspotChanged(x, y)
                 isPressed = true
@@ -123,9 +128,23 @@ open class GestureFrame(context: Context) : FrameLayout(context) {
 
                 val dx = x - startX
                 val dy = y - startY
+                maxMove = maxOf(maxMove, abs(dx), abs(dy))
 
-                if (!isLongPressed && (abs(dx) > touchSlop || abs(dy) > touchSlop)) {
+                if (!isLongPressed && maxMove > touchSlop) {
                     longPressJob?.cancel()
+                }
+
+                // 已经进入长按连发，手指又滑过了手势阈值：立刻停连发，改判为滑动。
+                // 否则按住再滑会一边连发 BackSpace 一边滑，偷偷多删好几个字。
+                // 带弹窗的键（例如键盘切换键）长按后要靠拖动去选弹窗里的项，
+        // 绝不能在这里被改判成滑动手势，否则弹窗一按就消失。
+        if (isLongPressed && hasSwipeAction && !hasPopup && swipeTravel > 0 && maxMove >= swipeTravel) {
+                    cancelRepeat()
+                    isLongPressed = false
+                    swipeTriggered = true
+                    detectSwipe(dx, dy).let {
+                        if (it != KeyBehavior.CLICK) lastSwipeBehavior = it
+                    }
                 }
 
                 onMove?.invoke(x, y, isLongPressed)
@@ -244,6 +263,8 @@ open class GestureFrame(context: Context) : FrameLayout(context) {
             delay(longPressTimeout.toLong())
             if (touchId != currentTouchId) return@launch
             if (swipeTriggered || slideActivated) return@launch
+            // 手指已经明显移动过：当作滑动，不启动长按（重复键）。带弹窗的键不受此限。
+            if (hasSwipeAction && !hasPopup && maxMove > touchSlop) return@launch
             isLongPressed = true
 
             if (vibrateOnKeyPress) InputFeedbackManager.keyPressVibrate(this@GestureFrame, true)

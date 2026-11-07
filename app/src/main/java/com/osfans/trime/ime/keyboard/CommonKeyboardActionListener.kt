@@ -14,6 +14,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.osfans.trime.R
 import com.osfans.trime.actions.bamboo.BambooActions
+import com.osfans.trime.actions.bamboo.BambooTokens
 import com.osfans.trime.core.KeyModifier
 import com.osfans.trime.core.KeyModifiers
 import com.osfans.trime.core.RimeApi
@@ -170,6 +171,16 @@ class CommonKeyboardActionListener {
                         windowManager.attachWindow(handwritingWindow)
                     }
                     return
+                }
+
+                // 苍竹 token：主题里可直接把某个动作绑成 BambooRevert / BambooAiSend / BambooAi1 …
+                // 同样是 code==0 的纯文本，必须放在 commit / getText 分支之前，否则会被当成文字上屏。
+                if (action.code == 0) {
+                    val token = BambooTokens.match(action.getText(KeyboardWindow.currentKeyboard))
+                    if (token != null) {
+                        service.postKeyJob { BambooActions.handleToken(service, this, token) }
+                        return
+                    }
                 }
 
                 val shouldHandle = when {

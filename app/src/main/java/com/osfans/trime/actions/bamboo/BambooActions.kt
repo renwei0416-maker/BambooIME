@@ -10,9 +10,14 @@ import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
 import android.widget.Toast
 import androidx.lifecycle.lifecycleScope
+import com.osfans.trime.actions.handwriting.HandwritingLog
 import com.osfans.trime.core.RimeApi
 import com.osfans.trime.ime.core.TrimeInputMethodService
+import android.content.Intent
+import com.osfans.trime.ui.main.MainActivity
+import com.osfans.trime.ui.main.NavigationRoute
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -103,11 +108,16 @@ object BambooActions {
         if (text.isNullOrEmpty()) return
         if (sensitiveNow()) return
         RevertLedger.record(text)
+        HandwritingLog.d(
+            "ledger",
+            "record \"$text\" cp=${text.codePointCount(0, text.length)} total=${RevertLedger.size()}",
+        )
     }
 
     /** 用户手动按退格、rime 没消费、键被回放给编辑器时扣 1。 */
     fun onBackspaceReplayed() {
         RevertLedger.consume(1)
+        HandwritingLog.d("ledger", "backspace replay -> consume 1, total=${RevertLedger.size()}")
     }
 
     // ---------------------------------------------------------------- 按键
@@ -127,25 +137,22 @@ object BambooActions {
         val meta = metaState and KeyEvent.META_META_ON != 0
         val shift = metaState and KeyEvent.META_SHIFT_ON != 0
         if (ctrl || alt || meta || shift) {
-            // 快捷组合键：命中就吞掉执行（不交给方案、也不给 App）
+            // 快捷组合键：命中就吞掉执行（不交给方案、也不给 App）。
+            // 这两个开关只约束「组合键」本身；主题里的动作名（token）不受它们影响，见 handleToken。
             if (BambooPrefs.aiEnabled) {
-                if (armed == null && !BambooPrefs.aiFallbackDefault) return false
-                val target = armed ?: defaultMode()
-                if (target != null) {
-                    if (BambooPrefs.aiUsesCombo &&
-                        KeyCombo.matches(BambooPrefs.aiCombo, keyCode, metaState)
-                    ) {
-                        Timber.d("bamboo: combo send [%s] mode=%s", BambooPrefs.aiCombo, target.name)
-                        aiSend(service, api, target, fromClipboard = false)
-                        return true
-                    }
-                    if (BambooPrefs.clipComboEnabled &&
-                        KeyCombo.matches(BambooPrefs.clipCombo, keyCode, metaState)
-                    ) {
-                        Timber.d("bamboo: combo clip [%s] mode=%s", BambooPrefs.clipCombo, target.name)
-                        aiSend(service, api, target, fromClipboard = true)
-                        return true
-                    }
+                if (BambooPrefs.aiComboEnabled &&
+                    KeyCombo.matches(BambooPrefs.aiCombo, keyCode, metaState) &&
+                    aiDispatch(service, api, fromClipboard = false)
+                ) {
+                    Timber.d("bamboo: combo send [%s]", BambooPrefs.aiCombo)
+                    return true
+                }
+                if (BambooPrefs.clipComboEnabled &&
+                    KeyCombo.matches(BambooPrefs.clipCombo, keyCode, metaState) &&
+                    aiDispatch(service, api, fromClipboard = true)
+                ) {
+                    Timber.d("bamboo: combo clip [%s]", BambooPrefs.clipCombo)
+                    return true
                 }
             }
             return false
@@ -175,15 +182,12 @@ object BambooActions {
             if (BambooPrefs.aiEnabled && BambooPrefs.clipCodeEnabled) {
                 val clipCode = BambooPrefs.aiClipCode
                 if (clipCode.length >= 2 && matches(clipCode, ch, raw)) {
-                    val target = mode ?: defaultMode()
-                    if (target == null || (mode == null && !BambooPrefs.aiFallbackDefault)) {
-                        api.clearComposition()
-                        toast("未进入 AI 模式，已忽略")
-                        return true
-                    }
+                    // 打出来的码本身要丢掉，再走和组合键同一个出口
                     api.clearComposition()
-                    aiSend(service, api, target, fromClipboard = true)
-                    Timber.d("bamboo: clipboard -> %s (mode=%s)", target.name, mode?.name ?: "off")
+                    if (!aiDispatch(service, api, fromClipboard = true)) {
+                        toast("未进入 AI 模式，已忽略")
+                    }
+                    Timber.d("bamboo: clipboard code -> %s", armed?.name ?: "default")
                     return true
                 }
             }
@@ -210,11 +214,7 @@ object BambooActions {
             if (BambooPrefs.revertEnabled) {
                 for (code in BambooPrefs.revertTriggers) {
                     if (matches(code, ch, raw)) {
-                        api.clearComposition()
-                        val deleted = revert(service)
-                        Timber.d("bamboo: revert %s -> %d", code, deleted)
-                        if (deleted <= 0) toast("没有可回退的内容")
-                        return true
+                        return doRevert(service, api, "code=\"$code\" raw=\"$raw\"")
                     }
                 }
             }
@@ -225,7 +225,7 @@ object BambooActions {
         //   有编码时：第一下放行给方案（`/` 该干嘛干嘛），第二下吞掉并发送
         val now = SystemClock.elapsedRealtime()
 
-        if (mode != null && BambooPrefs.aiEnabled && BambooPrefs.aiUsesDoubleTap) {
+        if (mode != null && BambooPrefs.aiEnabled && BambooPrefs.aiDoubleTapEnabled) {
             val sendKey = BambooPrefs.aiSendKey.firstOrNull()
             if (sendKey != null && ch == sendKey) {
                 val doubled =
@@ -252,6 +252,99 @@ object BambooActions {
 
 
 
+    // ---------------------------------------------------------------- 主题 token
+
+    /**
+     * 主题按键 token 的入口（`BambooRevert` / `BambooClear` / `BambooAiSend` …）。
+     *
+     * 由 `CommonKeyboardActionListener.onAction` 在识别出 token 之后调用，
+     * **必须在 rime 线程**（`service.postKeyJob`）里跑，因为会清组合、读 RimeApi。
+     *
+     * 返回 true 表示已处理（调用方不应再按普通文字/按键处理）。
+     */
+    suspend fun handleToken(service: TrimeInputMethodService, api: RimeApi, token: String): Boolean {
+        if (!BambooPrefs.enabled) return false
+        when (token) {
+            BambooTokens.REVERT ->
+                // 与 `qq/` 完全同一份实现；是否生效只看主题有没有绑定，不看设置里的开关
+                return doRevert(service, api, "token=BambooRevert")
+
+            BambooTokens.CLEAR -> {
+                // 先丢掉正在拼写的组合，再把编辑区清空（一次性调 InputConnection，不连发按键）
+                api.clearComposition()
+                val ok = EditorEdit.clearAll(service)
+                toast(if (ok) "已清空" else "当前输入框不支持清空")
+                Timber.d("bamboo: token clear -> %s", ok)
+                return true
+            }
+
+            BambooTokens.DELETE_LINE -> {
+                api.clearComposition()
+                val ok = EditorEdit.deleteLine(service)
+                toast(if (ok) "已删除整行" else "当前输入框不支持")
+                Timber.d("bamboo: token deleteLine -> %s", ok)
+                return true
+            }
+
+            BambooTokens.DELETE_WORD -> {
+                api.clearComposition()
+                val ok = EditorEdit.deleteWord(service)
+                toast(if (ok) "已删除一个词" else "当前输入框不支持")
+                Timber.d("bamboo: token deleteWord -> %s", ok)
+                return true
+            }
+
+            BambooTokens.AI_SEND, BambooTokens.AI_CLIP -> {
+                // 与组合键 Ctrl+; / Ctrl+Alt+; 完全等效：
+                //  * 同一个出口 aiDispatch()，同样的目标模式、同样的发送内容；
+                //  * 唯一区别是不受「快捷组合键」开关约束——主题绑了就一直有效。
+                if (!BambooPrefs.aiEnabled) {
+                    toast("AI 模式未开")
+                    return true
+                }
+                // 没进模式且「未进模式时也发默认模式」关着 → 静默不动作（与组合键一致）。
+                // 这里不预先清组合：清不清由 aiSend 按「丢弃组合」设置决定。
+                aiDispatch(service, api, fromClipboard = token == BambooTokens.AI_CLIP)
+                Timber.d("bamboo: token %s (mode=%s)", token, armed?.name ?: "default")
+                return true
+            }
+
+            BambooTokens.AI_OFF -> {
+                if (armed == null) {
+                    toast("本来就不在 AI 模式")
+                } else {
+                    armed = null
+                    lastSendTapAt = 0
+                    toast("已退出 AI 模式")
+                }
+                return true
+            }
+
+            BambooTokens.SETTINGS -> {
+                val ctx = appContext
+                if (ctx != null) {
+                    mainHandler.post {
+                        runCatching {
+                            // AppUtils.launchMainToDest 是 private，这里按它的等价写法直接拉起设置页
+                            val intent = Intent(ctx, MainActivity::class.java).apply {
+                                action = Intent.ACTION_RUN
+                                putExtra(MainActivity.EXTRA_SETTINGS_ROUTE, NavigationRoute.BambooAction)
+                                addFlags(
+                                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                                        Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS,
+                                )
+                            }
+                            ctx.startActivity(intent)
+                        }.onFailure { Timber.w(it, "bamboo: open settings failed") }
+                    }
+                }
+                return true
+            }
+        }
+
+        return false
+    }
+
     /** 触发码语义：`qq/` = 前缀 `qq` + 终结键 `/`，且当前拼写正好是前缀。 */
     private fun matches(code: String, ch: Char, raw: String): Boolean {
         if (code.length < 2) return false
@@ -267,11 +360,33 @@ object BambooActions {
      */
     private suspend fun revert(service: TrimeInputMethodService): Int {
         val left = RevertLedger.lastCodePoints()
+        HandwritingLog.d(
+            "revert",
+            "start left=$left last=\"${RevertLedger.lastText()}\" " +
+                "max=${BambooPrefs.revertMaxCodePoints} total=${RevertLedger.size()}",
+        )
         if (left <= 0) return 0
         val want = minOf(left, BambooPrefs.revertMaxCodePoints)
         val done = deleteCodePoints(service, want)
+        HandwritingLog.d("revert", "delete want=$want done=$done")
         if (done > 0) RevertLedger.consume(done)
+        HandwritingLog.d("revert", "after total=${RevertLedger.size()}")
         return done
+    }
+
+    /**
+     * 唯一的回退实现。
+     *
+     * `qq/` 触发码与主题里的 `BambooRevert` 都只调这里，行为完全一致：
+     * 丢掉正在拼写的组合 → 退掉账本最近一笔 → 账本真的空了才提示。
+     */
+    private suspend fun doRevert(service: TrimeInputMethodService, api: RimeApi, source: String): Boolean {
+        HandwritingLog.d("revert", "trigger $source")
+        api.clearComposition()
+        val deleted = revert(service)
+        Timber.d("bamboo: revert %s -> %d", source, deleted)
+        if (deleted <= 0 && RevertLedger.size() == 0) toast("没有可回退的内容")
+        return true
     }
 
     /**
@@ -286,7 +401,20 @@ object BambooActions {
                 val ic: InputConnection = service.currentInputConnection ?: return@withContext 0
                 val window = count * 2 + 16
                 val before = ic.getTextBeforeCursor(window, 0)?.toString().orEmpty()
-                if (before.isEmpty()) return@withContext 0
+                if (before.isEmpty()) {
+                    // 编辑器不提供光标前文本（部分 WebView / 自绘编辑器）。
+                    // 无法核验，但删除指令仍然有效，按请求量记账。
+                    HandwritingLog.d("revert", "no before-text -> blind delete $count")
+                    val blind = runCatching {
+                        ic.beginBatchEdit()
+                        val ok = runCatching { ic.deleteSurroundingTextInCodePoints(count, 0) }
+                            .getOrDefault(false)
+                        if (!ok) runCatching { ic.deleteSurroundingText(count, 0) }
+                        ic.endBatchEdit()
+                        true
+                    }.getOrDefault(false)
+                    return@withContext if (blind) count else 0
+                }
 
                 var ok = false
                 ic.beginBatchEdit()
@@ -306,10 +434,17 @@ object BambooActions {
                     runCatching { ic.endBatchEdit() }
                 }
 
-                val after = ic.getTextBeforeCursor(window, 0)?.toString().orEmpty()
+                // `deleteSurroundingText*` 在编辑器侧是异步生效的，
+                // 立刻回读拿到的往往还是旧文本（差值 0），会把账本卡死。
+                // 先等一轮 IPC，再回读；仍量不到就信编辑器返回的 ok，按请求量记账。
                 val beforeCp = before.codePointCount(0, before.length)
-                val afterCp = after.codePointCount(0, after.length)
-                (beforeCp - afterCp).coerceAtLeast(0)
+                var measured = 0
+                if (ok) {
+                    delay(60)
+                    val after = ic.getTextBeforeCursor(window, 0)?.toString().orEmpty()
+                    measured = beforeCp - after.codePointCount(0, after.length)
+                }
+                if (measured > 0) measured.coerceAtMost(count) else if (ok) count else 0
             }
         } ?: 0
     }
@@ -375,6 +510,31 @@ object BambooActions {
                 ?: modes.firstOrNull { it.name == DEFAULT_MODE_NAME }
                 ?: modes.firstOrNull()
         }
+
+    /**
+     * 「发一次 AI」的唯一出口：组合键（`Ctrl+;` / `Ctrl+Alt+;`）、字母码（`jt;`）、
+     * 主题动作名（`BambooAiSend` / `BambooAiClip`）都走这里，避免三处各写一套判断而走偏。
+     *
+     * 语义固定为：
+     *  * 已在某个模式 → 发给该模式；
+     *  * 没进模式且开了「未进模式时也发默认模式」→ 发给默认模式；
+     *  * 没进模式且该开关关着 → **什么都不做**，返回 false 由调用方决定是否放行按键。
+     *
+     * 这里**不**清组合：清不清由 [aiSend] 按「丢弃组合」设置决定。之前 token 发不出编码
+     * 候选，就是因为调用方在进来之前先把组合清掉了。
+     *
+     * @return true 表示已经发起请求（按键应被吞掉）。
+     */
+    private fun aiDispatch(
+        service: TrimeInputMethodService,
+        api: RimeApi,
+        fromClipboard: Boolean,
+    ): Boolean {
+        if (armed == null && !BambooPrefs.aiFallbackDefault) return false
+        val target = armed ?: defaultMode() ?: return false
+        aiSend(service, api, target, fromClipboard = fromClipboard)
+        return true
+    }
 
     /** 发送一次请求。
      *

@@ -11,6 +11,7 @@ import android.text.InputType
 import android.view.ViewGroup
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.core.view.isVisible
@@ -23,6 +24,7 @@ import androidx.preference.SwitchPreferenceCompat
 import com.osfans.trime.R
 import com.osfans.trime.actions.bamboo.AiMode
 import com.osfans.trime.actions.bamboo.BambooPrefs
+import com.osfans.trime.actions.bamboo.BambooTokens
 import com.osfans.trime.ui.common.PaddingPreferenceFragment
 import com.osfans.trime.util.addPreference
 
@@ -101,7 +103,22 @@ class BambooActionFragment : PaddingPreferenceFragment() {
                             .show()
                     }
                 }
-                addPreference("发送方式", triggerLabel()) { chooseTrigger() }
+                addSwitch(
+                    "双击发送键发送",
+                    "关（默认）＝双击「${BambooPrefs.aiSendKey}」不触发，键位照常输入；开＝在 AI 模式下连按两下「${BambooPrefs.aiSendKey}」发送",
+                    BambooPrefs.aiDoubleTapEnabled,
+                ) {
+                    BambooPrefs.aiDoubleTapEnabled = it
+                    rebuild()
+                }
+                addSwitch(
+                    "快捷组合键发送",
+                    "开（默认）＝按 ${BambooPrefs.aiCombo} 发送（主要给外接键盘）；关＝不拦这个组合键，直接交给 App",
+                    BambooPrefs.aiComboEnabled,
+                ) {
+                    BambooPrefs.aiComboEnabled = it
+                    rebuild()
+                }
                 addSwitch(
                     "未进模式时也发默认模式",
                     "开（默认）＝没进入任何 AI 模式时，组合键 / 剪贴板码都发给默认的 ai; 模式；关＝不发送（组合键直接放行给 App）",
@@ -112,14 +129,14 @@ class BambooActionFragment : PaddingPreferenceFragment() {
                 }
                 addPreference(
                     "AI 快捷组合键",
-                    "${BambooPrefs.aiCombo}（键位上写 send: \"Control+semicolon\" 这样就能触发）",
+                    "${BambooPrefs.aiCombo}（只对「模拟按键」有效：外接键盘，或键位上写 send: \"Control+semicolon\"；也可以把动作名 BambooAiSend 直接绑到键位上，不受这里影响）",
                 ) {
                     editText("AI 快捷组合键", BambooPrefs.aiCombo, hint = "ctrl+;") {
                         BambooPrefs.aiCombo = it
                         rebuild()
                     }
                 }
-                addPreference("双击键", "${BambooPrefs.aiSendKey}（双击这个键发送；选「双击按键」时才生效）") {
+                addPreference("双击键", "${BambooPrefs.aiSendKey}（双击这个键发送；上面「双击发送键发送」开着才生效）") {
                     editText("双击键", BambooPrefs.aiSendKey, hint = "/") {
                         BambooPrefs.aiSendKey = it
                         rebuild()
@@ -143,7 +160,7 @@ class BambooActionFragment : PaddingPreferenceFragment() {
                 }
                 addPreference(
                     "剪贴板快捷组合键",
-                    "${BambooPrefs.clipCombo}（键位上写 send: \"Control+Alt+semicolon\"）",
+                    "${BambooPrefs.clipCombo}（同样只对外接键盘 / send: 绑定有效；也可以用动作名 BambooAiClip 直接绑键位）",
                 ) {
                     editText("剪贴板快捷组合键", BambooPrefs.clipCombo, hint = "ctrl+alt+;") {
                         BambooPrefs.clipCombo = it
@@ -228,9 +245,25 @@ class BambooActionFragment : PaddingPreferenceFragment() {
                 addPreference("＋ 新增模式", "自定义快捷码、模式提示和提示词") {
                     editMode(AiMode("new;", "", ""), isNew = true)
                 }
-                addPreference("恢复默认 8 套", "把快捷码、模式提示和提示词都恢复成内置默认") {
+                addPreference("恢复默认提示词", "把快捷码、模式提示和提示词都恢复成内置默认") {
                     BambooPrefs.aiModes = BambooPrefs.defaults()
                     rebuild()
+                }
+            }
+
+            // 只读说明：给主题作者 / 换机后查用法用，不写任何设置
+            addBambooCategory("主题动作名", "只读说明：把这些名字绑到键位上就能直接触发，不用再敲字母码") {
+                addPreference(
+                    "动作名一览",
+                    "共 ${BambooTokens.fixed.size} 个，全部常驻可用（不受下面两个发送开关影响）",
+                ) {
+                    showTokenList()
+                }
+                addPreference("怎么绑定", "click / long_click / swipe_* / popup 都能填，名字大小写不敏感") {
+                    showBindHelp()
+                }
+                addPreference("和「快捷组合键」的关系", "键位绑定 vs 模拟按键，两条路互不影响") {
+                    showComboVsToken()
                 }
             }
         }
@@ -257,6 +290,111 @@ class BambooActionFragment : PaddingPreferenceFragment() {
         )
     }
 
+    /** 「动作名一览」：纯展示，内容由 [BambooTokens.docRows] 生成，避免和代码不同步。 */
+    private fun showTokenList() {
+        val ctx = requireContext()
+        val pad = (16 * resources.displayMetrics.density).toInt()
+        val body =
+            TextView(ctx).apply {
+                setTextIsSelectable(true)
+                textSize = 13f
+                setPadding(pad, pad / 2, pad, pad / 2)
+                text =
+                    BambooTokens.docRows().joinToString("\n\n") { (name, desc) ->
+                        "$name\n    $desc"
+                    }
+            }
+        val scroll =
+            ScrollView(ctx).apply {
+                addView(
+                    body,
+                    ViewGroup.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ),
+                )
+            }
+        AlertDialog
+            .Builder(ctx)
+            .setTitle("主题动作名")
+            .setView(scroll)
+            .setPositiveButton(android.R.string.ok, null)
+            .show()
+    }
+
+    /** 「和快捷组合键的关系」：解释两条触发通路。 */
+    private fun showComboVsToken() {
+        val ctx = requireContext()
+        val text =
+            """
+            触发 AI 有两条互不影响的路：
+
+            【一】键位绑定（动作名，推荐）
+              · 主题里把 token 直接写在键位上，例如
+                swipe_up = "BambooAiSend"
+              · 点下去就直接执行，跟下面「触发方式」的设置无关；
+              · 主题里回车键的上滑/右滑用的就是这条。
+
+            【二】模拟按键（快捷组合键）
+              · 键位上写 send: "Control+semicolon"，等于替用户按了 Ctrl+;，
+                再由输入法识别成 AI 发送；
+              · 只在「快捷组合键」里配的键有效，改了键位写法就对不上；
+              · 主要给外接键盘 / 硬件键盘用，也可以给自定义键位留一条退路。
+
+            两者最终调用的是同一个发送逻辑（同样的模式判定、
+            同样的剪贴板取值、同样的上屏），只是入口不同。
+
+            · 想改组合键：本页「AI 快捷组合键」「剪贴板快捷组合键」；
+            · 「双击发送键发送」「快捷组合键发送」是两个独立开关，可以都关掉；
+              都关掉之后，动作名和快捷码（如 lt;）照常可用 —— 它们不走这两条路；
+            · 组合键保留主要是为了外接键盘；屏幕键位建议直接用动作名，
+              这样以后改组合键也不会把键位搞失效。
+            · 想用动作名：本页「动作名一览」里有全部可绑的名字。
+            """.trimIndent()
+        AlertDialog
+            .Builder(ctx)
+            .setTitle("组合键 vs 动作名")
+            .setMessage(text)
+            .setPositiveButton(android.R.string.ok, null)
+            .show()
+    }
+
+    /** 「怎么绑定」：三行示例。 */
+    private fun showBindHelp() {
+        val ctx = requireContext()
+        val sample =
+            """
+            在主题布局的 Lua 里，把动作字段写成 token 名字：
+
+              key(merge(S.backspace, key {
+                  click       = "del",           -- 单击：退格
+                  swipe_right = "BambooRevert",  -- 右滑：回退最近一笔
+              }))
+
+              key(merge(S.d, key {
+                  click      = "d",
+                  long_click = "BambooClear",    -- 长按 D：清空编辑区
+              }))
+
+              popup = { "BambooAi1", "BambooAi2", "BambooAiOff" }
+
+            可用槽位：click / double_click / long_click /
+                      swipe_left / swipe_right / swipe_up / swipe_down / popup
+
+            说明：
+            · 名字大小写不敏感，必须以 Bamboo 开头；
+            · 改完主题要重新载入主题才生效；
+            · BambooClear / BambooDeleteLine / BambooDeleteWord 走
+              InputConnection 一次性删除，比连发按键稳。
+            """.trimIndent()
+        AlertDialog
+            .Builder(ctx)
+            .setTitle("怎么绑定")
+            .setMessage(sample)
+            .setPositiveButton(android.R.string.ok, null)
+            .show()
+    }
+
     private fun rebuild() {
         preferenceScreen.removeAll()
         onCreatePreferences(null, null)
@@ -281,34 +419,6 @@ class BambooActionFragment : PaddingPreferenceFragment() {
             }
         addPreference(header)
         header.block()
-    }
-
-    private fun triggerLabel(): String =
-        if (BambooPrefs.aiUsesCombo) {
-            "快捷组合键：${BambooPrefs.aiCombo}（默认）"
-        } else {
-            "双击按键：${BambooPrefs.aiSendKey}${BambooPrefs.aiSendKey}"
-        }
-
-    private fun chooseTrigger() {
-        val ctx = requireContext()
-        val options =
-            arrayOf(
-                "快捷组合键（推荐：不占用拼写键，一下就能发）",
-                "双击按键（连按两下同一个键）",
-            )
-        val values = arrayOf(BambooPrefs.TRIGGER_COMBO, BambooPrefs.TRIGGER_DOUBLE)
-        val checked = values.indexOf(BambooPrefs.aiTriggerMode).coerceAtLeast(0)
-        AlertDialog
-            .Builder(ctx)
-            .setTitle("发送方式")
-            .setSingleChoiceItems(options, checked) { dialog, which ->
-                BambooPrefs.aiTriggerMode = values[which]
-                dialog.dismiss()
-                rebuild()
-            }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show()
     }
 
     private fun sourceLabel(): String =

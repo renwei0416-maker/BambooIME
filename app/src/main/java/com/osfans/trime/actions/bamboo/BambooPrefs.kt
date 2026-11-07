@@ -47,6 +47,7 @@ object BambooPrefs {
     private const val K_CLIP_COMBO = "clip_combo"
     private const val K_AI_DOUBLE_MS = "ai_double_ms"
     private const val K_AI_BASE_URL = "ai_base_url"
+
     private const val K_AI_MODEL = "ai_model"
     private const val K_AI_KEY = "ai_api_key"
     private const val K_AI_TEMP = "ai_temperature"
@@ -59,12 +60,23 @@ object BambooPrefs {
     private const val K_AI_DISCARD_COMPOSITION = "ai_discard_composition"
     private const val K_AI_SENTENCE_ONLY = "ai_sentence_only"
     private const val K_AI_SENTENCE_MARKS = "ai_sentence_marks"
+    private const val K_AI_SEND_DOUBLE = "ai_send_double"
+    private const val K_AI_SEND_COMBO = "ai_send_combo"
     private const val K_LOG_FILE = "log_to_file"
+
+    /** AI 接口地址默认值（DeepSeek 官方兼容端点）。 */
+    const val DEFAULT_AI_BASE_URL = "https://api.deepseek.com/v1/chat/completions"
+
+    /** AI 模型名默认值。 */
+    const val DEFAULT_AI_MODEL = "deepseek-flash"
 
     const val DEFAULT_REVERT_TRIGGERS = "qq/"
     const val DEFAULT_MAX_DELETE = 500
 
-    /** 发送触发方式：双击按键 / 快捷组合键（二选一）。 */
+    /**
+     * 老版本的「发送方式」二选一。1.1.0 起拆成两个独立开关
+     * （[K_AI_SEND_DOUBLE] / [K_AI_SEND_COMBO]），这两个常量只用于迁移旧存档。
+     */
     const val TRIGGER_DOUBLE = "double"
     const val TRIGGER_COMBO = "combo"
 
@@ -196,7 +208,7 @@ object BambooPrefs {
     @Volatile
     private var modesCache: List<AiMode>? = null
 
-    /** 8 套默认提示词 + 用户新增的模式。 */
+    /** 内置默认提示词 + 用户新增的模式。 */
     var aiModes: List<AiMode>
         get() {
             modesCache?.let { return it }
@@ -211,8 +223,16 @@ object BambooPrefs {
 
     private fun decodeModes(raw: String?): List<AiMode> {
         if (raw.isNullOrBlank()) return defaults()
-        return runCatching { json.decodeFromString<List<AiMode>>(raw) }
-            .getOrElse { defaults() }
+        val saved =
+            runCatching { json.decodeFromString<List<AiMode>>(raw) }.getOrElse { return defaults() }
+        // 新版本可能加了内置模式（例如 1.1.0 的「聊天」），老机器的存档里没有它。
+        // 这里把缺的内置模式补在**末尾**，不动用户已有的序号（BambooAi1..N 的顺序不变）。
+        val have = saved.mapNotNull { it.key }.toSet()
+        val missing =
+            AiPrompts.builtin.keys
+                .filter { it !in have }
+                .map { AiMode(AiPrompts.codeOf(it), AiPrompts.displayNameOf(it), AiPrompts.promptOf(it), it) }
+        return if (missing.isEmpty()) saved else saved + missing
     }
 
     fun defaults(): List<AiMode> =
@@ -227,14 +247,26 @@ object BambooPrefs {
         get() = p().getString(K_AI_SEND_KEY, "/") ?: "/"
         set(v) = p().edit().putString(K_AI_SEND_KEY, v.take(1)).apply()
 
-    /** 发送触发方式，见 [TRIGGER_DOUBLE] / [TRIGGER_COMBO]。 */
-    var aiTriggerMode: String
-        get() = p().getString(K_AI_TRIGGER_MODE, TRIGGER_COMBO) ?: TRIGGER_COMBO
-        set(v) = p().edit().putString(K_AI_TRIGGER_MODE, v).apply()
+    /**
+     * 双击发送键是否生效。
+     *
+     * 1.1.0 起「双击 / 快捷组合键」从二选一拆成两个独立开关：两条老路都可以单独关掉，
+     * 都关掉时只剩主题动作名（token）和快捷码可用 —— 它们本来就不受这两个开关影响。
+     * 新键没写过时，用旧存档里二选一的结果当默认值；旧存档也没写过时默认**关闭**
+     * （即默认不启用双击 `/` 发送，只保留快捷组合键这条路）。
+     */
+    var aiDoubleTapEnabled: Boolean
+        get() = p().getBoolean(K_AI_SEND_DOUBLE, legacyTrigger() != TRIGGER_COMBO)
+        set(v) = p().edit().putBoolean(K_AI_SEND_DOUBLE, v).apply()
 
-    val aiUsesDoubleTap: Boolean get() = aiTriggerMode != TRIGGER_COMBO
+    /** 快捷组合键发送是否生效（主要给外接键盘）。 */
+    var aiComboEnabled: Boolean
+        get() = p().getBoolean(K_AI_SEND_COMBO, legacyTrigger() == TRIGGER_COMBO)
+        set(v) = p().edit().putBoolean(K_AI_SEND_COMBO, v).apply()
 
-    val aiUsesCombo: Boolean get() = aiTriggerMode == TRIGGER_COMBO
+    /** 旧版「发送方式」的残留值，只用来给上面两个开关提供默认值。 */
+    private fun legacyTrigger(): String =
+        p().getString(K_AI_TRIGGER_MODE, TRIGGER_COMBO) ?: TRIGGER_COMBO
 
     /** 快捷组合键，例如 `ctrl+;`。 */
     var aiCombo: String
@@ -267,12 +299,14 @@ object BambooPrefs {
         get() = p().getInt(K_AI_DOUBLE_MS, 1000)
         set(v) = p().edit().putInt(K_AI_DOUBLE_MS, v.coerceIn(200, 3000)).apply()
 
+    /** 接口地址默认值：用户没填过就用它，填过的仍用自己的。 */
     var aiBaseUrl: String
-        get() = p().getString(K_AI_BASE_URL, "") ?: ""
+        get() = p().getString(K_AI_BASE_URL, "").orEmpty().ifEmpty { DEFAULT_AI_BASE_URL }
         set(v) = p().edit().putString(K_AI_BASE_URL, v.trim()).apply()
 
+    /** 模型名默认值：同上。 */
     var aiModel: String
-        get() = p().getString(K_AI_MODEL, "") ?: ""
+        get() = p().getString(K_AI_MODEL, "").orEmpty().ifEmpty { DEFAULT_AI_MODEL }
         set(v) = p().edit().putString(K_AI_MODEL, v.trim()).apply()
 
     /**
