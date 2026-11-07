@@ -12,6 +12,8 @@ SPDX-License-Identifier: GPL-3.0-or-later
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- 拍照识字：只在打开识字面板时用，不申请就不影响其它功能 -->
+    <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
@@ -24,6 +26,10 @@ SPDX-License-Identifier: GPL-3.0-or-later
     <!-- 声明 NPU 能力：required=false 保证可安装到无 NPU 设备，Android 17+ 有 NPU 时获得直接访问 -->
     <uses-feature
         android:name="android.hardware.npu"
+        android:required="false" />
+    <!-- 没有相机的设备也能装（识字面板会提示不支持） -->
+    <uses-feature
+        android:name="android.hardware.camera"
         android:required="false" />
 
     <queries>
@@ -144,6 +150,14 @@ SPDX-License-Identifier: GPL-3.0-or-later
             android:exported="false"
             android:theme="@style/Theme.TrimeAppTheme"
             android:parentActivityName=".ui.main.MainActivity" />
+
+        <!-- 拍照识字的相机权限申请宿主：1x1 透明，无界面 -->
+        <activity
+            android:name="com.osfans.trime.actions.ocr.OcrPermissionActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:taskAffinity=""
+            android:excludeFromRecents="true" />
 
         <!-- Using an activity alias to disable/enable the app icon in the launcher -->
         <activity-alias

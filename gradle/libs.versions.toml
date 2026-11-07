@@ -10,6 +10,7 @@ aboutlibraries = "15.3.0"
 kotest = "6.2.6"
 iconics = "5.6.0"
 okhttp = "5.5.1"
+camera = "1.4.2"
 sora-editor = "0.23.6"
 gson = "2.15.0"
 jcodings = "1.0.64"
@@ -60,6 +61,9 @@ ksp = { module = "com.google.devtools.ksp:symbol-processing-api", version.ref = 
 kotest-runner-junit5 = { module = "io.kotest:kotest-runner-junit5", version.ref = "kotest" }
 kotest-assertions-core = { module = "io.kotest:kotest-assertions-core", version.ref = "kotest" }
 okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
+androidx-camera-camera2 = { module = "androidx.camera:camera-camera2", version.ref = "camera" }
+androidx-camera-lifecycle = { module = "androidx.camera:camera-lifecycle", version.ref = "camera" }
+androidx-camera-view = { module = "androidx.camera:camera-view", version.ref = "camera" }
 sora-editor = { module = "io.github.Rosemoe.sora-editor:editor", version.ref = "sora-editor" }
 gson = { module = "com.google.code.gson:gson", version.ref = "gson" }
 jcodings = { module = "org.jruby.jcodings:jcodings", version.ref = "jcodings" }

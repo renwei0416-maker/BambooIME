@@ -27,6 +27,7 @@ import com.osfans.trime.data.prefs.AppPrefs
 import com.osfans.trime.data.theme.ColorManager
 import com.osfans.trime.data.theme.KeyActionManager
 import com.osfans.trime.actions.handwriting.HandwritingWindow
+import com.osfans.trime.actions.ocr.OcrWindow
 import com.osfans.trime.data.theme.ThemeManager
 import com.osfans.trime.ime.bar.InputBarDelegate
 import com.osfans.trime.ime.clipboard.ClipboardWindow
@@ -66,6 +67,7 @@ class CommonKeyboardActionListener {
 
     /** 手写板窗口：主题弹窗里选中 Handwriting 时才创建。 */
     private val handwritingWindow: HandwritingWindow get() = HandwritingWindow.instance
+    private val ocrWindow: OcrWindow get() = OcrWindow.instance
     private val inputBarDelegate: InputBarDelegate by di.instance()
 
     private val prefs = AppPrefs.defaultInstance()
@@ -175,6 +177,19 @@ class CommonKeyboardActionListener {
 
                 // 苍竹 token：主题里可直接把某个动作绑成 BambooRevert / BambooAiSend / BambooAi1 …
                 // 同样是 code==0 的纯文本，必须放在 commit / getText 分支之前，否则会被当成文字上屏。
+                // 拍照识字入口：同样是 code==0 的纯文本，放在 token 分发之前，
+                // 因为它要建视图（不能在 rime 线程上跑 postKeyJob）。
+                if (action.code == 0 &&
+                    OcrWindow.isToken(action.getText(KeyboardWindow.currentKeyboard))
+                ) {
+                    if (windowManager.isAttached(ocrWindow)) {
+                        windowManager.attachWindow(keyboardWindow)
+                    } else {
+                        windowManager.attachWindow(ocrWindow)
+                    }
+                    return
+                }
+
                 if (action.code == 0) {
                     val token = BambooTokens.match(action.getText(KeyboardWindow.currentKeyboard))
                     if (token != null) {

@@ -43,6 +43,7 @@ import androidx.core.view.updateLayoutParams
 import androidx.lifecycle.lifecycleScope
 import com.osfans.trime.R
 import com.osfans.trime.actions.bamboo.BambooActions
+import com.osfans.trime.actions.ocr.OcrCard
 import com.osfans.trime.core.KeyModifiers
 import com.osfans.trime.core.KeyValue
 import com.osfans.trime.core.RimeApi
@@ -110,6 +111,10 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
     private lateinit var contentView: FrameLayout
     private lateinit var lastKnownConfig: Configuration
     private var inputView: InputView? = null
+
+    /** 当前的 InputView（拍照识字窗口用它隐藏顶栏）。 */
+    internal val currentInputView: InputView?
+        get() = inputView
     private var candidatesView: CandidatesView? = null
     private val navBarManager = NavigationBarManager()
     val inputDeviceManager = InputDeviceManager { useVirtualKeyboard, useCandidatesView ->
@@ -261,8 +266,13 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
         when (it) {
             is RimeMessage.CommitTextMessage -> {
                 if (!it.data.text.isNullOrEmpty()) {
-                    BambooActions.onCommitted(it.data.text)
-                    commitText(it.data.text)
+                    if (OcrCard.isActive) {
+                        // 拍照识字的确认卡片正在接管输出：写进卡片，不上屏、不记账
+                        OcrCard.append(it.data.text)
+                    } else {
+                        BambooActions.onCommitted(it.data.text)
+                        commitText(it.data.text)
+                    }
                 }
             }
 
@@ -279,6 +289,11 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
                             else -> {
                                 val keyCode = it.value.keyCode
                                 if (keyCode != KeyEvent.KEYCODE_UNKNOWN) {
+                                    // 确认卡片接管时，退格/回车改到卡片里，不发给目标 App
+                                    if (OcrCard.isActive && keyCode == KeyEvent.KEYCODE_DEL) {
+                                        OcrCard.backspace()
+                                        return@msg
+                                    }
                                     // 退格被回放给编辑器 = 真的删了屏幕上的字，账本要扣
                                     if (keyCode == KeyEvent.KEYCODE_DEL &&
                                         !it.modifiers.ctrl && !it.modifiers.alt && !it.modifiers.shift
@@ -570,6 +585,12 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
                 visibleTopInsets = inputViewLocation[1]
                 touchableInsets = Insets.TOUCHABLE_INSETS_VISIBLE
             }
+            // 拍照识字的确认卡片浮在键盘上方（窗口可见区之外），默认触摸区不覆盖它，
+            // 触摸会穿透到下面的 App；卡片激活时改成「键盘 ∪ 卡片」的区域。
+            if (OcrCard.isActive) {
+                outInsets.touchableInsets = Insets.TOUCHABLE_INSETS_REGION
+                inputView?.getOcrCardTouchRegion(outInsets.touchableRegion)
+            }
         } else {
             val n = decorView.findViewById<View>(android.R.id.navigationBarBackground)?.height ?: 0
             val h = decorView.height - n
@@ -693,6 +714,11 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
     }
 
     fun commitText(text: String) {
+        // 确认卡片接管时，文本先写进卡片（「上屏」按钮会临时 bypass）
+        if (OcrCard.isActive && !OcrCard.bypass) {
+            OcrCard.append(text)
+            return
+        }
         val ic = currentInputConnection ?: return
 
         // when composing text equals commit content, finish composing text as-is

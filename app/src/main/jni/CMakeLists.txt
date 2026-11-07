@@ -128,3 +128,7 @@ add_subdirectory(sherpa-onnx)
 # 必须放在 sherpa-onnx 之后：它用 include(OnnxRuntime) 提供的
 # SHERPA_ONNXRUNTIME_INCLUDE_DIR / SHERPA_ONNXRUNTIME_LIB_DIR。
 add_subdirectory(bamboo_handwriting)
+
+# ---- bamboo ocr (PP-OCRv5 det + rec for the camera text scanner) ----
+# 同上，复用 sherpa-onnx 下载的 onnxruntime（C API）。
+add_subdirectory(bamboo_ocr)

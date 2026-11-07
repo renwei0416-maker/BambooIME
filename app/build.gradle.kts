@@ -25,6 +25,11 @@ plugins {
 val bundleHandwritingModel =
     (project.findProperty("bundleHandwritingModel") as String?)?.toBoolean() ?: true
 
+// 内置拍照识字模型（PP-OCRv5 det + rec，约 21.5 MB）默认打进 APK；
+// -PbundleOcrModel=false 出「无 OCR 模型」版（入口会提示缺模型）。
+val bundleOcrModel =
+    (project.findProperty("bundleOcrModel") as String?)?.toBoolean() ?: true
+
 android {
     namespace = "com.osfans.trime"
     compileSdk = 37
@@ -34,6 +39,9 @@ android {
         getByName("main") {
             if (bundleHandwritingModel) {
                 assets.srcDir("src/main/handwriting-assets")
+            }
+            if (bundleOcrModel) {
+                assets.srcDir("src/main/ocr-assets")
             }
         }
     }
@@ -53,6 +61,7 @@ android {
         buildConfigField("String", "BUILD_VERSION_NAME", "\"${project.buildVersionName}\"")
         buildConfigField("String", "QNN_VARIANT", "\"${project.qnnVariant ?: ""}\"")
         buildConfigField("boolean", "BUNDLED_HANDWRITING_MODEL", "$bundleHandwritingModel")
+        buildConfigField("boolean", "BUNDLED_OCR_MODEL", "$bundleOcrModel")
     }
 
     buildTypes {
@@ -190,6 +199,10 @@ dependencies {
     implementation(libs.kodein.di)
     implementation(libs.snakeyaml)
     implementation(libs.okhttp)
+    // 拍照识字（BambooOcr）：预览 + 取帧
+    implementation(libs.androidx.camera.camera2)
+    implementation(libs.androidx.camera.lifecycle)
+    implementation(libs.androidx.camera.view)
     implementation(libs.splitties.bitflags)
     implementation(libs.splitties.systemservices)
     implementation(libs.splitties.views.dsl)

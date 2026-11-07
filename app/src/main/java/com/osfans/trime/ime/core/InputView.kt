@@ -6,6 +6,8 @@
 package com.osfans.trime.ime.core
 
 import com.osfans.trime.actions.handwriting.HandwritingWindow
+import com.osfans.trime.actions.handwriting.HandwritingLog
+import com.osfans.trime.actions.ocr.OcrCard
 import android.annotation.SuppressLint
 import android.content.res.Configuration
 import android.graphics.Outline
@@ -18,11 +20,14 @@ import android.os.Build
 import android.os.SystemClock
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewGroup
 import android.view.ViewConfiguration
 import android.view.ViewOutlineProvider
 import android.view.WindowInsets
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InlineSuggestionsResponse
+import android.widget.FrameLayout
+import android.widget.LinearLayout
 import android.widget.ImageView
 import androidx.annotation.Keep
 import androidx.annotation.RequiresApi
@@ -69,6 +74,7 @@ import splitties.views.dsl.constraintlayout.lParams
 import splitties.views.dsl.constraintlayout.startOfParent
 import splitties.views.dsl.constraintlayout.startToEndOf
 import splitties.views.dsl.constraintlayout.topOfParent
+import timber.log.Timber
 import splitties.views.dsl.core.add
 import splitties.views.dsl.core.imageView
 import splitties.views.dsl.core.matchParent
@@ -296,6 +302,9 @@ class InputView(
     }
 
     val keyboardView: ConstraintLayout
+
+    /** OCR 确认卡片的挂载点：在顶栏与键盘之间，平时 GONE。 */
+    private lateinit var ocrCardHost: LinearLayout
 
     private fun handleColor(): Int {
         val base = ContextCompat.getColor(context, R.color.lavender)
@@ -667,6 +676,13 @@ class InputView(
 
         keyboardBackground.imageDrawable = ColorManager.getDrawable("keyboard_background")
 
+        ocrCardHost =
+            LinearLayout(context).apply {
+                id = View.generateViewId()
+                orientation = LinearLayout.VERTICAL
+                visibility = View.GONE
+            }
+
         keyboardView =
             constraintLayout {
                 id = View.generateViewId()
@@ -761,6 +777,17 @@ class InputView(
             lParams(wrapContent, wrapContent) {
                 startOfParent()
                 bottomToTop = preedit.ui.root.id
+            },
+        )
+
+        // 拍照识字的确认卡片：独立覆盖层，底边贴在编码框上沿。
+        // 不参与键盘 / 候选栏 / 编码框的约束链，所以不会改变它们的位置与高度。
+        add(
+            ocrCardHost,
+            lParams(matchParent, wrapContent) {
+                bottomToTop = preedit.ui.root.id
+                startOfParent()
+                endOfParent()
             },
         )
 
@@ -988,6 +1015,69 @@ class InputView(
         inputBar.updateVisibility()
     }
 
+    /**
+     * 显示拍照识字的确认卡片。
+     *
+     * 卡片是输入法窗口里的独立覆盖层，底边贴在编码框上沿，浮在键盘上方、盖住 App 底部；
+     * 候选栏、功能键排、键盘的位置与高度都不变，卡片里的编码框位置也不变。
+     */
+    fun showOcrCard(text: String) {
+        windowManager.attachWindow(KeyboardWindow)
+        OcrCard.bind(ocrCardHost)
+        ocrCardHost.visibility = View.VISIBLE
+        OcrCard.activate(text)
+        requestLayout()
+        // 卡片在默认触摸区之外，需要让系统重算 insets 才能点到
+        requestApplyInsets()
+        ocrCardHost.post {
+            logOcrCardLayout("shown")
+            requestApplyInsets()
+        }
+    }
+
+    /** 记录卡片布局坐标，便于在真机上定位「浮标跑出屏幕」这类问题。 */
+    private fun logOcrCardLayout(stage: String) {
+        runCatching {
+            val root = rootView ?: return@runCatching
+            fun pos(v: View): String {
+                val p = IntArray(2)
+                v.getLocationOnScreen(p)
+                return "${p[0]},${p[1]} ${v.width}x${v.height} v=${v.visibility}"
+            }
+            HandwritingLog.d(
+                "card",
+                "$stage window=${pos(root)} sync=${pos(syncInputBox)} preedit=${pos(preedit.ui.root)} " +
+                    "bar=${pos(inputBar.view)} card=${pos(ocrCardHost)} " +
+                    "board=${pos(windowManager.view)} kb=${pos(keyboardView)}",
+            )
+        }
+    }
+
+    /** 收起拍照识字的确认卡片，回到正常键盘。 */
+    fun hideOcrCard() {
+        OcrCard.deactivate()
+        ocrCardHost.visibility = View.GONE
+        requestLayout()
+        requestApplyInsets()
+        ocrCardHost.post {
+            logOcrCardLayout("hidden")
+            requestApplyInsets()
+        }
+    }
+
+    /**
+     * 临时隐藏顶栏（光标栏 + 工具条），给「拍照识字」相机面板这类需要整块空间的窗口用。
+     * 只被 OcrWindow 在挂载/卸载时调用；[suppressed] 为 false 时恢复成主题要求的状态。
+     */
+    fun setInputBarSuppressed(suppressed: Boolean) {
+        if (suppressed) {
+            inputBar.view.visibility = View.GONE
+        } else {
+            inputBar.view.visibility = View.VISIBLE
+            inputBar.updateVisibility()
+        }
+    }
+
     fun updateSyncInputBox(snapshot: TargetTextSnapshot?) {
         if (!isEffectiveFloating || !floatingSyncInput || snapshot == null || snapshot.text.isEmpty()) {
             hideSyncInputBox()
@@ -1125,6 +1215,8 @@ class InputView(
         updateWindowViewHeightJob.cancel()
         popup.root.removeAllViews()
         inputBar.stopAsrkbVoiceFromToolbar()
+        // 输入法窗口被收起/切换时，卡片必须失活：否则 commitText 的改道会让键盘打不出字
+        OcrCard.deactivate()
         inputDepMgr.stop()
         super.onDetachedFromWindow()
     }
@@ -1397,6 +1489,23 @@ class InputView(
             keyboardView.translationY = clampedY
         }
         updateFloatingOverlayTranslation()
+    }
+
+    /**
+     * 拍照识字确认卡片的触摸区 = 键盘矩形 ∪ 卡片矩形。
+     *
+     * 卡片是浮在键盘上方的覆盖层，落在窗口「可见区」之外，默认触摸会穿透到 App；
+     * 卡片激活时由 [TrimeInputMethodService.onComputeInsets] 把这块并进 touchableRegion。
+     */
+    fun getOcrCardTouchRegion(outRegion: Region) {
+        val rect = Rect()
+        keyboardView.getHitRect(rect)
+        if (ocrCardHost.visibility == View.VISIBLE) {
+            val cardRect = Rect()
+            ocrCardHost.getHitRect(cardRect)
+            rect.union(cardRect)
+        }
+        outRegion.set(rect)
     }
 
     fun getFloatingKeyboardRegion(outRegion: Region) {
