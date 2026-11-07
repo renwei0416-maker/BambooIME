@@ -12,6 +12,7 @@ import androidx.transition.TransitionManager
 import androidx.transition.TransitionSet
 import com.osfans.trime.R
 import com.osfans.trime.ime.broadcast.InputBroadcaster
+import com.osfans.trime.ime.keyboard.KeyboardWindow
 import com.osfans.trime.ime.dependency.InputDependencyManager
 import org.kodein.di.instance
 import splitties.views.dsl.core.add
@@ -71,7 +72,11 @@ class BoardWindowManager {
 
     fun attachWindow(window: BoardWindow) {
         if (window === currentWindow) {
+            // 已经在这个窗口上了，直接返回。
+            // 上游这里只打了日志、没有 return，导致重复挂载会重建视图
+            // （手写板每一轮 onCreateView 都会把 active 置回 true，表现为「返回失效」）。
             Timber.d("Skip attaching $window")
+            return
         }
         val newView =
             if (window is ResidentWindow) {
@@ -113,4 +118,23 @@ class BoardWindowManager {
     val view: FrameLayout by lazy { context.frameLayout(R.id.input_window) }
 
     fun isAttached(window: BoardWindow) = currentWindow === window
+
+    /** 当前是否停在键盘窗口上（给外部的进程级单例做判断用）。 */
+    fun isKeyboardAttached(): Boolean = currentWindow is KeyboardWindow
+
+    companion object {
+        /**
+         * 最近创建的那个管理器。
+         *
+         * DI 每次重建 InputView 都会 new 一个 BoardWindowManager，而手写板是进程级单例，
+         * 不能在自己的字段里把管理器缓存住（那会一直是旧实例，导致「返回」换窗口无效）。
+         */
+        @Volatile
+        var current: BoardWindowManager? = null
+            private set
+    }
+
+    init {
+        current = this
+    }
 }

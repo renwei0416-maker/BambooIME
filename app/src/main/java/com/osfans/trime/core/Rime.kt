@@ -309,11 +309,16 @@ class Rime :
     }
 
     private fun startRime(fullCheck: Boolean? = null) {
+        DataManager.sync()
+        // Must run before `stagingDir`/`userDataDir` are resolved below: an empty
+        // active package would otherwise point the whole session at the shared dir.
+        SchemaPackageManager.ensureActivePackage()
         val needsDeploy = fullCheck ?: run {
             val staging: File = DataManager.stagingDir
             !staging.exists() || (staging.list()?.isEmpty() ?: true)
         }
-        DataManager.sync()
+        // glog only writes files when the directory already exists.
+        File(DataManager.userDataDir, "logs").mkdirs()
         val sharedDataDir = DataManager.sharedDataDir.absolutePath
         val userDataDir = DataManager.userDataDir.absolutePath
         Timber.d(
@@ -324,7 +329,14 @@ class Rime :
             fullCheck: $needsDeploy
             """.trimIndent(),
         )
-        startupRime(sharedDataDir, userDataDir, BuildConfig.BUILD_VERSION_NAME, needsDeploy)
+        startupRime(
+            sharedDataDir,
+            userDataDir,
+            BuildConfig.BUILD_VERSION_NAME,
+            needsDeploy,
+            // glog 文件日志只在调试包里开；正式包只写 logcat，避免用户目录被日志撑爆。
+            BuildConfig.DEBUG,
+        )
     }
 
     private fun processKeyInner(value: Int, modifiers: Int, isVirtual: Boolean): Boolean {
@@ -547,6 +559,7 @@ class Rime :
             userDir: String,
             versionName: String,
             fullCheck: Boolean,
+            logToFile: Boolean,
         )
 
         @JvmStatic

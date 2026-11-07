@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 苍竹增强：设置页分类头（墨绿竖条 + 主题色标题 + 灰色说明） -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingStart="16dp"
+    android:paddingTop="22dp"
+    android:paddingEnd="16dp"
+    android:paddingBottom="6dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <View
+            android:layout_width="4dp"
+            android:layout_height="16dp"
+            android:background="?attr/colorPrimary" />
+
+        <TextView
+            android:id="@+id/bamboo_cat_title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:letterSpacing="0.02"
+            android:textColor="?attr/colorPrimary"
+            android:textSize="15sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/bamboo_cat_subtitle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="12dp"
+        android:layout_marginTop="3dp"
+        android:textColor="?android:attr/textColorSecondary"
+        android:textSize="12sp" />
+</LinearLayout>

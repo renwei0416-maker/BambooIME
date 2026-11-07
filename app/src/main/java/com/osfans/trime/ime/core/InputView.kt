@@ -5,6 +5,7 @@
 
 package com.osfans.trime.ime.core
 
+import com.osfans.trime.actions.handwriting.HandwritingWindow
 import android.annotation.SuppressLint
 import android.content.res.Configuration
 import android.graphics.Outline
@@ -966,7 +967,16 @@ class InputView(
         updateEnterKeyLabel(info)
         broadcaster.onStartInput(info)
         if (!restarting) {
-            windowManager.attachWindow(KeyboardWindow)
+            // 刚才停在手写板的话，这里要把它挂回来，而不是无脑切回键盘，
+            // 否则一切 App / 换输入框手写状态就丢了（CyIME 也是这样保的）。
+            // 注意：已经在手写板上时不要再 attach 一次——上游 attachWindow()
+            // 对「同一个窗口」只打日志不 return，会重建视图。
+            val wantHandwriting = HandwritingWindow.active
+            if (wantHandwriting && !windowManager.isAttached(HandwritingWindow.instance)) {
+                windowManager.attachWindow(HandwritingWindow.instance)
+            } else if (!wantHandwriting) {
+                windowManager.attachWindow(KeyboardWindow)
+            }
         }
     }
 

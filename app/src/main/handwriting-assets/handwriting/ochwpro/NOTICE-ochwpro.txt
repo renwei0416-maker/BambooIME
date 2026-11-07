@@ -1,0 +1,62 @@
+CyIME 模型文件说明（Release 标签 models）
+
+本 Release 只存放模型文件，与 App 版本无关；App 发新版不需要重新上传，只有模型本身更新时才新增文件。
+
+1. predictive-text-small（智能联想 small）
+   - 文件：predictive-text-small-v1.0-model_int8_dynamic.onnx、predictive-text-vocab-v1.0.json
+   - 作者：Xime 项目（ModelScope bikeand/predictive-text-small），原样转存，未修改
+   - 许可：Apache License 2.0（https://www.apache.org/licenses/LICENSE-2.0）
+
+2. predictive-text-base（智能联想 base）
+   - 文件：predictive-text-base-v1.0-model_int8_dynamic.onnx、predictive-text-vocab-v1.0.json
+   - 作者：Xime 项目（ModelScope bikeand/predictive-text-base），原样转存，未修改
+   - 许可：CC BY-NC-SA（署名－非商业性使用－相同方式共享），https://creativecommons.org/licenses/by-nc-sa/4.0/
+     不得用于商业用途；再分发须保留署名并使用相同许可。
+
+3. t9_ngram-v3-ls-tri.lm（九键词组模型，完整版）
+   - CyIME 自行训练的九键组句 n-gram 模型；App 下载后以 t9_ngram.lm 名称使用。
+
+4. cyime-models-prediction-v1.0.zip（整合包）
+   - 内含上面 1、2 两个模型的全部文件及本说明；可在 App「本地模型 → 从本机导入」直接选择，按文件内容自动识别。
+
+5. cyime_gloss-v8.tsv（候选中英释义词典，当前版本；v1～v7 为旧版；释义以 ~ 开头的是不可靠的单字释义，以 + 开头的是常见短语的参考译文，来自离线机器翻译 opus-mt-zh-en 并经回译核对）
+   - CyIME 用 tools/dictionaries/glossary/build_glossary.py 从下面两份数据裁剪生成；App 下载后以 cyime_gloss-v8.tsv 名称使用。
+   - 英→中：ECDICT（https://github.com/skywind3000/ECDICT），MIT License，Copyright (c) 2025 Linwei；MIT 全文写在文件开头。
+   - 中→英：CC-CEDICT（MDBG，https://www.mdbg.net/chinese/dictionary?page=cc-cedict），CC BY-SA 4.0。
+   - 本文件作为改编作品按 CC BY-SA 4.0 分发（https://creativecommons.org/licenses/by-sa/4.0/），再分发须保留署名并使用相同许可。
+
+6. ochwpro-v1.1-ochwpro.onnx（中文手写模型 v1.1）
+   - 以 ochwpro（https://github.com/ximeiorg/ochwpro，提交 54c326d3，MIT License，Copyright (c) 2026 ochwpro）为底模，
+     CyIME 用 3 位用户贡献的手写样本微调：只改 100 个常用字的输出层权重，网络结构和输入输出与 v1.0 相同。
+   - 字表沿用 ochwpro-v1.0-char_index.json；v1.0（ochwpro-v1.0-ochwpro.onnx）为上游原样转存。
+   - 按 MIT License 分发（https://opensource.org/licenses/MIT），再分发须保留上面的版权声明。
+
+SHA256：
+85b9e8915bd22a5ac1312146df37d77ee3453b9c836c89e666977e7c118a4225  predictive-text-small-v1.0-model_int8_dynamic.onnx
+e15009c84d9702056ba8b5f6c04b27ae7d0400167647a5e94cb699f24f885a9d  predictive-text-base-v1.0-model_int8_dynamic.onnx
+3f7a6aa773afe6dacf75701f7861257d36a46a26ac70c0f8ee6dd4032cc3b9c2  predictive-text-vocab-v1.0.json
+766c21385a6d3e5ad22a0367373531d0c7bed4bc31074a5265da8ad1a3d46f12  t9_ngram-v3-ls-tri.lm
+726d5dad8d6594848fba3a0c48bf2909b3fa43ca7a9c5049ac71f045f2dda250  cyime-models-prediction-v1.0.zip
+f7b5d96b8e973d5462b71d0febcda08ea8e13a2935dedf1c3ecb52be95fc3617  cyime_gloss-v1.tsv
+4492a6b05b19918d9a3fd631ad04ad3eaa08e8a4e1c9b8bba370c0806429061c  cyime_gloss-v2.tsv
+ab95b1334449adcca2104d41ebee06a491bf339b1a7a33fdff0525f52990f078  cyime_gloss-v3.tsv
+262b6fe0eee16eb6d84c19d7b4fd062b8ba4f56097a31eb83fdc432b043fac42  cyime_gloss-v4.tsv
+e129bda7454ffeca8b0445c9791be67e027f0874952b5a0ef2ea8d4ccf8fc85b  cyime_gloss-v5.tsv
+33cc2838dfbaa76b6e0950147734ee8287859bcf3b223a2256789e12bc01c767  cyime_gloss-v6.tsv
+9064e09606117079a17d6feeb00bc734580c1a2af4ee31aabe8b173f3e53217b  cyime_gloss-v7.tsv
+5143705717bd91126c35b48591bd22b6355023141b05194bb2d7ae71ae1c8634  cyime_gloss-v8.tsv
+d625e6b6fa0dc39499bc15a8ac960249fcea9e71e34334522d32524557d1136d  ochwpro-v1.1-ochwpro.onnx
+
+================================================================================
+Spanish, German, French and Russian word lists
+================================================================================
+
+cyime-words-es-v1.txt, cyime-words-de-v1.txt, cyime-words-fr-v1.txt and cyime-words-ru-v1.txt are the
+completion word lists of the letter-by-letter languages (one word per line, most frequent first). They are
+optional market downloads, not part of the APK, built by tools/wordlists/build_words.py:
+- Word frequencies: Hermit Dave, FrequencyWords (content/2018/<es|de|fr|ru>/<lang>_50k.txt, from
+  OpenSubtitles 2018), commit 525f9b560de45753a5ea01069454e72e9aa541c6. Code MIT; word lists CC-BY-SA-4.0.
+  https://github.com/hermitdave/FrequencyWords
+- Spelling filter only (not shipped): the LibreOffice spelling dictionaries as packaged in the npm modules
+  dictionary-es 4.0.0, dictionary-de 3.0.0, dictionary-fr 3.0.0 and dictionary-ru 3.0.0, checked with spylls.
+  https://github.com/wooorm/dictionaries

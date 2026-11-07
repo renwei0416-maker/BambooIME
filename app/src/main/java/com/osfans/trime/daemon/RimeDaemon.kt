@@ -12,6 +12,7 @@ import com.osfans.trime.R
 import com.osfans.trime.TrimeApplication
 import com.osfans.trime.core.Rime
 import com.osfans.trime.core.RimeApi
+import com.osfans.trime.data.base.DataManager
 import com.osfans.trime.core.RimeLifecycle
 import com.osfans.trime.core.RimeMessage
 import com.osfans.trime.core.lifecycleScope
@@ -213,9 +214,19 @@ object RimeDaemon {
                 }
 
                 RimeMessage.DeployMessage.State.Failure -> {
+                    // glog tags its logcat output with ProgramInvocationShortName(),
+                    // i.e. the `app_name` passed to RimeTraits (see rime_jni.cc).
                     val log =
-                        subprocess("logcat", "-v", "brief", "-s", "rime.lyraime:W", "-d")
-                            .readText()
+                        buildString {
+                            appendLine("userDataDir: ${DataManager.userDataDir}")
+                            appendLine("sharedDataDir: ${DataManager.sharedDataDir}")
+                            appendLine()
+                            append(
+                                subprocess(
+                                    "logcat", "-v", "brief", "-s", "rime.bambooime:W", "-d",
+                                ).readText(),
+                            )
+                        }
                     try {
                         CrashLogExporter.exportDeployFailure(appContext, log)
                     } catch (_: Exception) {}

@@ -109,14 +109,6 @@ class AboutFragment : PaddingPreferenceFragment() {
             }
             addCategory("") {
                 isIconSpaceReserved = false
-                addPreference(R.string.qq_group_lyraime, Const.QQ_GROUP_LYRAIME_NUM) {
-                    startActivity(
-                        Intent(
-                            Intent.ACTION_VIEW,
-                            Uri.parse(Const.QQ_GROUP_LYRAIME_URL),
-                        ),
-                    )
-                }
                 addPreference(R.string.qq_group_1, Const.QQ_GROUP_1_NUM) {
                     startActivity(
                         Intent(

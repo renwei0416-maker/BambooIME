@@ -46,14 +46,17 @@ class Rime {
     const char* userDir = getenv("RIME_USER_DATA_DIR");
     const char* sharedDir = getenv("RIME_SHARED_DATA_DIR");
     const char* versionName = getenv("RIME_DISTRIBUTION_VERSION");
+    // Optional: when set, glog also writes INFO/WARNING/ERROR files there.
+    // Empty means "logcat only", which is the upstream behaviour.
+    const char* logDir = getenv("RIME_LOG_DIR");
 
     RIME_STRUCT(RimeTraits, trime_traits)
     trime_traits.shared_data_dir = sharedDir;
     trime_traits.user_data_dir = userDir;
-    trime_traits.log_dir = "";  // set empty log_dir to log to logcat only
-    trime_traits.app_name = "rime.lyraime";
-    trime_traits.distribution_name = "LyraIme";
-    trime_traits.distribution_code_name = "lyraime";
+    trime_traits.log_dir = (logDir && logDir[0]) ? logDir : "";
+    trime_traits.app_name = "rime.bambooime";
+    trime_traits.distribution_name = "BambooIME";
+    trime_traits.distribution_code_name = "bambooime";
     trime_traits.distribution_version = versionName;
 
     rime->setup(&trime_traits);
@@ -253,12 +256,21 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* jvm, void* reserved) {
 
 extern "C" JNIEXPORT void JNICALL Java_com_osfans_trime_core_Rime_startupRime(
     JNIEnv* env, jclass clazz, jstring shared_dir, jstring user_dir,
-    jstring version_name, jboolean full_check) {
+    jstring version_name, jboolean full_check, jboolean log_to_file) {
   // for rime shared data dir
   setenv("RIME_SHARED_DATA_DIR", CString(env, shared_dir), 1);
   // for rime user data dir
   setenv("RIME_USER_DATA_DIR", CString(env, user_dir), 1);
   setenv("RIME_DISTRIBUTION_VERSION", CString(env, version_name), 1);
+  // Diagnostics: glog writes INFO/WARNING/ERROR files next to the user data dir only
+  // when the caller asks for it (debug builds). Release keeps the upstream behaviour
+  // — logcat only — so the user directory does not silently grow to hundreds of MB.
+  const char* userDirStr = CString(env, user_dir);
+  std::string logDir;
+  if (log_to_file) {
+    logDir = std::string(userDirStr) + "/logs";
+  }
+  setenv("RIME_LOG_DIR", logDir.c_str(), 1);
 
   auto notificationHandler = [](void* context_object, RimeSessionId session_id,
                                 const char* message_type,

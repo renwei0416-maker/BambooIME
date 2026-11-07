@@ -20,17 +20,30 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+// 内置手写模型（7 MB）默认打进 APK；-PbundleHandwritingModel=false 出「无模型」版，
+// 由 App 在首次使用手写时自行下载（见 HandwritingModelStore）。
+val bundleHandwritingModel =
+    (project.findProperty("bundleHandwritingModel") as String?)?.toBoolean() ?: true
+
 android {
     namespace = "com.osfans.trime"
     compileSdk = 37
     buildToolsVersion = "37.0.0"
 
+    sourceSets {
+        getByName("main") {
+            if (bundleHandwritingModel) {
+                assets.srcDir("src/main/handwriting-assets")
+            }
+        }
+    }
+
     defaultConfig {
-        applicationId = "com.carlson.lyraime"
+        applicationId = "com.bambooime"
         minSdk = 29
         targetSdk = 37
         versionCode = LocalDate.now(ZoneId.of("Asia/Shanghai")).format(DateTimeFormatter.BASIC_ISO_DATE).toInt()
-        versionName = "5.5.2"
+        versionName = "1.1.0"
 
         multiDexEnabled = true
         buildConfigField("String", "BUILDER", "\"${project.builder}\"")
@@ -39,6 +52,7 @@ android {
         buildConfigField("String", "BUILD_GIT_REPO", "\"${project.buildGitRepo}\"")
         buildConfigField("String", "BUILD_VERSION_NAME", "\"${project.buildVersionName}\"")
         buildConfigField("String", "QNN_VARIANT", "\"${project.qnnVariant ?: ""}\"")
+        buildConfigField("boolean", "BUNDLED_HANDWRITING_MODEL", "$bundleHandwritingModel")
     }
 
     buildTypes {

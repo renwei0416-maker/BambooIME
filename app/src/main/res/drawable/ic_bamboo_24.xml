@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  竹 · 圆环三节（24dp 图标，用于设置列表行首）
+
+  设计：外圈一环，内里三段竹节，笔画饱满，24px 下仍可辨认。
+  颜色写死为白色，由调用方 setTint() 染色。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+
+    <!-- 外环 -->
+    <path
+        android:fillColor="@android:color/transparent"
+        android:pathData="M12,3.2 A8.8,8.8 0 1,1 11.99,3.2"
+        android:strokeColor="@android:color/white"
+        android:strokeWidth="2.1" />
+
+    <!-- 上节 -->
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M10.8,6.6 L13.2,6.6 C13.863,6.6 14.4,7.137 14.4,7.8 C14.4,8.463 13.863,9 13.2,9 L10.8,9 C10.137,9 9.6,8.463 9.6,7.8 C9.6,7.137 10.137,6.6 10.8,6.6 Z" />
+
+    <!-- 中节 -->
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M10.8,10.8 L13.2,10.8 C13.863,10.8 14.4,11.337 14.4,12 C14.4,12.663 13.863,13.2 13.2,13.2 L10.8,13.2 C10.137,13.2 9.6,12.663 9.6,12 C9.6,11.337 10.137,10.8 10.8,10.8 Z" />
+
+    <!-- 下节 -->
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M10.8,15 L13.2,15 C13.863,15 14.4,15.537 14.4,16.2 C14.4,16.863 13.863,17.4 13.2,17.4 L10.8,17.4 C10.137,17.4 9.6,16.863 9.6,16.2 C9.6,15.537 10.137,15 10.8,15 Z" />
+</vector>

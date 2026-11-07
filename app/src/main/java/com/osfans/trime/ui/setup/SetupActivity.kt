@@ -128,7 +128,7 @@ class SetupActivity : FragmentActivity() {
         if (SetupPage.hasUndonePage()) {
             NotificationCompat
                 .Builder(this, CHANNEL_ID)
-                .setSmallIcon(R.drawable.ic_trime_status)
+                .setSmallIcon(R.drawable.ic_stat_bamboo)
                 .setContentTitle(getText(R.string.trime_app_name))
                 .setContentText(getText(R.string.setup__notify_hint))
                 .setPriority(NotificationCompat.PRIORITY_HIGH)

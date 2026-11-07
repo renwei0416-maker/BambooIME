@@ -41,3 +41,11 @@
 
 -dontwarn io.github.rosemoe.sora.langs.textmate.**
 -keep class io.github.rosemoe.sora.langs.textmate.** { *; }
+# 苍竹增强（回退 + AI 模式）：整包保留，避免 R8 内联掉
+# SecretStore / RevertLedger / BambooActions 这些类被 inlining 后
+# 在 dex 里就查不到类名了，出问题（尤其是 Keystore 相关）不好排查。
+-keep class com.osfans.trime.actions.bamboo.** { *; }
+# 手写：native 方法由 C++ 按名字绑定（Java_com_osfans_trime_actions_handwriting_HandwritingNative_*），
+# 整包保留，防止 R8 把暂时没被调用的 nativeRelease 之类裁掉。
+-keep class com.osfans.trime.actions.handwriting.** { *; }
+-keepclasseswithmembernames class com.osfans.trime.actions.handwriting.HandwritingNative { native <methods>; }

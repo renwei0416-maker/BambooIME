@@ -42,6 +42,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.updateLayoutParams
 import androidx.lifecycle.lifecycleScope
 import com.osfans.trime.R
+import com.osfans.trime.actions.bamboo.BambooActions
 import com.osfans.trime.core.KeyModifiers
 import com.osfans.trime.core.KeyValue
 import com.osfans.trime.core.RimeApi
@@ -89,6 +90,20 @@ private const val TEXT_SNAPSHOT_LIMIT = 20_000
 open class TrimeInputMethodService : LifecycleInputMethodService() {
     private lateinit var rime: RimeSession
     private val jobs = Channel<Job>(capacity = Channel.UNLIMITED)
+
+    companion object {
+        /**
+         * The live service instance, or null while no input session exists.
+         *
+         * Used by the 苍竹 enhancements (`actions.bamboo.BambooActions`) to reach the
+         * current editor. It is only a way to *find* the current session: nothing may
+         * cache the InputConnection itself, and every consumer must re-read
+         * `currentInputConnection`.
+         */
+        @Volatile
+        var current: TrimeInputMethodService? = null
+            private set
+    }
 
     private val prefs = AppPrefs.defaultInstance()
     private lateinit var decorView: View
@@ -214,6 +229,8 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
     }
 
     override fun onCreate() {
+        current = this
+        BambooActions.init(this)
         rime = RimeDaemon.createSession(javaClass.name)
         lifecycleScope.launch {
             jobs.consumeEach { it.join() }
@@ -244,6 +261,7 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
         when (it) {
             is RimeMessage.CommitTextMessage -> {
                 if (!it.data.text.isNullOrEmpty()) {
+                    BambooActions.onCommitted(it.data.text)
                     commitText(it.data.text)
                 }
             }
@@ -261,6 +279,12 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
                             else -> {
                                 val keyCode = it.value.keyCode
                                 if (keyCode != KeyEvent.KEYCODE_UNKNOWN) {
+                                    // 退格被回放给编辑器 = 真的删了屏幕上的字，账本要扣
+                                    if (keyCode == KeyEvent.KEYCODE_DEL &&
+                                        !it.modifiers.ctrl && !it.modifiers.alt && !it.modifiers.shift
+                                    ) {
+                                        BambooActions.onBackspaceReplayed()
+                                    }
                                     // recognized keyCode
                                     sendDownUpKeyEvent(
                                         keyCode,
@@ -347,6 +371,7 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
     }
 
     override fun onDestroy() {
+        if (current === this) current = null
         InputFeedbackManager.destroy()
         InputStatsRepository.flushAsync()
         syncInputHandler.removeCallbacks(syncInputUpdateRunnable)
@@ -594,6 +619,7 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
     ) {
         composingText = ""
         cursorComposingText = ""
+        BambooActions.onEditorStart(attribute, restarting)
         Timber.d("onStartInput: restarting=$restarting")
         val isNullType = attribute.inputType and InputType.TYPE_MASK_CLASS == InputType.TYPE_NULL
         postRimeJob {

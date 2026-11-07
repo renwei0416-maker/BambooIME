@@ -13,6 +13,7 @@ import android.widget.Toast
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.osfans.trime.R
+import com.osfans.trime.actions.bamboo.BambooActions
 import com.osfans.trime.core.KeyModifier
 import com.osfans.trime.core.KeyModifiers
 import com.osfans.trime.core.RimeApi
@@ -24,6 +25,7 @@ import com.osfans.trime.daemon.launchOnReady
 import com.osfans.trime.data.prefs.AppPrefs
 import com.osfans.trime.data.theme.ColorManager
 import com.osfans.trime.data.theme.KeyActionManager
+import com.osfans.trime.actions.handwriting.HandwritingWindow
 import com.osfans.trime.data.theme.ThemeManager
 import com.osfans.trime.ime.bar.InputBarDelegate
 import com.osfans.trime.ime.clipboard.ClipboardWindow
@@ -60,6 +62,9 @@ class CommonKeyboardActionListener {
     private val windowManager: BoardWindowManager by di.instance()
     private val keyboardWindow: KeyboardWindow by di.instance()
     private val liquidWindow: LiquidWindow by di.instance()
+
+    /** 手写板窗口：主题弹窗里选中 Handwriting 时才创建。 */
+    private val handwritingWindow: HandwritingWindow get() = HandwritingWindow.instance
     private val inputBarDelegate: InputBarDelegate by di.instance()
 
     private val prefs = AppPrefs.defaultInstance()
@@ -154,6 +159,19 @@ class CommonKeyboardActionListener {
             }
 
             override fun onAction(action: KeyAction, key: Key?, behavior: KeyBehavior) {
+                // 主题弹窗里的「手写」入口：占住键盘区。
+                // 必须放在 commit / getText 分支之前，否则 "Handwriting" 会被当成普通文字上屏。
+                if (action.code == 0 &&
+                    HandwritingWindow.isToken(action.getText(KeyboardWindow.currentKeyboard))
+                ) {
+                    if (windowManager.isAttached(handwritingWindow)) {
+                        windowManager.attachWindow(keyboardWindow)
+                    } else {
+                        windowManager.attachWindow(handwritingWindow)
+                    }
+                    return
+                }
+
                 val shouldHandle = when {
                     action.commit.isNotEmpty() -> {
                         val commitText = action.commit
@@ -535,6 +553,13 @@ class CommonKeyboardActionListener {
                 service.postKeyJob {
                     if (service.hookKeyboard(keyEventCode, m)) {
                         Timber.d("handleKey: hook")
+                        return@postKeyJob
+                    }
+
+                    // 苍竹：回退触发码 / AI 模式。刻意放在 processKey 之前——
+                    // 这样终结键（`/`、`;`）既不进 rime 的组合，也不会被回放上屏。
+                    if (runCatching { BambooActions.handleKey(service, this, keyEventCode, m) }.getOrDefault(false)) {
+                        shouldReleaseKey = true
                         return@postKeyJob
                     }
 

@@ -212,6 +212,19 @@ object ColorManager {
         }
     }
 
+    /**
+     * 取主题颜色，解析不到（透明）时用 [fallback]。
+     * 给主题以外的自绘组件（例如手写板）用，避免它们自己去猜主题里有没有这个键。
+     */
+    @ColorInt
+    fun getColorOr(
+        key: String,
+        @ColorInt fallback: Int,
+    ): Int {
+        val color = getColor(key)
+        return if (color == Color.TRANSPARENT) fallback else color
+    }
+
     fun setColorScheme(scheme: ColorScheme) {
         colorCache.evictAll()
         activeColorScheme = scheme

@@ -53,7 +53,7 @@ object DataManager {
 
     private val prefs by lazy { AppPrefs.defaultInstance() }
 
-    val defaultDataDir = File(Environment.getExternalStorageDirectory(), "Documents/LyraIME${if (BuildConfig.DEBUG) "Debug" else ""}")
+    val defaultDataDir = File(Environment.getExternalStorageDirectory(), "Documents/BambooIME${if (BuildConfig.DEBUG) "Debug" else ""}")
 
     internal val externalFilesDir: File
         get() = appContext.getExternalFilesDir(null)!!

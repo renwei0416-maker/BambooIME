@@ -105,6 +105,15 @@ class MainFragment : PaddingPreferenceFragment() {
             }
             addCategory("") {
                 isIconSpaceReserved = false
+                addPreference("苍竹增强", "回退与 AI 模式（触发码、提示词、接口）", R.drawable.ic_bamboo_24) {
+                    findNavController().navigateWithAnim(NavigationRoute.BambooAction)
+                }
+                addPreference("手写", "手写板：停顿时长、候选个数、笔宽、配色", R.drawable.ic_bamboo_24) {
+                    findNavController().navigateWithAnim(NavigationRoute.Handwriting)
+                }
+            }
+            addCategory("") {
+                isIconSpaceReserved = false
                 addPreference(
                     title = R.string.text_editor_title,
                     icon = R.drawable.ic_baseline_file_document_edit_outline_24,

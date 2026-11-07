@@ -29,6 +29,26 @@ object SchemaPackageManager {
         prefs.profile.activePackageId.setValue(id)
     }
 
+    /**
+     * A fresh install has no active package yet, which makes `DataManager.userDataDir`
+     * fall back to the shared data dir; librime then deploys from a directory that has
+     * no schema and reports a bare "failure". When exactly one package is present,
+     * selecting it automatically avoids that dead end. More than one package still
+     * requires an explicit choice.
+     */
+    fun ensureActivePackage(): String {
+        val current = activePackageId
+        if (current.isNotEmpty()) return current
+        val packages = discoverPackages()
+        if (packages.size == 1) {
+            val id = packages.first().id
+            setActivePackageId(id)
+            Timber.i("no active package, auto-selected the only one: %s", id)
+            return id
+        }
+        return current
+    }
+
     private fun isPackageDir(dir: File): Boolean {
         if (!dir.isDirectory) return false
         if (dir.name in excludedDirs) return false

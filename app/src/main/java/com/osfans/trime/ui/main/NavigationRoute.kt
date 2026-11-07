@@ -11,10 +11,12 @@ import androidx.navigation.createGraph
 import androidx.navigation.fragment.fragment
 import com.osfans.trime.R
 import com.osfans.trime.ui.main.settings.AdvancedSettingsFragment
+import com.osfans.trime.ui.main.settings.BambooActionFragment
 import com.osfans.trime.ui.main.settings.CandidatesSettingsFragment
 import com.osfans.trime.ui.main.settings.ClipboardSettingsFragment
 import com.osfans.trime.ui.main.settings.CustomTasksFragment
 import com.osfans.trime.ui.main.settings.GeneralSettingsFragment
+import com.osfans.trime.ui.main.settings.HandwritingSettingsFragment
 import com.osfans.trime.ui.main.settings.InputStatsFragment
 import com.osfans.trime.ui.main.settings.KeyboardSettingsFragment
 import com.osfans.trime.ui.main.settings.PackageListFragment
@@ -46,6 +48,13 @@ sealed class NavigationRoute : Parcelable {
 
     @Serializable
     data object General : NavigationRoute()
+
+    @Serializable
+    data object BambooAction : NavigationRoute()
+
+
+    @Serializable
+    data object Handwriting : NavigationRoute()
 
     @Serializable
     data object VirtualKeyboard : NavigationRoute()
@@ -122,6 +131,12 @@ sealed class NavigationRoute : Parcelable {
             }
             fragment<ClipboardSettingsFragment, Clipboard> {
                 label = ctx.getString(R.string.clipboard)
+            }
+            fragment<BambooActionFragment, BambooAction> {
+                label = "苍竹增强"
+            }
+            fragment<HandwritingSettingsFragment, Handwriting> {
+                label = "手写"
             }
             fragment<AdvancedSettingsFragment, Advanced> {
                 label = ctx.getString(R.string.advanced)

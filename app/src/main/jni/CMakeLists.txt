@@ -63,6 +63,16 @@ include(OpenccWorkarounds)
 set(X11Keysym "${CMAKE_SOURCE_DIR}/librime/include")
 include_directories("${X11Keysym}")
 
+# Local-build fix (not upstream): BUILD_SHARED_LIBS is forced to ON further down
+# for sherpa-onnx, so the value persists in CMakeCache.txt. On a *re-configure*
+# that made librime build its shared flavour, and Rime.cmake then failed with
+#   CMake Error at cmake/Rime.cmake:28 (target_compile_options):
+#     Cannot specify compile options for target "rime-static" which is not built
+#     by this project.
+# Reset it before including Rime so every configure builds the static library
+# that librime_jni links against.
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+
 include(Rime)
 
 add_subdirectory(librime_jni)
@@ -93,8 +103,18 @@ set(SHERPA_ONNX_ENABLE_C_API ON CACHE BOOL "" FORCE)
 set(SHERPA_ONNX_LINK_LIBSTDCPP_STATICALLY ON CACHE BOOL "" FORCE)
 set(BUILD_SHARED_LIBS ON CACHE BOOL "" FORCE)
 
-if(CMAKE_ANDROID_ARCH_ABI STREQUAL arm64-v8a AND (DEFINED ENV{QNN_SDK_ROOT} OR NOT QNN_SDK_ROOT STREQUAL ""))
-  if(NOT DEFINED ENV{QNN_SDK_ROOT} AND NOT QNN_SDK_ROOT STREQUAL "")
+# Local-build fix (not upstream): the original unquoted form
+#   if(CMAKE_ANDROID_ARCH_ABI STREQUAL arm64-v8a AND (DEFINED ENV{QNN_SDK_ROOT}
+#      OR NOT QNN_SDK_ROOT STREQUAL ""))
+# evaluates to TRUE even when QNN_SDK_ROOT is completely unset, because
+# `NOT QNN_SDK_ROOT` is parsed as a nil variable negation and the trailing
+# `STREQUAL ""` then compares booleans. That made a CPU-only build (no QNN SDK,
+# qnnSdkRoot/qnnVariant removed from gradle.properties) abort in
+# sherpa-onnx/CMakeLists.txt:435 with "Please specify the installation directory
+# of the QNN SDK toolkit". Quoting both operands restores the intended meaning.
+if(CMAKE_ANDROID_ARCH_ABI STREQUAL "arm64-v8a" AND (DEFINED ENV{QNN_SDK_ROOT}
+   OR NOT "${QNN_SDK_ROOT}" STREQUAL ""))
+  if(NOT DEFINED ENV{QNN_SDK_ROOT} AND NOT "${QNN_SDK_ROOT}" STREQUAL "")
     set(ENV{QNN_SDK_ROOT} "${QNN_SDK_ROOT}")
   endif()
   set(SHERPA_ONNX_ENABLE_QNN ON CACHE BOOL "" FORCE)
@@ -103,3 +123,8 @@ else()
 endif()
 
 add_subdirectory(sherpa-onnx)
+
+# ---- bamboo handwriting (ONNX recognition for the handwriting keyboard) ----
+# 必须放在 sherpa-onnx 之后：它用 include(OnnxRuntime) 提供的
+# SHERPA_ONNXRUNTIME_INCLUDE_DIR / SHERPA_ONNXRUNTIME_LIB_DIR。
+add_subdirectory(bamboo_handwriting)

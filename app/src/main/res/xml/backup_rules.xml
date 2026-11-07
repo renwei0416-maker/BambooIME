@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  备份规则（Android 12 / API 31 以下走 fullBackupContent）。
+
+  bamboo_actions.xml 存着苍竹增强的设置，其中 AI 的 API Key 是用 Android
+  Keystore 加密后存的；Keystore 里的密钥不会随备份离开设备，恢复备份后这串密文
+  也解不开。与其恢复一个解不开的 Key，不如不让它进备份：换机后用户重新填一次即可，
+  行为明确，也避免密文在备份文件里出现。
+-->
+<full-backup-content>
+    <exclude
+        domain="sharedpref"
+        path="bamboo_actions.xml" />
+</full-backup-content>
