@@ -87,7 +87,73 @@
 
 ---
 
-## 3. 其它评估过、先不做的
+## 3. 剪贴板增强（合并 CyIME 的分组 / 类型分类 / 敏感过期）
+
+**来源**：用户 2026-11-09 提出，看完 CyIME 剪贴板全部功能后决定「先记着，暂时不做」。
+
+### 想要什么
+
+1. **按内容类型分类的 tab**：链接 / 电话 / 邮箱 / 地址（现在是按来源分：本地/媒体/远程）；
+2. **用户自定义分组**（「常用语」「工作」），组内条目**不参与条数裁剪、不被清理**，但也不置顶；
+3. **敏感条目**（密码/卡号）：打点显示、私密粘贴、不参与搜索与导出、1 小时后自动删除（固定除外）；
+4. 拼音首字母搜索（老记录后台回填）；
+5. 导出 / 导入备份（含分组）；
+6. 图片容量与保留策略（单条 ≤2 MB、独立上限）。
+
+### 现状（我方已有，别重复造）
+
+| 能力 | 现状 |
+| --- | --- |
+| Room 持久化 | ✅ `t_clipboard_sync`（`type` TEXT/IMAGE/FILE、`pinned`、`uuid`、下载状态） |
+| 图片/文件条目 | ✅ `ClipboardImageLoader` + `ClipboardFileManager` + `Media` 类目 |
+| 收藏 / 固定 / 拖动排序 | ✅ `ClipboardHelper.pin/unpin` + `ItemTouchHelper` |
+| 文本搜索 | ⚠️ `searchEntries(query)` 是 LIKE，**没有拼音** |
+| 正则提取 | ✅ `ClipboardExtractor` + 设置里可配规则 |
+| 敏感遮罩 | ⚠️ 只有关键词表 + 遮罩开关，**没有自动识别、没有过期、不拦搜索/导出** |
+| 条数上限 | ✅ `clipboard_limit` |
+| 截图监听 | ✅ `ScreenshotClipboardWatcher` |
+| 跨设备同步 | ✅ SyncClipboard / WebDAV / S3 + SignalR（**比 CyIME 的配对方案通用**） |
+| 分类 tab | ⚠️ `全部/收藏/本地/媒体/远程`（按来源，不按内容类型） |
+| 自定义分组 | ❌ |
+| 拼音搜索 / 导出导入 / 验证码提取 / 硬件键盘导航 | ❌ |
+
+### 怎么做（三期）
+
+**第一期（半天，几乎无风险）**
+1. 加 `链接/电话/邮箱/地址` 四个 tab —— 纯正则过滤，不想看的可隐藏。正则照抄 CyIME：
+   - 链接 `(?:https?://|www\.)\S+`
+   - 邮箱 `[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}`
+   - 电话 `(?:\+?[0-9][0-9 ()-]{7,}[0-9])`，且数字位数 10–15
+   - 地址 `〒\s*[0-9]{3}|[都道府県].*[市区町村]|[省市自治区].*[路街巷弄号]|[0-9]+丁目|[0-9]+番地`
+2. 拼音首字母搜索：`t_clipboard_sync` 加可空 `search_key` 列 → 老记录后台分批回填 → 搜索时 `text LIKE ? OR search_key LIKE ?`。
+
+**第二期（1 天，要 Room 迁移）**
+3. 自定义分组：`t_clipboard_sync` 加 `group_id TEXT` 列；分组名与顺序存 SharedPreferences（照 CyIME 的 `id\tname` / `groupId\tkey` 两行格式）；长按条目「加入分组」；**组内条目不参与条数裁剪**；分组 tab 排在内置分类之后。
+
+**第三期（1.5 天，可缓）**
+4. 敏感条目：自动识别（关键词 + 卡号/身份证正则）+ 1 小时过期（固定除外）+ 打点 + 搜索/导出跳过；
+5. 导出/导入（JSON，含分组）；
+6. 图片容量/保留（2 MB/条 + 独立上限）。
+
+### 刻意不做
+
+- CyIME 的**设备配对 / Windows 邻近 / 扫码 / 安全传输**整套：我们已有 SyncClipboard 三后端，重写等于自废武功。
+- **短信验证码提取**：要 `RECEIVE_SMS` 权限，商店审核与信任成本高，要单独决定。
+
+### 语义澄清：两边的「拆分」不是一回事
+
+- CyIME `splitItem()`：把一条文本**逐字拆成 N 条**（一个字一条），方便逐字粘；
+- 我方 `onSplitText`：**正则提取**（从一段文本里抽出电话/链接等）。
+- 合并后两个都要留，UI 上分开叫「拆成单字」和「提取内容」。
+
+### 参考：CyIME 的实现位置
+
+`C:\Users\Administrator\Desktop\Ai_Work\_cyime2\app\src\main\java\com\kingzcheung\xime\clipboard\`
+`ClipboardBoard.kt`（分类与正则）、`ClipboardGroups.kt`（分组模型与编解码）、`ClipboardManager.kt`（`splitItem` 793 行、`addItem` 719 行）、`ClipboardCapacity.kt`（2 MB / 100 条 / 1 MB）、`ClipboardRetention.kt`（100/300/1000/5000/不限、1/7/30/90 天）、`db/ClipboardEntry.kt`（`searchKey`、`sensitive`、`grouped` 三列）。
+
+---
+
+## 4. 其它评估过、先不做的
 
 | 功能 | CyIME 的做法 | 我方现状 | 判断 |
 | --- | --- | --- | --- |
