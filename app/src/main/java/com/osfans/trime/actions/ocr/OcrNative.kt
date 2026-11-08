@@ -26,7 +26,10 @@ internal object OcrNative {
      * 识别一张 RGB 图（[pixels] 是三字节一像素的 RGB 数据，长度 = width*height*3）。
      * 返回按行拼接的文本；没认出来时返回 null。
      */
-    external fun nativeRecognize(pixels: ByteArray, width: Int, height: Int): String?
+    external fun nativeRecognize(pixels: ByteArray, width: Int, height: Int, single: Boolean): String?
+
+    /** 调整识别阈值：置信度下限、det 概率阈值、框均分下限（0..1，非法值会被忽略）。 */
+    external fun nativeSetThresholds(confidence: Float, det: Float, boxScore: Float): Boolean
 
     external fun nativeRelease()
 }

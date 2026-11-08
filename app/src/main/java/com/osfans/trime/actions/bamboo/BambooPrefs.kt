@@ -352,7 +352,7 @@ object BambooPrefs {
         set(v) = p().edit().putInt(K_AI_MAX_TOKENS, v.coerceIn(1, 32768)).apply()
 
     var aiTimeoutMs: Int
-        get() = p().getInt(K_AI_TIMEOUT_MS, 60_000)
+        get() = p().getInt(K_AI_TIMEOUT_MS, 30_000)
         set(v) = p().edit().putInt(K_AI_TIMEOUT_MS, v.coerceIn(5_000, 300_000)).apply()
 
     /** AI 上屏后是否再补一个空格（默认关闭）。 */

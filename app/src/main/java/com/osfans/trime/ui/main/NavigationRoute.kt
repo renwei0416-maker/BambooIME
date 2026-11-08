@@ -19,6 +19,7 @@ import com.osfans.trime.ui.main.settings.GeneralSettingsFragment
 import com.osfans.trime.ui.main.settings.HandwritingSettingsFragment
 import com.osfans.trime.ui.main.settings.InputStatsFragment
 import com.osfans.trime.ui.main.settings.KeyboardSettingsFragment
+import com.osfans.trime.ui.main.settings.OcrSettingsFragment
 import com.osfans.trime.ui.main.settings.PackageListFragment
 import com.osfans.trime.ui.main.settings.ProfileSettingsFragment
 import com.osfans.trime.ui.main.settings.VoiceInputSettingsFragment
@@ -55,6 +56,9 @@ sealed class NavigationRoute : Parcelable {
 
     @Serializable
     data object Handwriting : NavigationRoute()
+
+    @Serializable
+    data object OcrSettings : NavigationRoute()
 
     @Serializable
     data object VirtualKeyboard : NavigationRoute()
@@ -133,10 +137,13 @@ sealed class NavigationRoute : Parcelable {
                 label = ctx.getString(R.string.clipboard)
             }
             fragment<BambooActionFragment, BambooAction> {
-                label = "苍竹增强"
+                label = "回退与AI"
             }
             fragment<HandwritingSettingsFragment, Handwriting> {
                 label = "手写"
+            }
+            fragment<OcrSettingsFragment, OcrSettings> {
+                label = "拍照识字"
             }
             fragment<AdvancedSettingsFragment, Advanced> {
                 label = ctx.getString(R.string.advanced)

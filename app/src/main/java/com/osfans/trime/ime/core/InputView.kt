@@ -6,6 +6,7 @@
 package com.osfans.trime.ime.core
 
 import com.osfans.trime.actions.handwriting.HandwritingWindow
+import com.osfans.trime.actions.ocr.OcrWindow
 import com.osfans.trime.actions.handwriting.HandwritingLog
 import com.osfans.trime.actions.ocr.OcrCard
 import android.annotation.SuppressLint
@@ -999,9 +1000,14 @@ class InputView(
             // 注意：已经在手写板上时不要再 attach 一次——上游 attachWindow()
             // 对「同一个窗口」只打日志不 return，会重建视图。
             val wantHandwriting = HandwritingWindow.active
+            // 相册选图时输入法会被系统收起，回来后要把「拍」的面板接回来（图上还留着），
+            // 否则会落到字母键盘，用户得再点一次「拍」。
+            val wantOcr = OcrWindow.shouldRestore()
             if (wantHandwriting && !windowManager.isAttached(HandwritingWindow.instance)) {
                 windowManager.attachWindow(HandwritingWindow.instance)
-            } else if (!wantHandwriting) {
+            } else if (!wantHandwriting && wantOcr && !windowManager.isAttached(OcrWindow.instance)) {
+                windowManager.attachWindow(OcrWindow.instance)
+            } else if (!wantHandwriting && !wantOcr) {
                 windowManager.attachWindow(KeyboardWindow)
             }
         }
@@ -1022,17 +1028,48 @@ class InputView(
      * 候选栏、功能键排、键盘的位置与高度都不变，卡片里的编码框位置也不变。
      */
     fun showOcrCard(text: String) {
+        HandwritingLog.d(
+            "card",
+            "show len=" + text.length + " host=" + System.identityHashCode(ocrCardHost) +
+                " attached=" + ocrCardHost.isAttachedToWindow +
+                " children=" + ocrCardHost.childCount,
+        )
         windowManager.attachWindow(KeyboardWindow)
         OcrCard.bind(ocrCardHost)
+        // 兜底：卡片视图没能挂进宿主时不要激活，否则键盘输入会被吞进看不见的编辑框
+        if (ocrCardHost.childCount == 0) {
+            HandwritingLog.d("card", "show aborted: no card view")
+            return
+        }
         ocrCardHost.visibility = View.VISIBLE
         OcrCard.activate(text)
         requestLayout()
         // 卡片在默认触摸区之外，需要让系统重算 insets 才能点到
         requestApplyInsets()
         ocrCardHost.post {
+            HandwritingLog.d(
+                "card",
+                "shown active=" + OcrCard.isActive +
+                    " attached=" + ocrCardHost.isAttachedToWindow +
+                    " children=" + ocrCardHost.childCount,
+            )
             logOcrCardLayout("shown")
             requestApplyInsets()
         }
+        // 延时自检：800ms 后卡片还没显示出来，就记一条，便于真机上定位是谁把它收掉了
+        ocrCardHost.postDelayed(
+            {
+                HandwritingLog.d(
+                    "card",
+                    "verify vis=" + ocrCardHost.visibility +
+                        " active=" + OcrCard.isActive +
+                        " children=" + ocrCardHost.childCount +
+                        " attached=" + ocrCardHost.isAttachedToWindow +
+                        " kbAttached=" + windowManager.isAttached(keyboardWindow),
+                )
+            },
+            800L,
+        )
     }
 
     /** 记录卡片布局坐标，便于在真机上定位「浮标跑出屏幕」这类问题。 */

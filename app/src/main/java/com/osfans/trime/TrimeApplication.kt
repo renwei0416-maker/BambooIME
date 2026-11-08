@@ -23,6 +23,7 @@ import com.osfans.trime.data.db.ClipboardHelper
 import com.osfans.trime.data.db.SyncEntryType
 import com.osfans.trime.data.prefs.AppPrefs
 import com.osfans.trime.data.theme.ColorManager
+import com.osfans.trime.actions.handwriting.HandwritingLog
 import com.osfans.trime.data.theme.ThemeManager
 import com.osfans.trime.ime.clipboard.ScreenshotClipboardWatcher
 import com.osfans.trime.link.SherpaSpeechClient
@@ -69,41 +70,7 @@ class TrimeApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        if (!BuildConfig.DEBUG) {
-            Thread.setDefaultUncaughtExceptionHandler { _, e ->
-                try {
-                    CrashLogExporter.exportCrash(applicationContext, e)
-                } catch (_: Exception) {}
-                val crashTime = System.currentTimeMillis()
-                val sharedPrefs = PreferenceManager.getDefaultSharedPreferences(applicationContext)
-                val lastCrashTimePrefKey = "last_crash_time"
-                val lastCrashTime = sharedPrefs.getLong(lastCrashTimePrefKey, -1L)
-                sharedPrefs.edit(commit = true) {
-                    putLong(lastCrashTimePrefKey, crashTime)
-                }
-                if (crashTime - lastCrashTime <= 10_000L) {
-                    // continuous crashes within 10 seconds, maybe in a crash loop. just bail
-                    exitProcess(10)
-                }
-                startActivity(
-                    Intent(applicationContext, LogActivity::class.java).apply {
-                        flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-                        putExtra(LogActivity.FROM_CRASH, true)
-                        // avoid transaction overflow
-                        val truncated =
-                            e.stackTraceToString().let {
-                                if (it.length > MAX_STACKTRACE_SIZE) {
-                                    it.take(MAX_STACKTRACE_SIZE) + "<truncated>"
-                                } else {
-                                    it
-                                }
-                            }
-                        putExtra(LogActivity.CRASH_STACK_TRACE, truncated)
-                    },
-                )
-                exitProcess(10)
-            }
-        }
+        installCrashHandler()
         instance = this
         try {
             if (BuildConfig.DEBUG) {
@@ -189,6 +156,60 @@ class TrimeApplication : Application() {
         // cached recognizer under memory pressure. It is re-created on next use.
         if (!SherpaSpeechClient.isHolding()) {
             runCatching { SherpaSpeechClient.releaseEngineForMemoryPressure() }
+        }
+    }
+
+    /**
+     * 崩溃取证：debug 也装上，把堆栈写进 `Documents/BambooIME[Debug]/logs/`。
+     *
+     * 上游原本只在 release 装（debug 指望 logcat），但我们没有 adb，
+     * 所以 debug 下也必须落文件，否则「输入法整个消失」这类崩溃查不到原因。
+     */
+    private fun installCrashHandler() {
+        val previous = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, error ->
+            runCatching { CrashLogExporter.exportCrash(applicationContext, error) }
+            runCatching {
+                HandwritingLog.d(
+                    "crash",
+                    "thread=" + thread.name + " " + error.javaClass.name + ": " + error.message,
+                )
+                HandwritingLog.d("crash", error.stackTraceToString())
+            }
+            if (BuildConfig.DEBUG) {
+                // debug：写完文件就交回系统默认处理（进程结束），不弹 LogActivity 打断手势
+                previous?.uncaughtException(thread, error) ?: exitProcess(10)
+            } else {
+                val crashTime = System.currentTimeMillis()
+                val sharedPrefs = PreferenceManager.getDefaultSharedPreferences(applicationContext)
+                val lastCrashTimePrefKey = "last_crash_time"
+                val lastCrashTime = sharedPrefs.getLong(lastCrashTimePrefKey, -1L)
+                sharedPrefs.edit(commit = true) {
+                    putLong(lastCrashTimePrefKey, crashTime)
+                }
+                if (crashTime - lastCrashTime <= 10_000L) {
+                    // continuous crashes within 10 seconds, maybe in a crash loop. just bail
+                    exitProcess(10)
+                }
+                runCatching {
+                    startActivity(
+                        Intent(applicationContext, LogActivity::class.java).apply {
+                            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                            putExtra(LogActivity.FROM_CRASH, true)
+                            val truncated =
+                                error.stackTraceToString().let {
+                                    if (it.length > MAX_STACKTRACE_SIZE) {
+                                        it.take(MAX_STACKTRACE_SIZE) + "<truncated>"
+                                    } else {
+                                        it
+                                    }
+                                }
+                            putExtra(LogActivity.CRASH_STACK_TRACE, truncated)
+                        },
+                    )
+                }
+                exitProcess(10)
+            }
         }
     }
 

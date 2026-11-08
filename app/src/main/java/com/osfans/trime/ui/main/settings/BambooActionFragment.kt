@@ -20,16 +20,18 @@ import androidx.preference.PreferenceCategory
 import androidx.preference.PreferenceGroup
 import androidx.preference.PreferenceScreen
 import androidx.preference.PreferenceViewHolder
-import androidx.preference.SwitchPreferenceCompat
 import com.osfans.trime.R
 import com.osfans.trime.actions.bamboo.AiMode
 import com.osfans.trime.actions.bamboo.BambooPrefs
 import com.osfans.trime.actions.bamboo.BambooTokens
 import com.osfans.trime.ui.common.PaddingPreferenceFragment
 import com.osfans.trime.util.addPreference
+import com.osfans.trime.ui.common.BambooClick
+import com.osfans.trime.ui.common.BambooSwitch
+import com.osfans.trime.ui.common.rebuildPreferencesKeepingScroll
 
 /**
- * 「苍竹增强」设置页：回退 + AI 模式。
+ * 「回退与AI」设置页：回退 + AI 模式（拍照识字已拆成独立页面）。
  *
  * 刻意不用 PreferenceFragmentCompat 的自动持久化——这些配置存在独立的
  * SharedPreferences（[BambooPrefs]）里，改完立即生效，不需要部署方案。
@@ -40,6 +42,8 @@ class BambooActionFragment : PaddingPreferenceFragment() {
         rootKey: String?,
     ) {
         preferenceScreen = preferenceManager.createPreferenceScreen(requireContext()).apply {
+            addRestoreAll()
+
             addSwitch("启用苍竹增强", "总开关，关掉后所有触发码失效", BambooPrefs.enabled) {
                 BambooPrefs.enabled = it
             }
@@ -251,7 +255,6 @@ class BambooActionFragment : PaddingPreferenceFragment() {
                 }
             }
 
-            // 只读说明：给主题作者 / 换机后查用法用，不写任何设置
             addBambooCategory("主题动作名", "只读说明：把这些名字绑到键位上就能直接触发，不用再敲字母码") {
                 addPreference(
                     "动作名一览",
@@ -266,7 +269,110 @@ class BambooActionFragment : PaddingPreferenceFragment() {
                     showComboVsToken()
                 }
             }
+
+            attachRestores()
         }
+    }
+
+    /**
+     * 每一项的默认值与恢复动作。
+     *
+     * 键是设置项标题（与上面 [PreferenceScreen] 里写的完全一致），值的第一项是显示用的
+     * 默认值文本，第二项是恢复动作（只改 SharedPreferences，页面由调用方重建）。
+     */
+    private fun restorePlan(): Map<String, Pair<String, () -> Unit>> =
+        linkedMapOf(
+            "启用苍竹增强" to ("开" to { BambooPrefs.enabled = true }),
+            "启用回退" to ("开" to { BambooPrefs.revertEnabled = true }),
+            "回退触发码" to (BambooPrefs.DEFAULT_REVERT_TRIGGERS to {
+                BambooPrefs.revertTriggersRaw = BambooPrefs.DEFAULT_REVERT_TRIGGERS
+            }),
+            "一次最多删除的字符数" to (BambooPrefs.DEFAULT_MAX_DELETE.toString() to {
+                BambooPrefs.revertMaxCodePoints = BambooPrefs.DEFAULT_MAX_DELETE
+            }),
+            "启用 AI 模式" to ("开" to { BambooPrefs.aiEnabled = true }),
+            "接口地址" to (BambooPrefs.DEFAULT_AI_BASE_URL to { BambooPrefs.aiBaseUrl = BambooPrefs.DEFAULT_AI_BASE_URL }),
+            "模型" to (BambooPrefs.DEFAULT_AI_MODEL to { BambooPrefs.aiModel = BambooPrefs.DEFAULT_AI_MODEL }),
+            "双击发送键发送" to ("关" to { BambooPrefs.aiDoubleTapEnabled = false }),
+            "快捷组合键发送" to ("开" to { BambooPrefs.aiComboEnabled = true }),
+            "未进模式时也发默认模式" to ("开" to { BambooPrefs.aiFallbackDefault = true }),
+            "AI 快捷组合键" to (BambooPrefs.DEFAULT_AI_COMBO to { BambooPrefs.aiCombo = BambooPrefs.DEFAULT_AI_COMBO }),
+            "双击键" to ("/" to { BambooPrefs.aiSendKey = "/" }),
+            "剪贴板：快捷码生效" to ("开" to { BambooPrefs.clipCodeEnabled = true }),
+            "剪贴板：快捷组合键生效" to ("开" to { BambooPrefs.clipComboEnabled = true }),
+            "剪贴板快捷组合键" to (BambooPrefs.DEFAULT_CLIP_COMBO to {
+                BambooPrefs.clipCombo = BambooPrefs.DEFAULT_CLIP_COMBO
+            }),
+            "退出 AI 模式" to ("tc;" to { BambooPrefs.aiExitCode = "tc;" }),
+            "发送剪贴板" to ("jt;" to { BambooPrefs.aiClipCode = "jt;" }),
+            "发送内容" to ("自动" to { BambooPrefs.aiSource = BambooPrefs.SOURCE_AUTO }),
+            "非编码时只发结束符号之后" to ("开" to { BambooPrefs.aiSentenceOnly = true }),
+            "结束符号" to (BambooPrefs.DEFAULT_SENTENCE_MARKS to {
+                BambooPrefs.aiSentenceMarks = BambooPrefs.DEFAULT_SENTENCE_MARKS
+            }),
+            "发送后丢弃拼写候选" to ("开" to { BambooPrefs.aiDiscardComposition = true }),
+            "双击间隔" to ("1000 毫秒" to { BambooPrefs.aiDoubleMs = 1000 }),
+            "温度" to ("0.7" to { BambooPrefs.aiTemperature = 0.7f }),
+            "最大 token" to ("1024" to { BambooPrefs.aiMaxTokens = 1024 }),
+            "超时" to ("30 秒" to { BambooPrefs.aiTimeoutMs = 30_000 }),
+        )
+
+    /** 页首的「恢复本页默认」。 */
+    private fun PreferenceScreen.addRestoreAll() {
+        addPreference(
+            Preference(context).apply {
+                key = "restore_all_bamboo"
+                title = "恢复本页默认"
+                summary = "把回退、AI 服务与发送的所有设置，以及全部提示词恢复成出厂值"
+                isIconSpaceReserved = false
+                isPersistent = false
+                setOnPreferenceClickListener {
+                    AlertDialog.Builder(context)
+                        .setTitle("恢复本页默认")
+                        .setMessage("回退与 AI 的全部设置、以及所有 AI 模式的提示词都会恢复成默认值，确定吗？")
+                        .setNegativeButton("取消", null)
+                        .setPositiveButton("恢复") { _, _ ->
+                            restorePlan().values.forEach { runCatching { it.second() } }
+                            BambooPrefs.aiModes = BambooPrefs.defaults()
+                            rebuild()
+                        }.show()
+                    true
+                }
+            },
+        )
+    }
+
+    /**
+     * 把 [restorePlan] 里的恢复动作挂到每一项**自己的行尾按钮**上。
+     *
+     * 不做插行：恢复按钮由 [BambooClick] / [BambooSwitch] 在 `onBindViewHolder` 里画在
+     * 标题行最右侧（见 `ui/common/PrefRestore.kt`），所以这里只按标题把 lambda 塞进去。
+     * 这样设置项再多，行数也不会翻倍。
+     */
+    private fun PreferenceScreen.attachRestores() {
+        val plan = restorePlan()
+
+        fun walk(group: PreferenceGroup) {
+            for (i in 0 until group.preferenceCount) {
+                val pref = group.getPreference(i)
+                if (pref is PreferenceCategory) {
+                    walk(pref)
+                    continue
+                }
+                val entry = plan[pref.title?.toString().orEmpty()] ?: continue
+                val action = {
+                    runCatching { entry.second() }
+                    rebuild()
+                }
+                when (pref) {
+                    is BambooClick -> pref.onRestore = action
+                    is BambooSwitch -> pref.onRestore = action
+                    else -> {}
+                }
+            }
+        }
+
+        walk(this)
     }
 
     private fun PreferenceGroup.addSwitch(
@@ -276,7 +382,7 @@ class BambooActionFragment : PaddingPreferenceFragment() {
         onChange: (Boolean) -> Unit,
     ) {
         addPreference(
-            SwitchPreferenceCompat(context).apply {
+            BambooSwitch(context).apply {
                 this.title = title
                 this.summary = summary
                 isChecked = checked
@@ -289,6 +395,7 @@ class BambooActionFragment : PaddingPreferenceFragment() {
             },
         )
     }
+
 
     /** 「动作名一览」：纯展示，内容由 [BambooTokens.docRows] 生成，避免和代码不同步。 */
     private fun showTokenList() {
@@ -396,8 +503,11 @@ class BambooActionFragment : PaddingPreferenceFragment() {
     }
 
     private fun rebuild() {
-        preferenceScreen.removeAll()
-        onCreatePreferences(null, null)
+        // 保持滚动位置：改一项/恢复默认后直接滚回顶部很难受
+        rebuildPreferencesKeepingScroll {
+            preferenceScreen.removeAll()
+            onCreatePreferences(null, null)
+        }
     }
 
     /**

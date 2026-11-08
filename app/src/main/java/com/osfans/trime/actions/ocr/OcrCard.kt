@@ -1,5 +1,6 @@
 package com.osfans.trime.actions.ocr
 
+import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.text.InputType
 import android.view.Gravity
@@ -10,6 +11,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import com.osfans.trime.actions.bamboo.BambooActions
+import com.osfans.trime.actions.handwriting.HandwritingLog
 import com.osfans.trime.data.theme.ColorManager
 import com.osfans.trime.ime.core.TrimeInputMethodService
 import com.osfans.trime.ime.window.BoardWindowManager
@@ -43,9 +45,24 @@ object OcrCard {
 
     private var built = false
 
+    /** 建视图时用的不透明度；设置改了要重建，否则颜色不会变。 */
+    private var builtOpacity = -1
+
+    /** 卡片根视图；换宿主（切主题会重建 InputView）时要把它搬过去。 */
+    private var card: View? = null
+
     fun bind(host: ViewGroup) {
-        this.host = host
-        if (built) return
+        // 切主题会重建 InputView，宿主跟着换；旧宿主已经 detach，卡片必须搬过去，
+        // 否则新宿主是个空壳、卡片永远出不来（而 isActive 又会吞掉键盘输入）。
+        if (this.host !== host) {
+            card?.let { view -> (view.parent as? ViewGroup)?.removeView(view) }
+            built = false
+            this.host = host
+            HandwritingLog.d("card", "bind new host=${System.identityHashCode(host)} rebuild")
+        }
+        if (built && builtOpacity == cardOpacity()) return
+        // 重建（比如改了不透明度）时旧卡片还挂在宿主上，必须先摘掉，否则会叠出两张
+        card?.let { view -> (view.parent as? ViewGroup)?.removeView(view) }
         build(host)
     }
 
@@ -156,17 +173,26 @@ object OcrCard {
         toast("已上屏")
     }
 
-    /** 重拍：收起卡片，回到相机面板继续识别。 */
+    /** 「返回」：收起卡片，回到相机面板继续识别（原来叫「重拍」）。 */
     fun retake() {
         val manager = BoardWindowManager.current ?: return
         TrimeInputMethodService.current?.currentInputView?.hideOcrCard()
+        // 告诉面板：这次挂载是卡片返回，别把整段/单字压回整段
+        runCatching { OcrWindow.markReturnToFrame() }
+            .onFailure { Timber.w(it, "ocr: mark return failed") }
         runCatching { manager.attachWindow(OcrWindow.instance) }
             .onFailure { Timber.w(it, "ocr: retake failed") }
     }
 
-    /** 收起：回到正常键盘。 */
+    /**
+     * 收起：回到正常键盘，并结束这次识字会话。
+     *
+     * 不清会话的话，下次进「拍」会被 restore 分支直接拉回上次的相册照片界面。
+     */
     fun close() {
         TrimeInputMethodService.current?.currentInputView?.hideOcrCard()
+        runCatching { OcrWindow.instance.resetSession() }
+            .onFailure { Timber.w(it, "ocr card: reset session failed") }
     }
 
     // ---------------------------------------------------------------- 视图
@@ -182,15 +208,28 @@ object OcrCard {
                 .getOrDefault(fallback)
 
         val back = color("back_color", 0xFF202420.toInt())
-        val keyBg = color("key_back_color", 0xFF2B302B.toInt())
-        val keyText = color("key_text_color", 0xFFF2F0E8.toInt())
-        val accent = color("hilited_key_back_color", 0xFF6FAE8F.toInt())
+        val keyBgRaw = color("key_back_color", 0xFF2B302B.toInt())
+        val keyTextRaw = color("key_text_color", 0xFFF2F0E8.toInt())
+        val accentRaw = color("hilited_key_back_color", 0xFF6FAE8F.toInt())
+        // 主题配色可能让文字和底色糊在一起（图片键帽主题解析失败时尤其明显），做一次可读性兜底
+        // 卡片会挡住 App 的输入框，按设置把三块底色做成半透明（文字色不动）
+        val opacity = cardOpacity()
+        builtOpacity = opacity
+
+        fun tint(color: Int): Int =
+            Color.argb((opacity * 255 / 100).coerceIn(0, 255), Color.red(color), Color.green(color), Color.blue(color))
+
+        val keyBg = keyBgRaw
+        val keyText = ThemeContrast.readableOn(keyBgRaw, keyTextRaw)
+        val accent = accentRaw
+        // 卡片底色上也要看得清：标题按钮用的是 accent，正文用 keyText
+        val onAccent = ThemeContrast.readableOn(accent, keyTextRaw)
 
         val root =
             LinearLayout(parent.context).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(6), dp(4), dp(6), dp(4))
-                background = rounded(back, 12)
+                background = rounded(tint(back), 12)
                 clipToOutline = true
                 layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(CARD_HEIGHT_DP))
             }
@@ -200,7 +239,7 @@ object OcrCard {
                 setTextColor(keyText)
                 textSize = 16f
                 gravity = Gravity.TOP or Gravity.START
-                background = rounded(keyBg, 8)
+                background = rounded(tint(keyBg), 8)
                 setPadding(dp(8), dp(6), dp(8), dp(6))
                 inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
                 isSingleLine = false
@@ -223,8 +262,8 @@ object OcrCard {
                     "←" to { moveCursor(false) },
                     "→" to { moveCursor(true) },
                 ),
-                keyBg,
-                keyText,
+                tint(accent),
+                onAccent,
             ),
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(ROW_HEIGHT_DP)),
         )
@@ -233,18 +272,23 @@ object OcrCard {
             buttonRow(
                 parent.context,
                 listOf(
-                    "重拍" to { retake() },
+                    "返回" to { retake() },
                     "复制" to { copy() },
                     "上屏" to { commit() },
                     "收起" to { close() },
                 ),
-                accent,
-                back,
+                tint(accent),
+                onAccent,
             ),
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(ROW_HEIGHT_DP)),
         )
 
         parent.addView(root)
+        card = root
+        HandwritingLog.d(
+            "card",
+            "build host=${System.identityHashCode(parent)} children=" + parent.childCount,
+        )
     }
 
     private fun buttonRow(
@@ -282,6 +326,8 @@ object OcrCard {
             setColor(color)
             cornerRadius = dp(radiusDp).toFloat()
         }
+
+    private fun cardOpacity(): Int = runCatching { OcrPrefs.cardOpacity }.getOrDefault(92)
 
     private fun dp(value: Int): Int = (value * density).toInt()
 

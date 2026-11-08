@@ -10,6 +10,7 @@ import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.provider.MediaStore
 import android.os.Bundle
 import android.provider.Settings
 import android.view.View
@@ -30,12 +31,26 @@ import timber.log.Timber
 class OcrPermissionActivity : Activity() {
     companion object {
         private const val REQ_CAMERA = 0x0C01
+        private const val REQ_PICK = 0x0C02
+        private const val REQ_PICK_LEGACY = 0x0C03
+
+        /** 用这个 Action 启动＝去相册选图，而不是申请相机权限。 */
+        const val ACTION_PICK = "com.osfans.trime.action.OCR_PICK"
+
+        /** 选完图后回调给拍照识字面板（面板会把回调置回 null）。 */
+        @Volatile
+        var pickCallback: ((Uri) -> Unit)? = null
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // 空内容，仅作为权限申请的宿主
         setContentView(FrameLayout(this))
+
+        if (intent?.action == ACTION_PICK) {
+            startPicker()
+            return
+        }
 
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) ==
             PackageManager.PERMISSION_GRANTED
@@ -65,6 +80,42 @@ class OcrPermissionActivity : Activity() {
         } else {
             finish()
         }
+    }
+
+    /**
+     * 拉起系统照片选择器。两个都是零权限的：
+     * - Android 13+：MediaStore.ACTION_PICK_IMAGES（系统照片选择器）
+     * - 更老的：Intent.ACTION_OPEN_DOCUMENT + image 类型，退化成文件选择器
+     */
+    private fun startPicker() {
+        val picker =
+            if (android.os.Build.VERSION.SDK_INT >= 33) {
+                Intent(MediaStore.ACTION_PICK_IMAGES).setType("image/*")
+            } else {
+                Intent(Intent.ACTION_OPEN_DOCUMENT)
+                    .addCategory(Intent.CATEGORY_OPENABLE)
+                    .setType("image/*")
+            }
+        // 输入法场景下用单次授权即可；选不到就静默回面板，不打断用户
+        runCatching { startActivityForResult(picker, REQ_PICK) }.onFailure {
+            Timber.w(it, "ocr: launch photo picker failed")
+            finish()
+        }
+    }
+
+    @Deprecated("Activity#onActivityResult 仍是拿到选择器结果最省事的方式（本类不依赖 AppCompat）")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != REQ_PICK && requestCode != REQ_PICK_LEGACY) return
+        if (resultCode == RESULT_OK) {
+            val uri = data?.data
+            val callback = pickCallback
+            if (uri != null && callback != null) {
+                runCatching { callback.invoke(uri) }
+                    .onFailure { Timber.w(it, "ocr: pick callback failed") }
+            }
+        }
+        finish()
     }
 
     private fun showSettingsHint() {

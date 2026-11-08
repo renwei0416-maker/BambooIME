@@ -37,7 +37,7 @@ object BambooTokens {
     /** 所有 token 的公共前缀；[match] 只认这个前缀，避免误吞用户真打出来的文字。 */
     const val PREFIX = "Bamboo"
 
-    /** 打开「苍竹增强」设置页。 */
+    /** 打开「回退与AI」设置页。 */
     const val SETTINGS = "BambooSettings"
 
     val fixed: List<String> =
@@ -53,7 +53,7 @@ object BambooTokens {
             AI_SEND to "用当前 AI 模式发送（等价双击发送键）",
             AI_CLIP to "用当前 AI 模式发送剪贴板（等价 jt;）",
             AI_OFF to "退出 AI 模式（等价 tc;）",
-            SETTINGS to "打开「苍竹增强」设置页",
+            SETTINGS to "打开「回退与AI」设置页",
         )
 
     /** 名字 → 说明，与 [fixed] 同源。 */

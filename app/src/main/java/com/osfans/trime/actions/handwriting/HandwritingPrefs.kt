@@ -57,12 +57,12 @@ object HandwritingPrefs {
 
     /** 候选个数。 */
     var maxCandidates: Int
-        get() = p().getInt(K_MAX_CANDIDATES, 8).coerceIn(4, 12)
+        get() = p().getInt(K_MAX_CANDIDATES, 12).coerceIn(4, 12)
         set(value) = p().edit().putInt(K_MAX_CANDIDATES, value.coerceIn(4, 12)).apply()
 
     /** 笔迹宽度（dp）。 */
     var penWidth: Int
-        get() = p().getInt(K_PEN_WIDTH, 4).coerceIn(1, 16)
+        get() = p().getInt(K_PEN_WIDTH, 3).coerceIn(1, 16)
         set(value) = p().edit().putInt(K_PEN_WIDTH, value.coerceIn(1, 16)).apply()
 
 

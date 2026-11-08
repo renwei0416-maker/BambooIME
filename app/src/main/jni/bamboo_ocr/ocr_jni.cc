@@ -46,12 +46,13 @@ std::mutex g_mutex;
 constexpr float kDetMinSide = 320.f;
 constexpr float kDetMaxSide = 2560.f;
 constexpr float kDetMaxArea = 1048576.f;
-constexpr float kDetThreshold = .3f;
-constexpr float kDetBoxScore = .5f;
+// 下面三个阈值可由设置页调整（nativeSetThresholds），所以不能是 constexpr。
+float gDetThreshold = .3f;
+float gDetBoxScore = .5f;
 constexpr int kRecHeight = 48;
 constexpr int kRecMaxWidth = 1600;
 constexpr int kRecMinTensorWidth = 320;
-constexpr float kRecMinConfidence = .6f;
+float gRecMinConfidence = .6f;
 
 struct RgbImage {
     int width = 0;
@@ -264,7 +265,7 @@ struct TextLine {
 /** det 概率图 → 文本行框（det 图坐标）。 */
 std::vector<TextLine> detectLines(const std::vector<float>& map, int width, int height) {
     std::vector<uint8_t> binary(static_cast<size_t>(width) * height, 0);
-    for (size_t i = 0; i < binary.size(); i++) binary[i] = map[i] > kDetThreshold ? 1 : 0;
+    for (size_t i = 0; i < binary.size(); i++) binary[i] = map[i] > gDetThreshold ? 1 : 0;
 
     // 2×2 膨胀：把断开的笔画连起来（与 CyIME 的 dilate(2×2) 等价）。
     std::vector<uint8_t> dilated(binary.size(), 0);
@@ -323,7 +324,7 @@ std::vector<TextLine> detectLines(const std::vector<float>& map, int width, int 
             const int box_h = max_y - min_y + 1;
             if (std::min(box_w, box_h) < 3) continue;
             const double score = score_sum / count;
-            if (score < kDetBoxScore) continue;
+            if (score < gDetBoxScore) continue;
             // DB 的 unclip：周长外扩 offset（CyIME 用 rect 面积 ×1.4 / 周长）。
             const double offset = static_cast<double>(box_w) * box_h * 1.4 / (2.0 * (box_w + box_h));
             TextLine line;
@@ -434,7 +435,7 @@ std::string readLine(const RgbImage& image, const TextLine& line) {
     }
     if (chars == 0) return {};
     confidence /= chars;
-    if (confidence < kRecMinConfidence) return {};
+    if (confidence < gRecMinConfidence) return {};
     return text;
 }
 
@@ -493,7 +494,7 @@ Java_com_osfans_trime_actions_ocr_OcrNative_nativeSetAlphabet(JNIEnv* env, jobje
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_osfans_trime_actions_ocr_OcrNative_nativeRecognize(JNIEnv* env, jobject /*unused*/,
                                                             jbyteArray pixels, jint width,
-                                                            jint height) {
+                                                            jint height, jboolean single) {
     std::lock_guard<std::mutex> lock(g_mutex);
     if (g_det == nullptr || g_rec == nullptr || g_alphabet.empty()) return nullptr;
     if (pixels == nullptr || width <= 0 || height <= 0) return nullptr;
@@ -537,6 +538,26 @@ Java_com_osfans_trime_actions_ocr_OcrNative_nativeRecognize(JNIEnv* env, jobject
 
     std::vector<TextLine> lines = detectLines(map, map_width, map_height);
 
+    // 单字模式：只认离画面中心最近的那一行，避免把旁边的字一起带进来。
+    if (single && lines.size() > 1) {
+        const float cx = static_cast<float>(map_width) / 2.f;
+        const float cy = static_cast<float>(map_height) / 2.f;
+        size_t best = 0;
+        float best_dist = -1.f;
+        for (size_t i = 0; i < lines.size(); i++) {
+            const float dx = (lines[i].left + lines[i].right) / 2.f - cx;
+            const float dy = (lines[i].top + lines[i].bottom) / 2.f - cy;
+            const float dist = dx * dx + dy * dy;
+            if (best_dist < 0.f || dist < best_dist) {
+                best_dist = dist;
+                best = i;
+            }
+        }
+        const TextLine picked = lines[best];
+        lines.clear();
+        lines.push_back(picked);
+    }
+
     // det 图坐标 → 原图坐标
     const float sx = static_cast<float>(width) / map_width;
     const float sy = static_cast<float>(height) / map_height;
@@ -554,6 +575,19 @@ Java_com_osfans_trime_actions_ocr_OcrNative_nativeRecognize(JNIEnv* env, jobject
     }
     if (text.empty()) return nullptr;
     return env->NewStringUTF(text.c_str());
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_osfans_trime_actions_ocr_OcrNative_nativeSetThresholds(JNIEnv* /*env*/,
+                                                                jobject /*unused*/,
+                                                                jfloat confidence,
+                                                                jfloat det,
+                                                                jfloat box_score) {
+    if (confidence > 0.f && confidence < 1.f) gRecMinConfidence = confidence;
+    if (det > 0.f && det < 1.f) gDetThreshold = det;
+    if (box_score > 0.f && box_score < 1.f) gDetBoxScore = box_score;
+    LOGI("thresholds: conf=%.2f det=%.2f box=%.2f", gRecMinConfidence, gDetThreshold, gDetBoxScore);
+    return JNI_TRUE;
 }
 
 extern "C" JNIEXPORT void JNICALL

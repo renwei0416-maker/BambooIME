@@ -15,6 +15,7 @@ import androidx.preference.PreferenceScreen
 import androidx.preference.PreferenceViewHolder
 import splitties.resources.drawable
 import splitties.resources.styledColor
+import com.osfans.trime.ui.common.BambooClick
 
 fun PreferenceScreen.addCategory(title: String, block: PreferenceCategory.() -> Unit) {
     val category = PreferenceCategory(context).apply {
@@ -60,7 +61,8 @@ fun PreferenceGroup.addPreference(
     @DrawableRes icon: Int? = null,
     onClick: (() -> Unit)? = null,
 ) {
-    addPreference(Preference(context).apply { setup(title, summary, icon, onClick) })
+    // 用 BambooClick 而不是裸 Preference：它能在行尾挂「↺ 恢复默认」按钮（见 PrefRestore.kt）
+    addPreference(BambooClick(context).apply { setup(title, summary, icon, onClick) })
 }
 
 fun PreferenceGroup.addPreference(

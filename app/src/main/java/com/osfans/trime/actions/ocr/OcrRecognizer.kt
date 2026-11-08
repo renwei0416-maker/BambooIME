@@ -86,6 +86,7 @@ object OcrRecognizer {
             }
             signature = sign
             ready = true
+            applyThresholds()
             lastError = null
             Timber.d("ocr: models ready, ${alphabet.size} chars")
             true
@@ -94,7 +95,7 @@ object OcrRecognizer {
     /**
      * 识别一张图（已经在调用方裁好取景框）。返回按行拼接的文本，没认出来返回 null。
      */
-    fun recognize(bitmap: Bitmap): String? {
+    fun recognize(bitmap: Bitmap, single: Boolean = false): String? {
         if (!ready) {
             lastError = "识别模型未就绪"
             return null
@@ -111,12 +112,23 @@ object OcrRecognizer {
             rgb[index++] = (color shr 8).toByte()
             rgb[index++] = color.toByte()
         }
-        return runCatching { OcrNative.nativeRecognize(rgb, width, height) }
+        return runCatching { OcrNative.nativeRecognize(rgb, width, height, single) }
             .getOrElse { error ->
                 Timber.w(error, "ocr: recognize failed")
                 lastError = "识别失败"
                 null
             }
+    }
+
+    /** 把设置页里的三个阈值下发给 native（模型加载前后都能调）。 */
+    fun applyThresholds() {
+        runCatching {
+            OcrNative.nativeSetThresholds(
+                OcrPrefs.confidence,
+                OcrPrefs.detThreshold,
+                OcrPrefs.boxScore,
+            )
+        }.onFailure { Timber.w(it, "ocr: applyThresholds failed") }
     }
 
     fun release() =

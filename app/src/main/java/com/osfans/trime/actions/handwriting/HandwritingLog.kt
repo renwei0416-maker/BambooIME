@@ -24,7 +24,9 @@ import java.util.Locale
 object HandwritingLog {
     private const val TAG = "handwriting"
 
-    private val enabled = BuildConfig.DEBUG
+    // 编译期常量：release 包里 BuildConfig.DEBUG 是 false，R8 会把下面每个
+    // `if (!enabled) return` 折叠成死代码，正式版不产生任何日志文件。
+    private const val enabled: Boolean = BuildConfig.DEBUG
     private val timeFmt = SimpleDateFormat("HH:mm:ss.SSS", Locale.US)
     private val dayFmt = SimpleDateFormat("yyyyMMdd", Locale.US)
     private val lock = Any()

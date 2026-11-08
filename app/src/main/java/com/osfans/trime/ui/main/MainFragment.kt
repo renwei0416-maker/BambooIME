@@ -105,11 +105,14 @@ class MainFragment : PaddingPreferenceFragment() {
             }
             addCategory("") {
                 isIconSpaceReserved = false
-                addPreference("苍竹增强", "回退与 AI 模式（触发码、提示词、接口）", R.drawable.ic_bamboo_24) {
+                addPreference("回退与AI", "回退、AI 模式（触发码、提示词、接口）", R.drawable.ic_bamboo_24) {
                     findNavController().navigateWithAnim(NavigationRoute.BambooAction)
                 }
-                addPreference("手写", "手写板：停顿时长、候选个数、笔宽、配色", R.drawable.ic_bamboo_24) {
+                addPreference("手写", "手写板：停顿时长、候选个数、笔宽、配色", R.drawable.ic_baseline_edit_24) {
                     findNavController().navigateWithAnim(NavigationRoute.Handwriting)
+                }
+                addPreference("拍照识字", "相机取景、单字模式、实时预览与识别门槛", R.drawable.ic_baseline_photo_camera_24) {
+                    findNavController().navigateWithAnim(NavigationRoute.OcrSettings)
                 }
             }
             addCategory("") {
