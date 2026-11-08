@@ -94,7 +94,7 @@ Android 输入法，源自 **灵韵输入法（LyraIME）**，引擎为 **Rime**
 
 配套主题包见 Release 附件 `themes.7z`，解压后按其中说明放入用户目录的 `themes/` 下。
 
-详细配置见 Release 附件 `BambooIME-1.1.0-config-guide.md`。
+详细配置见 Release 附件 `BambooIME-1.1.0-config-guide.md`；2.0.0 起的功能变化见 `BambooIME-2.0.0-whats-new.md`。
 
 ---
 
@@ -104,3 +104,4 @@ Android 输入法，源自 **灵韵输入法（LyraIME）**，引擎为 **Rime**
 | --- | --- |
 | 1.0.0 | 首个公开版本：品牌化 + 回退 + AI 发送 + Key 加密 |
 | 1.1.0 | 新增手写板与主题动作名；回退/AI 触发逻辑合并统一；AI 模式增至 9 套；输入法名称修正 |
+| 2.0.0 | 新增拍照识字（相机/相册取字、单字与整段、确认卡片）；确认卡片可调透明度；配套主题图标化 |
