@@ -117,6 +117,9 @@ class MainFragment : PaddingPreferenceFragment() {
                 addPreference("外观", "设置界面是否跟随键盘主题配色、深浅色与取色自检", R.drawable.ic_baseline_color_lens_24) {
                     findNavController().navigateWithAnim(NavigationRoute.BambooAppearance)
                 }
+                addPreference("外接键盘", "接硬件键盘时的浮动候选条（个数、横排/竖排）与状态条", R.drawable.ic_baseline_keyboard_24) {
+                    findNavController().navigateWithAnim(NavigationRoute.HardwareKeyboard)
+                }
                 addPreference(
                     "按键动作调用",
                     "全部动作名（token）的总表、写法和注意事项，供自定义键位参照",

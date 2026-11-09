@@ -38,6 +38,12 @@ class PagedCandidatesUi(
 
     private var isReversed = false
 
+    /** 候选前面是否加序号，只有接外接键盘时打开。 */
+    private var numbering = false
+
+    /** 字号缩放，只有接外接键盘时由设置调整。 */
+    private var textScale = 1f
+
     /**
      * Maximum width in pixels of a candidate item.
      * Only limited in vertical layout, so that a long candidate wraps
@@ -100,7 +106,12 @@ class PagedCandidatesUi(
                     is UiHolder.Candidate -> {
                         val candidate = item ?: return
                         holder.ui.root.maxWidth = maxItemWidth
-                        holder.ui.update(candidate, position == menu.highlightedCandidateIndex)
+                        holder.ui.textScale = textScale
+                        holder.ui.update(
+                            candidate,
+                            position == menu.highlightedCandidateIndex,
+                            number = if (numbering) position + 1 else null,
+                        )
                         holder.ui.root.setOnClickListener {
                             onCandidateClick.invoke(position)
                         }
@@ -146,8 +157,13 @@ class PagedCandidatesUi(
         horizontal: Boolean,
         layout: PopupCandidatesLayout,
         reversed: Boolean,
+        numbering: Boolean = false,
+        limit: Int = Int.MAX_VALUE,
+        textScale: Float = 1f,
     ) {
         this.menu = menu
+        this.numbering = numbering
+        this.textScale = textScale
         this.isHorizontal = when (layout) {
             PopupCandidatesLayout.AUTOMATIC -> horizontal
             else -> layout == PopupCandidatesLayout.HORIZONTAL
@@ -178,6 +194,8 @@ class PagedCandidatesUi(
                 }
             }
         }
-        candidatesAdapter.submitList(menu.candidates.toList())
+        candidatesAdapter.submitList(
+            if (limit >= menu.candidates.size) menu.candidates.toList() else menu.candidates.take(limit),
+        )
     }
 }

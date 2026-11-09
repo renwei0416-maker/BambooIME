@@ -38,6 +38,9 @@ class LabeledCandidateItemUi(
     private val highlightCandidateTextColor = ColorManager.getColor("hilited_candidate_text_color")
     private val highlightCandidateBackColor = ColorManager.getColor("hilited_candidate_back_color")
 
+    /** 字号缩放，只有接外接键盘时由设置调整。 */
+    var textScale: Float = 1f
+
     override val root =
         textView {
             val v = dp(theme.window.itemPadding.vertical)
@@ -55,18 +58,24 @@ class LabeledCandidateItemUi(
     fun update(
         candidate: CandidateProto,
         highlighted: Boolean,
+        number: Int? = null,
     ) {
         val labelFg = if (highlighted) highlightLabelColor else labelColor
         val textFg = if (highlighted) highlightCandidateTextColor else textColor
         val commentFg = if (highlighted) highlightCommentTextColor else commentColor
         root.text =
             buildSpannedString {
-                inSpanWith(labelFg, ctx.sp(labelSize), font) { append(candidate.label) }
+                // 外接键盘时用候选序号代替方案给的 label，按数字键选词时好对号
+                if (number != null) {
+                    inSpanWith(labelFg, ctx.sp(labelSize * textScale), font) { append(number.toString()) }
+                } else {
+                    inSpanWith(labelFg, ctx.sp(labelSize * textScale), font) { append(candidate.label) }
+                }
                 append(" ")
-                inSpanWith(textFg, ctx.sp(textSize), font) { append(candidate.text) }
+                inSpanWith(textFg, ctx.sp(textSize * textScale), font) { append(candidate.text) }
                 if (candidate.comment.isNotBlank()) {
                     append(" ")
-                    inSpanWith(commentFg, ctx.sp(commentSize), font) { append(candidate.comment) }
+                    inSpanWith(commentFg, ctx.sp(commentSize * textScale), font) { append(candidate.comment) }
                 }
             }
         val bg =

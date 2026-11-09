@@ -24,6 +24,7 @@ import com.osfans.trime.core.RimeMessage
 import com.osfans.trime.daemon.RimeSession
 import com.osfans.trime.daemon.launchOnReady
 import com.osfans.trime.data.prefs.AppPrefs
+import com.osfans.trime.data.prefs.HardwareKeyboardPrefs
 import com.osfans.trime.data.theme.ColorManager
 import com.osfans.trime.data.theme.Theme
 import com.osfans.trime.ime.candidates.popup.PagedCandidatesUi
@@ -146,7 +147,19 @@ class CandidatesView(
         val isHorizontalLayout = rime.run {
             getRuntimeOption("_linear") || getRuntimeOption("_horizontal")
         }
-        candidatesUi.update(menu, isHorizontalLayout, layout, isVerticalReversed)
+        // 接外接键盘时：候选加序号、按设置截断个数、可选竖排
+        val hardware = !service.inputDeviceManager.useVirtualKeyboard
+        val candidateScale = if (hardware) HardwareKeyboardPrefs.candidateTextScale / 100f else 1f
+        preeditUi.textScale = if (hardware) HardwareKeyboardPrefs.preeditTextScale / 100f else 1f
+        candidatesUi.update(
+            menu,
+            isHorizontalLayout,
+            if (hardware && HardwareKeyboardPrefs.candidateVertical) PopupCandidatesLayout.VERTICAL else layout,
+            isVerticalReversed,
+            numbering = hardware,
+            limit = if (hardware) HardwareKeyboardPrefs.candidateCount else Int.MAX_VALUE,
+            textScale = candidateScale,
+        )
         if (evaluateVisibility()) {
             visibility = VISIBLE
         } else {
@@ -171,8 +184,8 @@ class CandidatesView(
         val selfHeight = h.toFloat()
         val spacingDp = dp(SPACING)
 
-        val x: Float
-        val y: Float
+        var x: Float
+        var y: Float
         val minX = spacingDp
         val minY = spacingDp
         val maxX = parentWidth - selfWidth - spacingDp
@@ -207,9 +220,17 @@ class CandidatesView(
                         if (horizontal + selfWidth > parentWidth) parentWidth - selfWidth else horizontal
                     }
                 val bottomLimit = parentHeight - bottomInsets - spacingDp
-                y = if (bottom + selfHeight > bottomLimit) top - selfHeight - spacingDp else bottom + spacingDp
+                val placeBelow = bottom + spacingDp + selfHeight <= bottomLimit
+                val placeAbove = top - selfHeight - spacingDp >= minY
+                y = when {
+                    placeBelow -> bottom + spacingDp
+                    placeAbove -> top - selfHeight - spacingDp
+                    else -> bottomLimit - selfHeight
+                }
             }
         }
+        x = x.coerceIn(minX, maxX.coerceAtLeast(minX))
+        y = y.coerceIn(minY, maxY.coerceAtLeast(minY))
         translationX = x
         translationY = y
         // update touchEventReceiverWindow's position after CandidatesView's

@@ -61,6 +61,7 @@ import com.osfans.trime.data.theme.Theme
 import com.osfans.trime.data.theme.ThemeManager
 import com.osfans.trime.ime.composition.CandidatesView
 import com.osfans.trime.ime.composition.TargetTextSnapshot
+import com.osfans.trime.ime.hardware.HardwareStatusBar
 import com.osfans.trime.ime.keyboard.InputFeedbackManager
 import com.osfans.trime.ime.keyboard.KeyboardWindow
 import com.osfans.trime.link.SherpaSpeechClient
@@ -116,6 +117,9 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
     internal val currentInputView: InputView?
         get() = inputView
     private var candidatesView: CandidatesView? = null
+
+    /** 外接键盘的浮动状态条，只在硬件键盘连接时存在。 */
+    private var hardwareStatusBar: HardwareStatusBar? = null
     private val navBarManager = NavigationBarManager()
     val inputDeviceManager = InputDeviceManager { useVirtualKeyboard, useCandidatesView ->
         postRimeJob {
@@ -125,7 +129,23 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
         window.window?.let {
             navBarManager.evaluate(it, useVirtualKeyboard)
         }
+        updateHardwareStatusBar(useVirtualKeyboard)
     }
+    /**
+     * 硬件键盘连接时浮出状态条，断开时收起。
+     *
+     * 状态条单独用 [android.widget.PopupWindow] 浮在屏幕上：硬件键盘下输入法窗口不显示，
+     * 挂在 InputView 里会看不见。
+     */
+    private fun updateHardwareStatusBar(useVirtualKeyboard: Boolean) {
+        if (useVirtualKeyboard) {
+            hardwareStatusBar?.hide()
+            return
+        }
+        val bar = hardwareStatusBar ?: HardwareStatusBar(this, rime).also { hardwareStatusBar = it }
+        bar.show()
+    }
+
     private val rimeIntentReceiver = RimeIntentReceiver()
 
     private var lastCommittedText: String = ""
@@ -918,6 +938,7 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
         event: KeyEvent,
     ): Boolean {
         if (onSearchKeyListener?.invoke(event) == true) return true
+        hardwareStatusBar?.onKeyEvent(event)
         if (inputDeviceManager.evaluateOnKeyDown(event, this)) {
             decorLocationUpdated = false
             forceShowSelf()

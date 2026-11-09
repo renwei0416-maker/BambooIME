@@ -40,6 +40,13 @@ open class PreeditUi(
             onMoveCursor = this@PreeditUi.onMoveCursor
         }
 
+    /** 编码字号缩放，只有接外接键盘时由设置调整。 */
+    var textScale: Float = 1f
+        set(value) {
+            field = value.coerceIn(MIN_SCALE, MAX_SCALE)
+            preedit.textSize = theme.preedit.foreground.fontSize * field
+        }
+
     override val root =
         object : LinearLayout(ctx) {
             override fun onInterceptTouchEvent(ev: MotionEvent?): Boolean = false
@@ -87,5 +94,10 @@ open class PreeditUi(
                 }
             }
         updateTextView(stringWithCursor, true)
+    }
+
+    private companion object {
+        const val MIN_SCALE = 0.4f
+        const val MAX_SCALE = 2f
     }
 }
