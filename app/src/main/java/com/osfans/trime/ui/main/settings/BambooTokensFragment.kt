@@ -15,6 +15,7 @@ import androidx.fragment.app.Fragment
 import com.osfans.trime.actions.bamboo.BambooTokens
 import com.osfans.trime.actions.handwriting.HandwritingWindow
 import com.osfans.trime.actions.ocr.OcrWindow
+import com.osfans.trime.ui.common.SettingsPaletteResolver
 
 /**
  * 「按键动作调用」：整页纯文本，把全部动作名、用法和注意事项讲清楚。
@@ -33,11 +34,14 @@ class BambooTokensFragment : Fragment() {
         val density = resources.displayMetrics.density
         fun dp(v: Int) = (v * density).toInt()
 
+        // 这一页不是 Preference 列表，拿不到 PaddingPreferenceFragment 的染色，自己取一次
+        val palette = SettingsPaletteResolver.resolve(context)
         val text =
             TextView(context).apply {
                 text = buildText()
                 textSize = 13f
                 setTextIsSelectable(true) // 长按能复制
+                setTextColor(palette.textPrimary)
                 setLineSpacing(dp(3).toFloat(), 1f)
                 setPadding(dp(20), dp(12), dp(20), dp(28))
             }
@@ -47,6 +51,7 @@ class BambooTokensFragment : Fragment() {
             resources.getIdentifier("navigation_bar_height", "dimen", "android"),
         )
         return ScrollView(context).apply {
+            setBackgroundColor(palette.background)
             addView(text, ViewGroup.LayoutParams(-1, -2))
             setPadding(0, 0, 0, navBar)
         }

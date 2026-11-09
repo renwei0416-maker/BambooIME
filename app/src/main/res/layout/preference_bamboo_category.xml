@@ -16,6 +16,7 @@
         android:orientation="horizontal">
 
         <View
+            android:id="@+id/bamboo_cat_bar"
             android:layout_width="4dp"
             android:layout_height="16dp"
             android:background="?attr/colorPrimary" />

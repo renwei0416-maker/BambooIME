@@ -291,6 +291,18 @@ open class GestureFrame(context: Context) : FrameLayout(context) {
         }
     }
 
+    /**
+     * 这个控件能不能处理滑动手势。
+     *
+     * 键帽会绑 [onSwipe]（按住时预览）和 [onRelease]（抬手时执行动作），所以能处理；
+     * 剪贴板条目、符号面板格子、分词卡片这类普通条目什么回调都没有 —— 一旦被判定成滑动，
+     * [dispatchBehavior] 里的 onSwipeLeft/Right/Up/Down 全是 null，这次触摸就被静默吞掉，
+     * 表现是「点了没反应」，得去滑一下别的地方才恢复。
+     */
+    private val handlesSwipe: Boolean
+        get() = hasSwipeAction || onSwipe != null || onRelease != null ||
+            onSwipeLeft != null || onSwipeRight != null || onSwipeUp != null || onSwipeDown != null
+
     private fun detectSwipe(dx: Float, dy: Float): KeyBehavior {
         val absDx = abs(dx)
         val absDy = abs(dy)
@@ -305,8 +317,11 @@ open class GestureFrame(context: Context) : FrameLayout(context) {
         }
 
         val isSwipe =
-            (swipeTravel > 0 && distance >= swipeTravel) ||
-                (swipeVelocity > 0 && velocity >= swipeVelocity)
+            handlesSwipe &&
+                (
+                    (swipeTravel > 0 && distance >= swipeTravel) ||
+                        (swipeVelocity > 0 && velocity >= swipeVelocity)
+                )
         swipeTriggered = isSwipe
 
         if (!isSwipe) return KeyBehavior.CLICK

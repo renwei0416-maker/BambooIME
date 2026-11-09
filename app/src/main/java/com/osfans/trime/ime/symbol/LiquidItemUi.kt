@@ -7,11 +7,11 @@ package com.osfans.trime.ime.symbol
 
 import android.content.Context
 import android.graphics.drawable.ColorDrawable
+import android.widget.FrameLayout
 import com.osfans.trime.data.theme.ColorManager
 import com.osfans.trime.data.theme.FontManager
 import com.osfans.trime.data.theme.Theme
 import com.osfans.trime.ime.core.AutoScaleTextView
-import com.osfans.trime.ime.keyboard.GestureFrame
 import com.osfans.trime.util.roundedRippleDrawable
 import splitties.dimensions.dp
 import splitties.views.dsl.constraintlayout.centerInParent
@@ -44,7 +44,11 @@ class LiquidItemUi(
         setTextColor(ColorManager.getColor("key_text_color"))
     }
 
-    override val root = view(::GestureFrame) {
+    // 普通条目用 FrameLayout：GestureFrame 的滑动判定会把没绑手势的点击吞掉
+    override val root = view(::FrameLayout) {
+        isClickable = true
+        isSoundEffectsEnabled = false
+        isHapticFeedbackEnabled = false
         val content = constraintLayout {
             add(
                 mainText,

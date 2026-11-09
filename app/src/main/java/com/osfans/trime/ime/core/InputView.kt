@@ -996,9 +996,8 @@ class InputView(
         broadcaster.onStartInput(info)
         if (!restarting) {
             // 刚才停在手写板的话，这里要把它挂回来，而不是无脑切回键盘，
-            // 否则一切 App / 换输入框手写状态就丢了（CyIME 也是这样保的）。
-            // 注意：已经在手写板上时不要再 attach 一次——上游 attachWindow()
-            // 对「同一个窗口」只打日志不 return，会重建视图。
+            // 否则切 App / 换输入框手写状态就丢了。
+            // 注意：已经在手写板上时不要再 attach 一次——重复挂载会重建视图。
             // 刚才停在识字卡片上：窗口重建后先把卡片放回去（键盘仍在下面，卡片浮在上面）
             val cardText = OcrCard.pendingText
             val wantHandwriting = HandwritingWindow.active

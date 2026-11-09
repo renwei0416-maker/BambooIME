@@ -57,6 +57,9 @@ interface DatabaseDao {
     @Query("SELECT * FROM ${DatabaseBean.TABLE_NAME} WHERE pinned=1 AND deleted=0 ORDER BY time DESC")
     fun favoriteEntries(): PagingSource<Int, DatabaseBean>
 
+    @Query("SELECT * FROM ${DatabaseBean.TABLE_NAME} WHERE deleted=0 ORDER BY time DESC")
+    suspend fun allEntriesList(): List<DatabaseBean>
+
     @Query(
         "SELECT * FROM ${DatabaseBean.TABLE_NAME} " +
             "WHERE source=:source AND text NOT LIKE 'content://%' AND text NOT LIKE 'file://%' AND deleted=0 " +

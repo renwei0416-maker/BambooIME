@@ -18,6 +18,7 @@ import androidx.paging.PagingDataAdapter
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.RecyclerView
 import com.osfans.trime.R
+import com.osfans.trime.data.db.ClipboardTabFilter
 import com.osfans.trime.data.db.DatabaseBean
 import com.osfans.trime.data.theme.Theme
 import com.osfans.trime.util.item
@@ -216,8 +217,21 @@ abstract class ClipboardAdapter(
             }
         }
         if (dialNumber != null) {
-            menu.item(android.R.string.copy, R.drawable.ic_baseline_call_24, iconTint) {
+            menu.item(R.string.clipboard_dial, R.drawable.ic_baseline_call_24, iconTint) {
                 onDial(dialNumber)
+            }
+        }
+        if (!isUriEntry) {
+            menu.item(R.string.clipboard_extract, R.drawable.ic_baseline_list_alt_24, iconTint) {
+                onExtract(entry)
+            }
+            menu.item(R.string.clipboard_copy_text, R.drawable.ic_baseline_content_copy_24, iconTint) {
+                onCopyText(entry)
+            }
+            if (ClipboardTabFilter.verificationCode(entry.text) != null) {
+                menu.item(R.string.clipboard_copy_code, R.drawable.ic_baseline_content_copy_24, iconTint) {
+                    onCopyCode(entry)
+                }
             }
         }
         menu.item(R.string.delete, R.drawable.ic_baseline_delete_24, iconTint) {
@@ -260,6 +274,12 @@ abstract class ClipboardAdapter(
     abstract fun onShare(entry: DatabaseBean)
 
     abstract fun onSplitText(text: String)
+
+    abstract fun onExtract(entry: DatabaseBean)
+
+    abstract fun onCopyText(entry: DatabaseBean)
+
+    abstract fun onCopyCode(entry: DatabaseBean)
 
     abstract fun onSearch(query: String)
 

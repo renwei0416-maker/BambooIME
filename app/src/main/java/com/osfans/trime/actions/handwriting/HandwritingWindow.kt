@@ -1681,7 +1681,7 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
     override fun onDetached() {
         hideGroupPopup()
         // 不管从哪条路离开（返回键 / 切输入法 / 换输入框 / 打开剪贴板等其它面板），
-        // 都算这一次手写结束：清候选、清笔迹，避免下次进来接着拼（日志里 segs 2→3→4 就是这个坑）。
+        // 都算这一次手写结束：清候选、清笔迹，避免下次进来接着拼。
         // 切 App（收起输入法）不会 detach，所以「切走再回来接着写」不受影响。
         HandwritingLog.d("life", "onDetached active=$active segs=${segs.size}")
         active = false

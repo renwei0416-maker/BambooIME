@@ -23,7 +23,6 @@ import com.osfans.trime.R
 import com.osfans.trime.data.theme.ColorManager
 import com.osfans.trime.data.theme.FontManager
 import com.osfans.trime.data.theme.Theme
-import com.osfans.trime.ime.keyboard.GestureFrame
 import splitties.dimensions.dp
 import splitties.resources.drawable
 import splitties.views.dsl.constraintlayout.bottomOfParent
@@ -129,8 +128,12 @@ class ClipboardEntryUi(ctx: Context, private val theme: Theme) : Ui {
         )
     }
 
-    override val root = GestureFrame(ctx).apply {
+    // 用普通 FrameLayout：GestureFrame 是键帽专用的手势控件，列表项用它会和
+    // ItemTouchHelper 抢同一次手势，判成滑动又没人处理，点击就被吞掉。
+    override val root = FrameLayout(ctx).apply {
         isClickable = true
+        isSoundEffectsEnabled = false
+        isHapticFeedbackEnabled = false
         minimumHeight = dp(30)
         background = StateListDrawable().apply {
             addState(

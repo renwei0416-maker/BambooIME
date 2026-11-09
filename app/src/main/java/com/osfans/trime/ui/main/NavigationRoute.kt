@@ -12,6 +12,7 @@ import androidx.navigation.fragment.fragment
 import com.osfans.trime.R
 import com.osfans.trime.ui.main.settings.AdvancedSettingsFragment
 import com.osfans.trime.ui.main.settings.BambooActionFragment
+import com.osfans.trime.ui.main.settings.BambooAppearanceFragment
 import com.osfans.trime.ui.main.settings.BambooTokensFragment
 import com.osfans.trime.ui.main.settings.CandidatesSettingsFragment
 import com.osfans.trime.ui.main.settings.ClipboardSettingsFragment
@@ -62,6 +63,9 @@ sealed class NavigationRoute : Parcelable {
 
     @Serializable
     data object OcrSettings : NavigationRoute()
+
+    @Serializable
+    data object BambooAppearance : NavigationRoute()
 
     @Serializable
     data object VirtualKeyboard : NavigationRoute()
@@ -150,6 +154,9 @@ sealed class NavigationRoute : Parcelable {
             }
             fragment<OcrSettingsFragment, OcrSettings> {
                 label = "拍照识字"
+            }
+            fragment<BambooAppearanceFragment, BambooAppearance> {
+                label = "外观"
             }
             fragment<AdvancedSettingsFragment, Advanced> {
                 label = ctx.getString(R.string.advanced)

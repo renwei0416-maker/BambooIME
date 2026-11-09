@@ -9,6 +9,7 @@ import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
+import com.osfans.trime.util.resetStuckScrollOnTouch
 import com.chad.library.adapter4.BaseQuickAdapter
 import com.osfans.trime.data.theme.ColorManager
 import com.osfans.trime.data.theme.FontManager
@@ -143,6 +144,8 @@ class LiquidTabsUi(
             adapter = this@LiquidTabsUi.adapter
             itemAnimator = null
             isVerticalScrollBarEnabled = false
+            // 同一类问题：页签列表拖到顶/底松手后，下一次按下会被吞掉
+            resetStuckScrollOnTouch()
         }
 
     fun setTags(tags: List<LiquidData.Tag>) {

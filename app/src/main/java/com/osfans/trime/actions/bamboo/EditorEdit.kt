@@ -21,11 +21,10 @@ import timber.log.Timber
 /**
  * 编辑区整块编辑：清空、删到行首、删一个词。
  *
- * 主题里原本是「连发 N 次按键」凑出来的（`Shift+Home` ×10 再退格、`SelectAll` ×5 再退格 ×19），
- * 会随编辑器不同而随机失败：全选走的是 `performContextMenuAction`，是**异步**投递给编辑器的，
- * 紧跟其后的退格常常赶在选区生效之前；而连发次数又是猜的，行短就多选、行长就删不完。
+ * 不用「连发 N 次按键」凑：全选走 `performContextMenuAction`，是**异步**投递给编辑器的，
+ * 紧跟其后的退格常赶在选区生效之前；连发次数也只能猜，行短就多选、行长就删不完。
  *
- * 这里改成**直接调 InputConnection**：先读出光标前后真实文本的长度，再用
+ * 改为**直接调 InputConnection**：先读出光标前后真实文本的长度，再用
  * `deleteSurroundingText` 一次删到目标位置，整批用 `beginBatchEdit/endBatchEdit` 包住。
  * 只有编辑器明确不配合时，才退回一次按键序列（`Shift+Home`+`Del`、`Ctrl+BackSpace`、全选+空串替换）。
  *

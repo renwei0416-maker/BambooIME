@@ -114,6 +114,9 @@ class MainFragment : PaddingPreferenceFragment() {
                 addPreference("拍照识字", "相机取景、单字模式、实时预览与识别门槛", R.drawable.ic_baseline_photo_camera_24) {
                     findNavController().navigateWithAnim(NavigationRoute.OcrSettings)
                 }
+                addPreference("外观", "设置界面是否跟随键盘主题配色、深浅色与取色自检", R.drawable.ic_baseline_color_lens_24) {
+                    findNavController().navigateWithAnim(NavigationRoute.BambooAppearance)
+                }
                 addPreference(
                     "按键动作调用",
                     "全部动作名（token）的总表、写法和注意事项，供自定义键位参照",

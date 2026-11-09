@@ -329,10 +329,15 @@ class Rime :
             fullCheck: $needsDeploy
             """.trimIndent(),
         )
+        // 发行版版本号：调试包固定成 "dev"。librime 只在它变化时才重建
+        // installation.yaml 并全量部署（deployment_tasks.cc 的 InstallationUpdate），
+        // 而调试包的版本号跟着 buildVersionName 走的话，每次升版本都白部署一次。
+        // 数据文件（schema/词典/主题）真的变了仍会由 DataManager.sync() 触发部署。
+        val distroVersion = if (BuildConfig.DEBUG) "dev" else BuildConfig.BUILD_VERSION_NAME
         startupRime(
             sharedDataDir,
             userDataDir,
-            BuildConfig.BUILD_VERSION_NAME,
+            distroVersion,
             needsDeploy,
             // glog 文件日志只在调试包里开；正式包只写 logcat，避免用户目录被日志撑爆。
             BuildConfig.DEBUG,

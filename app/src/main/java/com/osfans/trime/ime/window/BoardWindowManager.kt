@@ -72,9 +72,8 @@ class BoardWindowManager {
 
     fun attachWindow(window: BoardWindow) {
         if (window === currentWindow) {
-            // 已经在这个窗口上了，直接返回。
-            // 上游这里只打了日志、没有 return，导致重复挂载会重建视图
-            // （手写板每一轮 onCreateView 都会把 active 置回 true，表现为「返回失效」）。
+            // 已经在目标窗口上，直接返回：重复挂载会重建视图，把窗口内部状态
+            // （手写板的 active、面板当前页等）一起重置。
             Timber.d("Skip attaching $window")
             return
         }

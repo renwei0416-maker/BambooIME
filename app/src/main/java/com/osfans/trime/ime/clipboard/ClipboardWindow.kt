@@ -21,10 +21,15 @@ import androidx.core.net.toUri
 import androidx.lifecycle.lifecycleScope
 import androidx.paging.Pager
 import androidx.paging.PagingConfig
+import androidx.paging.PagingData
 import androidx.preference.PreferenceManager
+import com.osfans.trime.data.db.ClipboardSource
+import com.osfans.trime.data.db.ClipboardTab
+import com.osfans.trime.data.db.ClipboardTabFilter
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.StaggeredGridLayoutManager
+import com.osfans.trime.util.resetStuckScrollOnTouch
 import com.osfans.trime.R
 import com.osfans.trime.data.db.ClipboardCategory
 import com.osfans.trime.data.db.ClipboardHelper
@@ -42,6 +47,8 @@ import com.osfans.trime.ime.window.BoardWindowManager
 import com.osfans.trime.util.AppUtils
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import org.kodein.di.instance
 import splitties.dimensions.dp
@@ -53,6 +60,9 @@ class ClipboardWindow(
 
     companion object {
         private const val LAST_OPENED_CATEGORY_KEY = "clipboard_last_opened_category"
+    private const val LAST_OPENED_TAB_KEY = "clipboard_last_opened_tab"
+    private const val LAST_FAVORITES_ONLY_KEY = "clipboard_last_favorites_only"
+    private const val LAST_SOURCE_KEY = "clipboard_last_source"
         private const val UNDO_TIMEOUT_MS = 5000L
     }
 
@@ -69,13 +79,25 @@ class ClipboardWindow(
     private val clipboardReturnAfterPaste by prefs.clipboardReturnAfterPaste
     private val clipboardMaskSensitive by prefs.clipboardMaskSensitive
 
-    private var currentCategory = initialCategory ?: ClipboardCategory.All
+    private var currentTab = initialCategory.toInitialTab()
+    private var favoritesOnly = initialCategory == ClipboardCategory.Favorites
+    private var sourceFilter = initialCategory.toInitialSource()
     private var adapterSubmitJob: Job? = null
 
-    private fun resolveInitialCategory(category: ClipboardCategory?): ClipboardCategory {
-        category?.let { return it }
-        val saved = sharedPreferences.getString(LAST_OPENED_CATEGORY_KEY, ClipboardCategory.All.name).orEmpty()
-        return ClipboardCategory.entries.firstOrNull { it.name == saved } ?: ClipboardCategory.All
+    private fun restoreFilters() {
+        val savedTab = sharedPreferences.getString(LAST_OPENED_TAB_KEY, null)
+        currentTab = ClipboardTab.entries.firstOrNull { it.name == savedTab } ?: ClipboardTab.All
+        favoritesOnly = sharedPreferences.getBoolean(LAST_FAVORITES_ONLY_KEY, false)
+        val savedSource = sharedPreferences.getString(LAST_SOURCE_KEY, null)
+        sourceFilter = ClipboardSource.entries.firstOrNull { it.name == savedSource } ?: ClipboardSource.All
+    }
+
+    private fun persistFilters() {
+        sharedPreferences.edit {
+            putString(LAST_OPENED_TAB_KEY, currentTab.name)
+            putBoolean(LAST_FAVORITES_ONLY_KEY, favoritesOnly)
+            putString(LAST_SOURCE_KEY, sourceFilter.name)
+        }
     }
 
     private val adapter by lazy {
@@ -86,12 +108,16 @@ class ClipboardWindow(
             }
             override fun onPaste(entry: DatabaseBean) {
                 if (entry.isUriEntry() && entry.type.startsWith("image/")) {
+                    // 图片走 commitContent：编辑器里它不是字符，按 DEL 不保证能删，
+                    // 所以不记账本（回退对图片不可靠）。
                     val uri = entry.text.toUri()
                     val mimeType = entry.type.takeIf { it.isNotBlank() }
                         ?: context.contentResolver.getType(uri)
                         ?: "image/*"
                     service.commitImage(uri, mimeType)
                 } else {
+                    // 和其它上屏路径一样先记一笔账本，qq/ 才能把粘贴进来的内容删掉
+                    com.osfans.trime.actions.bamboo.BambooActions.onCommitted(entry.text)
                     service.commitText(entry.text)
                 }
                 if (clipboardReturnAfterPaste) {
@@ -143,6 +169,23 @@ class ClipboardWindow(
                 windowManager.attachWindow(SegmentsWindow(text))
             }
 
+            override fun onExtract(entry: DatabaseBean) {
+                ClipboardExtractor(context, service, windowManager).showExtractDialog(entry.text)
+            }
+
+            override fun onCopyText(entry: DatabaseBean) {
+                copyToSystemClipboard(entry.text, R.string.clipboard_copy_text)
+            }
+
+            override fun onCopyCode(entry: DatabaseBean) {
+                val code = ClipboardTabFilter.verificationCode(entry.text)
+                if (code == null) {
+                    Toast.makeText(context, R.string.clipboard_no_verification_code, Toast.LENGTH_SHORT).show()
+                } else {
+                    copyToSystemClipboard(code, R.string.clipboard_copy_code)
+                }
+            }
+
             override fun onSearch(query: String) {
                 val webSearchIntent = Intent(Intent.ACTION_WEB_SEARCH).apply {
                     putExtra(SearchManager.QUERY, query)
@@ -190,25 +233,56 @@ class ClipboardWindow(
         }
     }
 
-    private fun entriesPager(category: ClipboardCategory) = Pager(
-        PagingConfig(
-            pageSize = 16,
-            enablePlaceholders = false,
-        ),
-    ) {
-        ClipboardHelper.entriesPager(category)
+    /**
+     * 有 DAO 分页就直接用，正则类页签落到内存筛选。
+     *
+     * 注意：Pager 的工厂闭包每被调用一次都必须**新建** PagingSource。若把
+     * entriesPagerOrNull() 的结果先存进 val 再交给闭包，列表一次失效（例如批量
+     * 插入多条）就会触发 Paging 的复用检测：
+     *   IllegalStateException: An instance of PagingSource was re-used
+     */
+    private fun pagerFlow(): Flow<PagingData<DatabaseBean>> {
+        val tab = currentTab
+        val onlyFavorites = favoritesOnly
+        val source = sourceFilter
+        return if (ClipboardHelper.supportsDaoPager(tab, onlyFavorites, source)) {
+            Pager(
+                PagingConfig(
+                    pageSize = 16,
+                    enablePlaceholders = false,
+                ),
+            ) {
+                // supportsDaoPager() 已保证这里非空，现造一个新实例
+                ClipboardHelper.entriesPagerOrNull(tab, onlyFavorites, source)!!
+            }.flow
+        } else {
+            flow { emit(PagingData.from(ClipboardHelper.filteredEntries(tab, onlyFavorites, source))) }
+        }
     }
 
-    private fun submitCategory(category: ClipboardCategory) {
-        currentCategory = category
-        sharedPreferences.edit { putString(LAST_OPENED_CATEGORY_KEY, category.name) }
+    private fun submitTab(tab: ClipboardTab) {
+        currentTab = tab
+        persistFilters()
+        reloadEntries()
+        ui.setSelectedTab(tab)
+    }
+
+    private fun reloadEntries() {
         adapterSubmitJob?.cancel()
+        // 提交新数据前把 ItemTouchHelper 摘了重挂：它会 cancel() 掉还挂着的滑动恢复动画，
+        // 那些动画期间列表不响应点击（用户看到的就是「点了没反应」）。
+        runCatching {
+            itemTouchHelper?.attachToRecyclerView(null)
+            itemTouchHelper?.attachToRecyclerView(ui.recyclerView)
+        }
         adapterSubmitJob = service.lifecycleScope.launch {
-            entriesPager(category).flow.collect {
-                adapter.submitData(it)
+            // 切页签很密集时，上一次 submitData 可能还没真正收尾；
+            // 这里兜住"重复提交"这类异常，不让它把输入法带走。
+            pagerFlow().collect {
+                runCatching { adapter.submitData(it) }
+                    .onFailure { android.util.Log.w("clipboard", "submitData failed", it) }
             }
         }
-        ui.setSelectedCategory(category)
     }
 
     private val ui by lazy {
@@ -217,10 +291,12 @@ class ClipboardWindow(
                 layoutManager = StaggeredGridLayoutManager(2, StaggeredGridLayoutManager.VERTICAL)
                 itemAnimator = null
                 adapter = this@ClipboardWindow.adapter
+                // 拖到顶/底松手后若停在 SETTLING，下一次按下会被当成滑动拦截 → 整片点不动
+                resetStuckScrollOnTouch()
             }
-            setSelectedCategory(currentCategory)
-            setOnCategorySelectedListener(::submitCategory)
-            ItemTouchHelper(object : ItemTouchHelper.Callback() {
+            setSelectedTab(currentTab)
+            setOnTabSelectedListener(::submitTab)
+            itemTouchHelper = ItemTouchHelper(object : ItemTouchHelper.Callback() {
                 override fun getMovementFlags(
                     recyclerView: RecyclerView,
                     viewHolder: RecyclerView.ViewHolder,
@@ -233,22 +309,35 @@ class ClipboardWindow(
                 ): Boolean = false
 
                 override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {
-                    val entry = adapter.getEntryAt(viewHolder.bindingAdapterPosition) ?: return
+                    // 提交数据的过程中 bindingAdapterPosition 会是 NO_POSITION，
+                    // 位置失效时把这一行还原，别让它停在半拖状态里吃掉后续点击。
+                    val position = viewHolder.absoluteAdapterPosition
+                    val entry =
+                        if (position == RecyclerView.NO_POSITION) null else adapter.getEntryAt(position)
+                    if (entry == null) {
+                        if (position != RecyclerView.NO_POSITION) {
+                            runCatching { recyclerView.adapter?.notifyItemChanged(position) }
+                        }
+                        return
+                    }
                     service.lifecycleScope.launch {
                         ClipboardHelper.delete(entry.id)
                         showDeleteToast(entry.id)
                     }
                 }
-            }).attachToRecyclerView(recyclerView)
+            }).also { it.attachToRecyclerView(recyclerView) }
             enableUi.enableButton.setOnClickListener {
                 clipboardEnabledPref.setValue(true)
             }
         }
     }
 
+    private var itemTouchHelper: ItemTouchHelper? = null
+
     override fun onCreateView(): View {
         if (initialCategory == null) {
-            currentCategory = resolveInitialCategory(null)
+            restoreFilters()
+            ui.setSelectedTab(currentTab)
         }
         return ui.root
     }
@@ -287,6 +376,69 @@ class ClipboardWindow(
                 updateUndoButtonVisibility()
             }
         }
+    }
+
+    private val barFilterButton = ImageButton(context).apply {
+        setImageResource(R.drawable.ic_baseline_tune_24)
+        imageTintList = android.content.res.ColorStateList.valueOf(ColorManager.getColor("key_text_color"))
+        background = null
+        setOnClickListener { showFilterDialog() }
+    }
+
+    private fun refreshFilterButton() {
+        val active = favoritesOnly || sourceFilter != ClipboardSource.All
+        val color = if (active) {
+            ColorManager.getColor("clipboard_category_selected_text_color")
+        } else {
+            ColorManager.getColor("key_text_color")
+        }
+        barFilterButton.imageTintList = android.content.res.ColorStateList.valueOf(color)
+    }
+
+    private fun showFilterDialog() {
+        val column = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(12), dp(20), dp(0))
+        }
+        val favSwitch = android.widget.Switch(context).apply {
+            text = context.getString(R.string.clipboard_only_favorites)
+            isChecked = favoritesOnly
+            setPadding(0, dp(4), 0, dp(8))
+        }
+        column.addView(favSwitch)
+        val group = android.widget.RadioGroup(context).apply {
+            orientation = android.widget.RadioGroup.VERTICAL
+        }
+        val sourceIds = ClipboardSource.entries.map { src ->
+            val button = android.widget.RadioButton(context).apply {
+                id = View.generateViewId()
+                text = context.getString(src.titleRes)
+                isChecked = src == sourceFilter
+            }
+            group.addView(button)
+            button.id to src
+        }
+        column.addView(group)
+        val dialog = android.app.AlertDialog.Builder(context)
+            .setTitle(R.string.clipboard_filter)
+            .setView(column)
+            .setPositiveButton(R.string.ok) { _, _ ->
+                favoritesOnly = favSwitch.isChecked
+                sourceFilter = sourceIds.firstOrNull { it.first == group.checkedRadioButtonId }?.second
+                    ?: ClipboardSource.All
+                persistFilters()
+                refreshFilterButton()
+                reloadEntries()
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .create()
+        service.showDialog(dialog)
+    }
+
+    private fun copyToSystemClipboard(text: String, labelRes: Int) {
+        val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText(context.getString(labelRes), text))
+        Toast.makeText(context, context.getString(R.string.clipboard_copy_text), Toast.LENGTH_SHORT).show()
     }
 
     private val barDeleteAllButton = ImageButton(context).apply {
@@ -363,8 +515,7 @@ class ClipboardWindow(
             .setMessage(R.string.ask_to_delete_all)
             .setPositiveButton(R.string.ok) { _, _ ->
                 service.lifecycleScope.launch {
-                    ClipboardHelper.deleteAll(currentCategory, skipPinned = true)
-                    ClipboardHelper.realDelete()
+                    ClipboardHelper.deleteAllMatching(currentTab, favoritesOnly, sourceFilter, skipPinned = true)
                     Toast.makeText(context, context.getString(R.string.delete_all_done), Toast.LENGTH_SHORT).show()
                 }
             }
@@ -464,7 +615,7 @@ class ClipboardWindow(
             val empty = it.append.endOfPaginationReached && adapter.itemCount < 1
             stateMachine.updateEmpty(empty)
         }
-        submitCategory(currentCategory)
+        submitTab(currentTab)
         clipboardEnabledPref.registerOnChangeListener(clipboardEnabledListener)
         updateUndoButtonVisibility()
         ClipboardHelper.addOnUpdateListener(usageCountListener)
@@ -495,6 +646,7 @@ class ClipboardWindow(
         }
         normalBar.addView(barUsageText)
         normalBar.addView(View(context), LinearLayout.LayoutParams(0, 0, 1f))
+        normalBar.addView(barFilterButton)
         normalBar.addView(barUndoButton)
         normalBar.addView(barSelectButton)
         normalBar.addView(barSearchButton)
@@ -514,4 +666,16 @@ class ClipboardWindow(
             toolbarAnimator = this
         }
     }
+}
+
+/** 旧入口（剪贴板窗口带分类打开）映射到新的内容页签。 */
+private fun ClipboardCategory?.toInitialTab(): ClipboardTab = when (this) {
+    ClipboardCategory.Media -> ClipboardTab.Image
+    else -> ClipboardTab.All
+}
+
+private fun ClipboardCategory?.toInitialSource(): ClipboardSource = when (this) {
+    ClipboardCategory.Local -> ClipboardSource.Local
+    ClipboardCategory.Remote -> ClipboardSource.Remote
+    else -> ClipboardSource.All
 }

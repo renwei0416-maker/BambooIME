@@ -9,6 +9,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.os.Build
 import androidx.annotation.Keep
+import androidx.paging.PagingSource
 import androidx.room.Room
 import androidx.room.withTransaction
 import com.osfans.trime.data.prefs.AppPrefs
@@ -134,6 +135,75 @@ object ClipboardHelper :
         ClipboardCategory.Media -> clbDao.haveUnpinnedMediaEntries()
         ClipboardCategory.Remote -> clbDao.haveUnpinnedEntriesBySource(DatabaseBean.SOURCE_REMOTE)
         null -> clbDao.haveUnpinned()
+    }
+
+    /**
+     * 这个组合能不能直接用 DAO 分页（纯函数，不构造 PagingSource）。
+     * 调用方先用它判断，再在 Pager 的工厂里现造，避免复用同一个实例。
+     */
+    fun supportsDaoPager(
+        tab: ClipboardTab,
+        favoritesOnly: Boolean,
+        source: ClipboardSource,
+    ): Boolean {
+        if (favoritesOnly) return false
+        return when (tab) {
+            ClipboardTab.All -> true
+            ClipboardTab.Image -> source == ClipboardSource.All
+            else -> false
+        }
+    }
+
+    /**
+     * 按内容页签 + 筛选条件取分页源；返回 null 表示这个组合 DAO 表达不了，
+     * 调用方改用 [filteredEntries] 内存筛选。
+     *
+     * 注意：每次调用都会**新建** PagingSource，不要在 Pager 之外先取一次再复用，
+     * 否则列表失效重取时会抛 "An instance of PagingSource was re-used"。
+     */
+    fun entriesPagerOrNull(
+        tab: ClipboardTab,
+        favoritesOnly: Boolean,
+        source: ClipboardSource,
+    ): PagingSource<Int, DatabaseBean>? {
+        if (favoritesOnly) return null
+        return when {
+            tab == ClipboardTab.All && source == ClipboardSource.All -> clbDao.allEntries()
+            tab == ClipboardTab.All && source == ClipboardSource.Local ->
+                clbDao.entriesBySource(DatabaseBean.SOURCE_LOCAL)
+            tab == ClipboardTab.All && source == ClipboardSource.Remote ->
+                clbDao.entriesBySource(DatabaseBean.SOURCE_REMOTE)
+            tab == ClipboardTab.Image && source == ClipboardSource.All -> clbDao.mediaEntries()
+            else -> null
+        }
+    }
+
+    /** 内存筛选（链接/电话/邮箱/地址这类要正则判断的页签，以及组合筛选）。 */
+    suspend fun filteredEntries(
+        tab: ClipboardTab,
+        favoritesOnly: Boolean,
+        source: ClipboardSource,
+    ): List<DatabaseBean> = clbDao.allEntriesList()
+        .asSequence()
+        .filter { !favoritesOnly || it.pinned }
+        .filter { ClipboardTabFilter.matchesSource(it, source) }
+        .filter { ClipboardTabFilter.matches(it, tab) }
+        .sortedWith(compareByDescending<DatabaseBean> { it.pinned }.thenByDescending { it.time })
+        .toList()
+
+    /** 清空当前页签（保留收藏）。 */
+    suspend fun deleteAllMatching(
+        tab: ClipboardTab,
+        favoritesOnly: Boolean,
+        source: ClipboardSource,
+        skipPinned: Boolean = true,
+    ) {
+        val ids = filteredEntries(tab, favoritesOnly, source)
+            .filter { !skipPinned || !it.pinned }
+            .map { it.id }
+        if (ids.isEmpty()) return
+        clbDao.markAsDeleted(*ids.toIntArray())
+        realDelete()
     }
 
     fun entriesPager(category: ClipboardCategory) = when (category) {

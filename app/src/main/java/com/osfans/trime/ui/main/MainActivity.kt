@@ -33,6 +33,8 @@ import com.osfans.trime.BuildConfig
 import com.osfans.trime.R
 import com.osfans.trime.daemon.launchOnReady
 import com.osfans.trime.data.prefs.AppPrefs
+import com.osfans.trime.ui.common.SettingsPaletteResolver
+import com.osfans.trime.ui.common.SettingsStyler
 import com.osfans.trime.data.soundeffect.SoundEffectManager
 import com.osfans.trime.databinding.ActivityMainBinding
 import com.osfans.trime.ui.setup.SetupActivity
@@ -93,16 +95,21 @@ class MainActivity : AppCompatActivity() {
             .isAppearanceLightStatusBars = false
 
         setContentView(binding.root)
+        // 设置界面跟随键盘主题配色：窗口底色、状态栏图标、工具栏
+        val palette = SettingsPaletteResolver.resolve(this)
+        SettingsStyler.applyWindow(this, palette)
+        SettingsStyler.applyToolbar(binding.mainToolbar.toolbar, palette)
         // always show toolbar back arrow icon
         binding.mainToolbar.toolbar.navigationIcon =
             DrawerArrowDrawable(this).apply {
                 progress = 1f
-                color = ContextCompat.getColor(this@MainActivity, android.R.color.white)
+                color = palette.background
             }
         // show menu icon and other action icons on toolbar
         // don't use `setSupportActionBar(binding.toolbar)` here,
         // because navController would change toolbar title, we need to control it by ourselves
         setupToolbarMenu(binding.mainToolbar.toolbar.menu)
+        SettingsStyler.applyToolbarMenu(binding.mainToolbar.toolbar.menu, palette)
         navController = binding.navHostFragment.getFragment<NavHostFragment>().navController
         navController.graph = NavigationRoute.createGraph(navController)
         binding.mainToolbar.toolbar.setNavigationOnClickListener {

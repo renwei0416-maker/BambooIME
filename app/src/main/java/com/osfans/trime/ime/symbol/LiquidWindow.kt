@@ -9,6 +9,7 @@ import android.view.View
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.osfans.trime.util.resetStuckScrollOnTouch
 import com.osfans.trime.R
 import com.osfans.trime.daemon.RimeSession
 import com.osfans.trime.daemon.launchOnReady
@@ -99,6 +100,8 @@ class LiquidWindow :
         recyclerView.apply {
             layoutManager = this@LiquidWindow.layoutManager
             this.adapter = this@LiquidWindow.adapter
+            // 拖到顶/底松手后若停在 SETTLING，下一次按下会被当成滑动拦截 → 整片点不动
+            resetStuckScrollOnTouch()
         }
         onGridMeasured = { _, height ->
             adapter.itemHeightPx = height / rows - gridDividerSize

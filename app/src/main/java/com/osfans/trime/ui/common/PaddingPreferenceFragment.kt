@@ -7,6 +7,7 @@ package com.osfans.trime.ui.common
 
 import android.os.Bundle
 import android.view.LayoutInflater
+import android.view.View
 import android.view.ViewGroup
 import androidx.preference.PreferenceFragmentCompat
 import com.osfans.trime.util.applyNavBarInsetsBottomPadding
@@ -24,5 +25,11 @@ abstract class PaddingPreferenceFragment : PreferenceFragmentCompat() {
         savedInstanceState: Bundle?,
     ) = super.onCreateView(inflater, container, savedInstanceState).apply {
         listView.applyNavBarInsetsBottomPadding()
+    }
+
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+        // 必须在 super 之后：库在 onViewCreated 里才挂上它自己的 item divider
+        SettingsStyler.applyPreferenceList(listView, SettingsPaletteResolver.resolve(requireContext()))
     }
 }

@@ -239,8 +239,8 @@ class OcrSettingsFragment : PaddingPreferenceFragment() {
                     true
                 }
             }
-        // 坑：`pref.isChecked = x` 是程序赋值，**不会**触发 OnPreferenceChangeListener
-        // （那个只响应用户点击），所以必须显式 onChange 写 prefs，再把视图同步过去，
+        // `pref.isChecked = x` 是程序赋值，**不会**触发 OnPreferenceChangeListener
+        // （那个只响应用户点击），所以必须先 onChange 写 prefs，再把视图同步过去，
         // 否则会出现「界面显示已恢复、实际值没变」——开关和生效值脱钩。
         val restore = {
             onChange(default)

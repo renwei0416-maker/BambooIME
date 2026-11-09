@@ -256,8 +256,8 @@ class HandwritingSettingsFragment : PaddingPreferenceFragment() {
                     true
                 }
             }
-        // 坑：`pref.isChecked = x` 是程序赋值，不会触发 OnPreferenceChangeListener，
-        // 必须显式 onChange 写 prefs 再同步视图，否则界面与生效值脱钩。
+        // `pref.isChecked = x` 是程序赋值，不会触发 OnPreferenceChangeListener（它只响应用户点击），
+        // 所以必须先 onChange 写 prefs，再同步视图，否则界面与生效值脱钩。
         val restore = {
             onChange(default)
             pref.isChecked = default

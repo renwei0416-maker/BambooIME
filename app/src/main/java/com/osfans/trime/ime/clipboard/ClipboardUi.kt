@@ -7,9 +7,11 @@ package com.osfans.trime.ime.clipboard
 
 import android.content.Context
 import android.widget.LinearLayout
+import android.widget.TextView
 import android.widget.ViewAnimator
 import com.osfans.trime.R
 import com.osfans.trime.data.db.ClipboardCategory
+import com.osfans.trime.data.db.ClipboardTab
 import com.osfans.trime.data.theme.ColorManager
 import com.osfans.trime.data.theme.FontManager
 import com.osfans.trime.data.theme.Theme
@@ -43,32 +45,35 @@ class ClipboardUi(override val ctx: Context, private val theme: Theme) : Ui {
         add(enableUi.root, lParams(matchParent, matchParent))
     }
 
-    private val categoryButtons = linkedMapOf(
-        ClipboardCategory.All to createCategoryButton(R.string.clipboard_category_all),
-        ClipboardCategory.Favorites to createCategoryButton(R.string.clipboard_category_favorites),
-        ClipboardCategory.Media to createCategoryButton(R.string.clipboard_category_media),
-        ClipboardCategory.Local to createCategoryButton(R.string.clipboard_category_local),
-        ClipboardCategory.Remote to createCategoryButton(R.string.clipboard_category_remote),
-    )
+    private val tabButtons = linkedMapOf<ClipboardTab, TextView>()
+
+    private val tabRow = android.widget.LinearLayout(ctx).apply {
+        orientation = android.widget.LinearLayout.HORIZONTAL
+        setPaddingDp(4, 8, 4, 4)
+    }
+
+    private val tabScroll = android.widget.HorizontalScrollView(ctx).apply {
+        isHorizontalScrollBarEnabled = false
+        addView(tabRow)
+    }
 
     override val root = verticalLayout {
-        add(
-            horizontalLayout {
-                setPaddingDp(4, 8, 4, 4)
-                categoryButtons.forEach { (_, button) ->
-                    add(
-                        button,
-                        LinearLayout.LayoutParams(0, dp(30), 1f)
-                            .apply { marginEnd = dp(4) },
-                    )
-                }
-            },
-            lParams(matchParent, wrapContent),
-        )
+        ClipboardTab.entries.forEach { tab ->
+            val button = createTabButton(tab.titleRes)
+            tabButtons[tab] = button
+            tabRow.addView(
+                button,
+                android.widget.LinearLayout.LayoutParams(
+                    android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+                    dp(30),
+                ).apply { marginEnd = dp(4) },
+            )
+        }
+        add(tabScroll, lParams(matchParent, wrapContent))
         add(viewAnimator, LinearLayout.LayoutParams(matchParent, 0, 1f))
     }
 
-    private fun createCategoryButton(textRes: Int) = textView {
+    private fun createTabButton(textRes: Int) = textView {
         gravity = gravityCenter
         minWidth = dp(64)
         text = ctx.getString(textRes)
@@ -84,18 +89,18 @@ class ClipboardUi(override val ctx: Context, private val theme: Theme) : Ui {
         cornerRadius = ctx.dp(15).toFloat(),
     )
 
-    fun setOnCategorySelectedListener(listener: (ClipboardCategory) -> Unit) {
-        categoryButtons.forEach { (category, button) ->
+    fun setOnTabSelectedListener(listener: (ClipboardTab) -> Unit) {
+        tabButtons.forEach { (tab, button) ->
             button.setOnClickListener {
-                setSelectedCategory(category)
-                listener(category)
+                setSelectedTab(tab)
+                listener(tab)
             }
         }
     }
 
-    fun setSelectedCategory(category: ClipboardCategory) {
-        categoryButtons.forEach { (buttonCategory, button) ->
-            val selected = buttonCategory == category
+    fun setSelectedTab(tab: ClipboardTab) {
+        tabButtons.forEach { (buttonTab, button) ->
+            val selected = buttonTab == tab
             button.background = categoryBackground(selected)
             button.setTextColor(
                 if (selected) {
@@ -104,6 +109,12 @@ class ClipboardUi(override val ctx: Context, private val theme: Theme) : Ui {
                     ColorManager.getColor("key_text_color")
                 },
             )
+        }
+        tabButtons[tab]?.let { button ->
+            tabScroll.post {
+                val target = (button.left - ctx.dp(16)).coerceAtLeast(0)
+                if (target != tabScroll.scrollX) tabScroll.smoothScrollTo(target, 0)
+            }
         }
     }
 
