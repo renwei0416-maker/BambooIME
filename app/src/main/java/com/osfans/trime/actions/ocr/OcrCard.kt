@@ -33,6 +33,15 @@ object OcrCard {
     var isActive: Boolean = false
         private set
 
+    /**
+     * 窗口被收起 / 重建前先记下文本：`InputView.startInput()` 会据此把卡片放回来。
+     *
+     * 只有 [close]（收起）会清它，切 App、换输入框都留着——和手写板、识字面板一样能保持住。
+     */
+    @Volatile
+    var pendingText: String? = null
+        private set
+
     /** 「上屏」时临时置 true，让这一次 [TrimeInputMethodService.commitText] 真的发给 App。 */
     @Volatile
     var bypass: Boolean = false
@@ -69,6 +78,7 @@ object OcrCard {
     /** 显示卡片并填入文本。 */
     fun activate(text: String) {
         isActive = true
+        pendingText = text
         val box = edit
         if (box != null) {
             box.setText(text)
@@ -77,7 +87,10 @@ object OcrCard {
         host?.visibility = View.VISIBLE
     }
 
-    /** 收起卡片（不再接管输出）。 */
+    /**
+     * 收起卡片视图（不再接管输出），但**保留** [pendingText]：
+     * 输入法窗口被系统收起 / 重建时也会走到这里，文本得留到下次 startInput 放回去。
+     */
     fun deactivate() {
         isActive = false
         bypass = false
@@ -86,6 +99,16 @@ object OcrCard {
     }
 
     fun text(): String = edit?.text?.toString().orEmpty()
+
+    /**
+     * 卡片不再是「当前状态」时清掉留底（面板接管、用户点「返回」/「收起」都算）。
+     *
+     * [deactivate] 保留文本是为了「窗口被系统收起、切 App」时能放回来；
+     * 但用户主动离开卡片时不能留，否则下次 `startInput` 会把旧卡片顶回面板上。
+     */
+    fun clearPending() {
+        pendingText = null
+    }
 
     /** Rime 提交/候选上屏时调到这里：插入到光标处。 */
     fun append(text: String) {
@@ -176,6 +199,9 @@ object OcrCard {
     /** 「返回」：收起卡片，回到相机面板继续识别（原来叫「重拍」）。 */
     fun retake() {
         val manager = BoardWindowManager.current ?: return
+        // 「返回」= 离开卡片、回到面板（相册来的回相册，相机来的回相机），
+        // 文本不再留着，否则切 App 回来会把卡片顶回面板上。
+        clearPending()
         TrimeInputMethodService.current?.currentInputView?.hideOcrCard()
         // 告诉面板：这次挂载是卡片返回，别把整段/单字压回整段
         runCatching { OcrWindow.markReturnToFrame() }
@@ -190,6 +216,8 @@ object OcrCard {
      * 不清会话的话，下次进「拍」会被 restore 分支直接拉回上次的相册照片界面。
      */
     fun close() {
+        // 用户主动收起 = 会话结束，文本不再保留（否则下次进输入框卡片又冒出来）
+        pendingText = null
         TrimeInputMethodService.current?.currentInputView?.hideOcrCard()
         runCatching { OcrWindow.instance.resetSession() }
             .onFailure { Timber.w(it, "ocr card: reset session failed") }

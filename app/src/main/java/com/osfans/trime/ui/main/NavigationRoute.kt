@@ -12,6 +12,7 @@ import androidx.navigation.fragment.fragment
 import com.osfans.trime.R
 import com.osfans.trime.ui.main.settings.AdvancedSettingsFragment
 import com.osfans.trime.ui.main.settings.BambooActionFragment
+import com.osfans.trime.ui.main.settings.BambooTokensFragment
 import com.osfans.trime.ui.main.settings.CandidatesSettingsFragment
 import com.osfans.trime.ui.main.settings.ClipboardSettingsFragment
 import com.osfans.trime.ui.main.settings.CustomTasksFragment
@@ -52,6 +53,8 @@ sealed class NavigationRoute : Parcelable {
 
     @Serializable
     data object BambooAction : NavigationRoute()
+    @Serializable
+    data object BambooTokens : NavigationRoute()
 
 
     @Serializable
@@ -138,6 +141,9 @@ sealed class NavigationRoute : Parcelable {
             }
             fragment<BambooActionFragment, BambooAction> {
                 label = "回退与AI"
+            }
+            fragment<BambooTokensFragment, BambooTokens> {
+                label = "按键动作调用"
             }
             fragment<HandwritingSettingsFragment, Handwriting> {
                 label = "手写"

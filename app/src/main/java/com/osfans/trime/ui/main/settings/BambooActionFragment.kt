@@ -6,6 +6,7 @@
 package com.osfans.trime.ui.main.settings
 
 import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import android.text.InputType
 import android.view.ViewGroup
@@ -25,6 +26,8 @@ import com.osfans.trime.actions.bamboo.AiMode
 import com.osfans.trime.actions.bamboo.BambooPrefs
 import com.osfans.trime.actions.bamboo.BambooTokens
 import com.osfans.trime.ui.common.PaddingPreferenceFragment
+import com.osfans.trime.ui.main.MainActivity
+import com.osfans.trime.ui.main.NavigationRoute
 import com.osfans.trime.util.addPreference
 import com.osfans.trime.ui.common.BambooClick
 import com.osfans.trime.ui.common.BambooSwitch
@@ -255,15 +258,15 @@ class BambooActionFragment : PaddingPreferenceFragment() {
                 }
             }
 
-            addBambooCategory("主题动作名", "只读说明：把这些名字绑到键位上就能直接触发，不用再敲字母码") {
-                addPreference(
-                    "动作名一览",
-                    "共 ${BambooTokens.fixed.size} 个，全部常驻可用（不受下面两个发送开关影响）",
-                ) {
-                    showTokenList()
-                }
-                addPreference("怎么绑定", "click / long_click / swipe_* / popup 都能填，名字大小写不敏感") {
-                    showBindHelp()
+            // 动作名（token）的完整总表已经搬到独立页「按键动作调用」，
+            // 这里只留一个去处入口，避免两处各写一份、改一处忘一处。
+            addBambooCategory("自定义键位", "想给键位绑动作，看独立页「按键动作调用」") {
+                addPreference("动作名总表", "全部 token、写法和注意事项都在「按键动作调用」页") {
+                    requireContext().startActivity(
+                        Intent(requireContext(), MainActivity::class.java).apply {
+                            putExtra(MainActivity.EXTRA_SETTINGS_ROUTE, NavigationRoute.BambooTokens)
+                        },
+                    )
                 }
                 addPreference("和「快捷组合键」的关系", "键位绑定 vs 模拟按键，两条路互不影响") {
                     showComboVsToken()

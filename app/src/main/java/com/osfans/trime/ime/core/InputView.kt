@@ -999,14 +999,20 @@ class InputView(
             // 否则一切 App / 换输入框手写状态就丢了（CyIME 也是这样保的）。
             // 注意：已经在手写板上时不要再 attach 一次——上游 attachWindow()
             // 对「同一个窗口」只打日志不 return，会重建视图。
+            // 刚才停在识字卡片上：窗口重建后先把卡片放回去（键盘仍在下面，卡片浮在上面）
+            val cardText = OcrCard.pendingText
             val wantHandwriting = HandwritingWindow.active
             // 相册选图时输入法会被系统收起，回来后要把「拍」的面板接回来（图上还留着），
             // 否则会落到字母键盘，用户得再点一次「拍」。
             val wantOcr = OcrWindow.shouldRestore()
-            if (wantHandwriting && !windowManager.isAttached(HandwritingWindow.instance)) {
-                windowManager.attachWindow(HandwritingWindow.instance)
+            // 卡片与面板互斥：卡片在的时候底下必须是键盘（卡片是浮在键盘上方的覆盖层），
+            // 所以卡片优先——不能拿「面板没挂」当条件，否则切 App 会把面板顶到卡片底下。
+            if (!wantHandwriting && cardText != null) {
+                showOcrCard(cardText)
             } else if (!wantHandwriting && wantOcr && !windowManager.isAttached(OcrWindow.instance)) {
                 windowManager.attachWindow(OcrWindow.instance)
+            } else if (wantHandwriting && !windowManager.isAttached(HandwritingWindow.instance)) {
+                windowManager.attachWindow(HandwritingWindow.instance)
             } else if (!wantHandwriting && !wantOcr) {
                 windowManager.attachWindow(KeyboardWindow)
             }

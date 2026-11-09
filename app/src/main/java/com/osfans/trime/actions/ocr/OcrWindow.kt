@@ -251,10 +251,24 @@ class OcrWindow : BoardWindow.NoBarBoardWindow() {
         private var gallerySingle = false
 
         /**
+         * 这次识字会话是否还开着（相机、相册、卡片三种状态都算）。
+         *
+         * 只有面板「返回」和卡片「收起」把它清掉；切 App、换输入框、被系统收起都要保持，
+         * `InputView.startInput()` 据此把面板接回来，和手写板的 active 一个思路。
+         */
+        @Volatile
+        private var ocrSessionActive = false
+
+        /** 面板被挂上（点「拍」开面板、卡片「返回」回来都走这里）：会话开始。 */
+        private fun markSessionActive() {
+            ocrSessionActive = true
+        }
+
+        /**
          * `InputView.startInput()` 据此把本窗口接回来，而不是无脑切回字母键盘
          * （否则用户得再点一次「拍」，图还在但面板没了）。
          */
-        fun shouldRestore(): Boolean = galleryActive && galleryBitmap != null
+        fun shouldRestore(): Boolean = ocrSessionActive
 
     /**
      * 一次性标记：卡片「返回」触发的重新挂载。
@@ -302,6 +316,11 @@ class OcrWindow : BoardWindow.NoBarBoardWindow() {
 
     override fun onAttached() {
         HandwritingLog.d("ocr", "onAttached")
+        // 只要面板被挂上就算会话开着：切 App、换输入框回来后靠这个把面板接回来
+        markSessionActive()
+        // 面板接管后卡片就不再是「当前状态」：清掉留底，避免切 App 时旧卡片又冒出来
+        runCatching { OcrCard.clearPending() }
+            .onFailure { Timber.w(it, "ocr: clear card pending failed") }
         // 卡片「返回」：保留刚才的取景模式（整段/单字），只把界面同步回来；
         // 其它进入方式（键盘点「拍」、系统重新显示）一律复位成「整段」。
         if (returnToFrame) {
@@ -314,9 +333,10 @@ class OcrWindow : BoardWindow.NoBarBoardWindow() {
         // 只在这个窗口挂载时隐藏顶栏，其它窗口完全不受影响
         runCatching { service.currentInputView?.setInputBarSuppressed(true) }
             .onFailure { Timber.w(it, "ocr: hide input bar failed") }
-        // 选过图但被系统收起了输入法：先把那张图接回来，不要重开相机
-        val pending = galleryBitmap
-        if (galleryRestorePending && pending != null) {
+        // 选过图且用户还没主动退出：先把那张图接回来，不要重开相机。
+        // 不能只看 galleryRestorePending——它是一次性的，第二次切回来就失效了。
+        val pending = if (galleryActive) galleryBitmap else null
+        if (pending != null) {
             galleryRestorePending = false
             // 单字/整段也跟着回来，别让用户再切一次
             singleCharMode = gallerySingle
@@ -2015,6 +2035,8 @@ class OcrWindow : BoardWindow.NoBarBoardWindow() {
      */
     fun resetSession() {
         returnToFrame = false
+        // 会话结束：下次进「拍」从头开始，也不再跨 App 保持
+        ocrSessionActive = false
         galleryActive = false
         galleryBitmap = null
         galleryRestorePending = false

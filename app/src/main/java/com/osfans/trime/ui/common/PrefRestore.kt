@@ -105,10 +105,14 @@ private fun findSeekBarRow(root: ViewGroup): LinearLayout? {
 }
 
 /** 按 滑块行 → widget_frame → 整行 的顺序选挂载点。 */
-private fun findRestoreHost(row: ViewGroup): ViewGroup? =
-    findSeekBarRow(row)
-        ?: row.findViewById<ViewGroup>(android.R.id.widget_frame)
-        ?: row
+private fun findRestoreHost(row: ViewGroup): ViewGroup? {
+    findSeekBarRow(row)?.let { return it }
+    val frame = row.findViewById<ViewGroup>(android.R.id.widget_frame)
+    // 纯文字行（没有开关/滑块）的 widget_frame 是 GONE，把按钮塞进去等于整行不可见，
+    // 表现就是「这一项没有恢复默认按钮」。只有确实可见的才认，否则退回整行。
+    if (frame != null && frame.visibility == View.VISIBLE) return frame
+    return row
+}
 
 /** 带「↺ 恢复默认」按钮的开关。 */
 open class BambooSwitch

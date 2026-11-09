@@ -51,6 +51,9 @@ popup = { "BambooRevert", "BambooAiSend" }
 | `BambooAiClip` | 用当前 AI 模式发送剪贴板内容 | 敲 `jt;` |
 | `BambooAiOff` | 退出 AI 模式 | 敲 `tc;` |
 | `BambooSettings` | 打开「苍竹增强」设置页 | 设置 → 苍竹增强 |
+| `BambooNumber` | 打开「数字和符号」面板，停在**数字**页 | 手写板点「数字」 |
+| `BambooSymbol` | 打开「数字和符号」面板，停在**符号**页 | 手写板点「符号」 |
+| `Handwriting` | 打开手写板 | 长按键盘切换键 → 手写 |
 
 ### BambooRevert
 
@@ -87,6 +90,26 @@ popup = { "BambooRevert", "BambooAiSend" }
 - 直接跳到「苍竹增强」设置页，方便把 token 换一种绑法、或临时关掉回退 / AI。
 
 ---
+
+### BambooNumber / BambooSymbol（数字和符号面板）
+
+从键盘直接唤起「数字和符号」面板，进去就是对应的页签：
+
+```lua
+-- 上滑进「符号」页
+swipe_up = "BambooSymbol"
+-- 下滑进「数字」页
+swipe_down = "BambooNumber"
+```
+
+和「手写板里点数字/符号」的区别：
+
+| 从哪进 | 面板里「返回」/「收起」去哪 | 候选栏 |
+| --- | --- | --- |
+| 主题 token（键盘） | 回**字母键盘** | 清空（连 Rime 组合一起清，等于按了 Esc） |
+| 手写板里点「数字/符号」 | 回**手写画布** | 清空 |
+
+面板里点「数字/符号」两个按钮会互相切换，当前那个显示「收起」；空格在没有候选时输出普通空格，面板里点格子走的也是正常上屏，所以 `qq/` 能退。
 
 ## 三、几个完整例子
 

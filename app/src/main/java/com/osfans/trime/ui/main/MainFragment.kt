@@ -114,6 +114,13 @@ class MainFragment : PaddingPreferenceFragment() {
                 addPreference("拍照识字", "相机取景、单字模式、实时预览与识别门槛", R.drawable.ic_baseline_photo_camera_24) {
                     findNavController().navigateWithAnim(NavigationRoute.OcrSettings)
                 }
+                addPreference(
+                    "按键动作调用",
+                    "全部动作名（token）的总表、写法和注意事项，供自定义键位参照",
+                    R.drawable.ic_baseline_list_alt_24,
+                ) {
+                    findNavController().navigateWithAnim(NavigationRoute.BambooTokens)
+                }
             }
             addCategory("") {
                 isIconSpaceReserved = false

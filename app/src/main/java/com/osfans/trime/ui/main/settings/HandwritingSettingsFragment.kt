@@ -85,7 +85,7 @@ class HandwritingSettingsFragment : PaddingPreferenceFragment() {
                     }
                 }
 
-                addCategory("书写", "笔画粗细") {
+                addCategory("书写", "笔画粗细、工具栏按钮") {
                     addSeek(
                         "笔宽",
                         "笔画粗细",
@@ -98,6 +98,15 @@ class HandwritingSettingsFragment : PaddingPreferenceFragment() {
                         resetters = resetters,
                     ) { value ->
                         HandwritingPrefs.penWidth = value
+                    }
+                    addSwitch(
+                        "工具栏显示图标",
+                        "开（默认）＝底部按钮画图标（返回/数字/空格/符号/收起/回车）；关＝显示中文文字",
+                        default = true,
+                        current = HandwritingPrefs.toolIcons,
+                        resetters = resetters,
+                    ) {
+                        HandwritingPrefs.toolIcons = it
                     }
                 }
 
@@ -172,7 +181,7 @@ class HandwritingSettingsFragment : PaddingPreferenceFragment() {
             Preference(requireContext()).apply {
                 key = "restore_all"
                 title = "恢复本页默认"
-                summary = "把停顿时长、候选个数、拼音、笔宽、配色全部恢复成出厂值"
+                summary = "把停顿时长、候选个数、拼音、笔宽、工具栏图标、配色全部恢复成出厂值"
                 isIconSpaceReserved = true
                 isPersistent = false
                 setOnPreferenceClickListener {

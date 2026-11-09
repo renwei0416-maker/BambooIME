@@ -21,6 +21,7 @@ object HandwritingPrefs {
     private const val K_THEME_COLORS = "theme_colors"
     private const val K_INK_MODE = "ink_mode"
     private const val K_SHOW_PINYIN = "show_pinyin"
+    private const val K_TOOL_ICONS = "tool_icons"
 
     /** 手写区配色：跟随主题（含对比度保底）。 */
     const val INK_THEME = "theme"
@@ -85,6 +86,16 @@ object HandwritingPrefs {
     var showPinyin: Boolean
         get() = p().getBoolean(K_SHOW_PINYIN, true)
         set(value) = p().edit().putBoolean(K_SHOW_PINYIN, value).apply()
+
+    /**
+     * 底部工具栏按钮显示图标（默认开）。
+     *
+     * 开＝返回/数字/空格/符号/收起/回车/退格都画成图标；关＝显示中文文字。
+     * 图标来自 App 内置的 Community Material 图标字体，名字见 [TOOL_ICONS]。
+     */
+    var toolIcons: Boolean
+        get() = p().getBoolean(K_TOOL_ICONS, true)
+        set(value) = p().edit().putBoolean(K_TOOL_ICONS, value).apply()
 
     /**
      * 手写区配色模式：

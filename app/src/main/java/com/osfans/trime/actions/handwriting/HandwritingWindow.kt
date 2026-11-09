@@ -3,7 +3,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 package com.osfans.trime.actions.handwriting
 
+import android.widget.ListView
+import android.widget.BaseAdapter
+import android.widget.AbsListView
+import android.graphics.drawable.ColorDrawable
 import android.annotation.SuppressLint
+import android.graphics.Paint
 import android.graphics.Typeface
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
@@ -14,6 +19,11 @@ import android.view.ViewGroup
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.widget.FrameLayout
+import android.widget.ImageView
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffColorFilter
+import com.mikepenz.iconics.IconicsDrawable
+import com.mikepenz.iconics.utils.sizePx
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -27,6 +37,7 @@ import org.kodein.di.instance
 import com.osfans.trime.data.theme.ColorManager
 import com.osfans.trime.ime.keyboard.Key
 import com.osfans.trime.ime.keyboard.KeyboardWindow
+import com.osfans.trime.daemon.RimeDaemon
 import com.osfans.trime.ime.core.TrimeInputMethodService
 import com.osfans.trime.ime.window.BoardWindow
 import com.osfans.trime.ime.window.BoardWindowManager
@@ -80,8 +91,20 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
     private lateinit var panel: LinearLayout
     private lateinit var panelGrid: LinearLayout
     private lateinit var panelScroll: ScrollView
-    private var symbolButton: TextView? = null
+    private var symbolButton: ToolKey? = null
+    private var numberButton: ToolKey? = null
+
+    // 「数字/符号」面板的来源：手写画布点进来 / 键盘 token 唤起来。
+    // 这个决定「返回」「收起」回哪儿：回画布，还是回字母键盘。
+    private var panelOpen = false
+    private var panelOrigin = ORIGIN_CANVAS
+    private var panelOpenedBy = 0 // 0 = 数字按钮开的，3 = 符号按钮开的
     private lateinit var panelTabs: LinearLayout
+    private lateinit var panelTabsScroll: HorizontalScrollView
+    // 子分类下拉：就地覆盖在面板内的列表（不用 PopupWindow，避免弹到上方 / 配色不跟主题 / 抢焦点崩）
+    private var groupOverlay: FrameLayout? = null
+    /** 当前页的子分类下标（0 = 常用）；切页时归零。 */
+    private var currentGroup = 0
 
     private var recognizeJob: Job? = null
     private var modelLoaded = false
@@ -155,6 +178,12 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
 
         /** 主题弹窗里用的固定标识。 */
         const val TOKEN = "Handwriting"
+    const val TOKEN_NUMBER = "BambooNumber"
+    const val TOKEN_SYMBOL = "BambooSymbol"
+
+    // 面板来源
+    private const val ORIGIN_CANVAS = 0
+    private const val ORIGIN_KEYBOARD = 1
 
         /** 画布与文字的对比度下限（WCAG AA 大字号是 3.0）。 */
         private const val MIN_CONTRAST = 3.0
@@ -165,6 +194,19 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
         private const val INK_ON_LIGHT = 0xFF1A1F1C.toInt()
 
         fun isToken(text: String): Boolean = text.equals(TOKEN, ignoreCase = true)
+
+    /** 主题 token：`BambooNumber` → 数字页，`BambooSymbol` → 符号页。 */
+    fun panelTokenPage(text: String): Int? = when {
+        text.equals(TOKEN_NUMBER, ignoreCase = true) -> SymbolPages.PAGE_NUMBER
+        text.equals(TOKEN_SYMBOL, ignoreCase = true) -> SymbolPages.PAGE_SYMBOL
+        else -> null
+    }
+
+    /**
+     * 从键盘唤起的面板页（-1 = 没有）。进程级保存，切 App / 换输入框回来还能把面板接回来。
+     */
+    @Volatile
+    private var panelOnlyPage = -1
 
         private const val TAG_SPACE = "bamboo_space"
 
@@ -357,6 +399,7 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
         val dm = context.resources.displayMetrics
         density = dm.density
         val gap = (4 * dm.density).toInt()
+        gapPx = gap
 
         useThemeColors = HandwritingPrefs.themeColors
         // 注意：ColorManager.getColorOr 在"这个键解析成图片"时会**故意 rethrow**
@@ -527,14 +570,7 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
         )
         rightColumn.addView(
         // 退格在上
-            TextView(context).apply {
-                text = "⌫"
-                textSize = 20f
-                gravity = Gravity.CENTER
-                includeFontPadding = false
-                setTextColor(colorKeyText)
-                background = keyDrawable("key_back_color", colorKeyBg, dp(1), cornerPx)
-                setOnClickListener { backspace() }
+            ToolKey("⌫", ToolIcons.BACKSPACE, 1f, colorKeyText, onTap = { backspace() }).apply {
                 setOnLongClickListener { onBackspaceLongPress(); true }
                 setOnTouchListener { _, event ->
                     if (event.actionMasked == android.view.MotionEvent.ACTION_UP ||
@@ -549,15 +585,7 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
         )
         // 回车在下，贴着最底边（不加下外边距，和工具栏同一底边）
         rightColumn.addView(
-            TextView(context).apply {
-                text = "回车"
-                textSize = 15f
-                gravity = Gravity.CENTER
-                includeFontPadding = false
-                setTextColor(colorKeyText)
-                background = keyDrawable("key_back_color", colorKeyBg, dp(1), cornerPx)
-                setOnClickListener { sendEnter() }
-            },
+            ToolKey("回车", ToolIcons.ENTER, 1f, colorKeyText, onTap = { sendEnter() }),
             LinearLayout.LayoutParams(MATCH_PARENT, dp(44)).apply { setMargins(0, 0, 0, 0) },
         )
         contentFrame.addView(body, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
@@ -570,8 +598,13 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
             visibility = View.GONE
             setPadding(dp(3), dp(2), dp(3), dp(2))
         }
+        // 22 个页签一屏放不下，套一层横向滚动
         panelTabs = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-        panel.addView(panelTabs, LinearLayout.LayoutParams(MATCH_PARENT, dp(33)))
+        panelTabsScroll = HorizontalScrollView(context).apply {
+            isHorizontalScrollBarEnabled = false
+            addView(panelTabs, ViewGroup.LayoutParams(WRAP_CONTENT, MATCH_PARENT))
+        }
+        panel.addView(panelTabsScroll, LinearLayout.LayoutParams(MATCH_PARENT, dp(33)))
         // 网格放进 ScrollView：行高固定，行数再多也只是变长可滑，不会被压扁
         panelGrid = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         panelScroll = ScrollView(context).apply {
@@ -601,43 +634,30 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
 
         fun toolButton(
             label: String,
+            icon: String?,
             weight: Float,
             fg: Int,
-            sizeSp: Float = 13f,
             onClick: (View) -> Unit,
-        ) = TextView(context).apply {
-            text = label
-            textSize = sizeSp
-            typeface = Typeface.DEFAULT
-            setTextColor(fg)
-            gravity = Gravity.CENTER
-            includeFontPadding = false
-            maxLines = 1
-            isSingleLine = true
-            ellipsize = android.text.TextUtils.TruncateAt.END
-            background = keyDrawable("key_back_color", colorKeyBg, dp(1), cornerPx)
-            setOnClickListener {
-                HandwritingLog.d("tap", "$label candidates=${lastCandidates.size}")
-                onClick(it)
-            }
-            // 高度 MATCH_PARENT：按钮底边和工具栏行底边重合，右边列的「回车」才能和它齐平
-            layoutParams = LinearLayout.LayoutParams(0, MATCH_PARENT, weight).apply {
-                setMargins(0, 0, gap, 0)
-            }
-        }
+        ): ToolKey = ToolKey(label, icon, weight, fg, onTap = onClick)
 
         // 左边 返回 + 数字（各 1 份），中间空格（2 份），右边 符号 + 回车（各 1 份）
         // 这样空格两侧权重相等，位置正好居中
         // 回车挪到右侧竖列（大写回车符号），这里只剩四个：返回 · 数字 · 空格 · 符号面板
-        tools.addView(toolButton("返回", 1f, colorKeyText) { leaveToKeyboard() })
-        tools.addView(toolButton("数字", 1f, colorKeyText) { togglePanel(0) })
-        val spaceKey = toolButton("空格", 2f, colorKeyText) { commitSpace() }
+        tools.addView(toolButton("返回", ToolIcons.BACK, 1f, colorKeyText) { closePanelOrLeave() })
+        val numBtn =
+        toolButton("数字", ToolIcons.NUMBER, 1f, colorKeyText) {
+            if (numberShowsCollapse()) closePanelOrLeave() else togglePanel(SymbolPages.PAGE_NUMBER)
+        }
+        numberButton = numBtn
+        tools.addView(numBtn)
+        val spaceKey = toolButton("空格", ToolIcons.SPACE, 2f, colorKeyText) { commitSpace() }
         spaceKey.tag = TAG_SPACE
         spaceView = spaceKey
         attachVoiceHold(spaceKey)
         tools.addView(spaceKey)
-        val symBtn = toolButton("符号", 1f, colorKeyText) {
-            if (panel.visibility == View.VISIBLE) hidePanel() else showPanel(3)
+        val symBtn =
+        toolButton("符号", ToolIcons.SYMBOL, 1f, colorKeyText) {
+            if (symbolShowsCollapse()) closePanelOrLeave() else togglePanel(SymbolPages.PAGE_CN)
         }
         symbolButton = symBtn
         tools.addView(symBtn)
@@ -659,11 +679,105 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
         }
 
         ensureModel()
+        // 从键盘唤起的数字/符号面板：窗口重建（切 App、换输入框）后把面板接回来
+        val restorePage = panelOnlyPage
+        if (restorePage >= 0) {
+            showPanel(restorePage, ORIGIN_KEYBOARD, if (restorePage == 0) 0 else 3)
+            HandwritingLog.d("panel", "restore standalone page=" + restorePage)
+        }
         Timber.d(
             "handwriting: window created themeColors=%s paper=#%06X ink=#%06X",
             useThemeColors, colorKeyBg and 0xFFFFFF, colorKeyText and 0xFFFFFF,
         )
         return root
+    }
+
+    // ------------------------------------------------------------ 工具栏按键
+    //
+    // 图标来自 App 内置的 Community Material 图标字体（7300+ 个，名字带 `cmd_` 前缀、
+    // 用下划线连接）。字体里没有的拼写会抛异常，所以每次取图标都 runCatching，
+    // 取不到就退回中文文字——不会因为一个图标名把整块面板搞崩。
+    private inner class ToolKey(
+        label: String,
+        icon: String?,
+        weight: Float,
+        fg: Int,
+        onTap: (View) -> Unit,
+    ) : LinearLayout(context) {
+        private val labelView: TextView
+        private val iconView: ImageView
+        private var currentLabel: String = label
+        private var currentIcon: String? = icon
+        private var currentFg: Int = fg
+
+        init {
+            orientation = HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(dp(1), 0, dp(1), 0)
+            background = keyDrawable("key_back_color", colorKeyBg, dp(1), cornerPx)
+            iconView =
+                ImageView(context).apply {
+                    scaleType = ImageView.ScaleType.FIT_CENTER
+                    isClickable = false
+                    isFocusable = false
+                    visibility = View.GONE
+                }
+            labelView =
+                TextView(context).apply {
+                    text = label
+                    textSize = 13f
+                    typeface = Typeface.DEFAULT
+                    setTextColor(fg)
+                    gravity = Gravity.CENTER
+                    includeFontPadding = false
+                    maxLines = 1
+                    isSingleLine = true
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                }
+            addView(iconView, LayoutParams(dp(22), dp(22)))
+            addView(labelView, LayoutParams(WRAP_CONTENT, WRAP_CONTENT))
+            setOnClickListener {
+                HandwritingLog.d("tap", "$currentLabel candidates=${lastCandidates.size}")
+                onTap(it)
+            }
+            // 高度 MATCH_PARENT：按钮底边和工具栏行底边重合，右边列的「回车」才能和它齐平
+            layoutParams = LinearLayout.LayoutParams(0, MATCH_PARENT, weight).apply {
+                setMargins(0, 0, gapPx, 0)
+            }
+            applyContent()
+        }
+
+        /** 换显示内容；任何一项变了都重新决定「显示图标还是文字」。 */
+        fun setContent(label: String, icon: String?) {
+            currentLabel = label
+            currentIcon = icon
+            labelView.text = label
+            applyContent()
+        }
+
+        /** 临时只显示文字（按住空格说话时的「松手结束」）。 */
+        fun setLabelOnly(label: String) = setContent(label, null)
+
+        private fun applyContent() {
+            val name = currentIcon
+            if (HandwritingPrefs.toolIcons && name != null) {
+                val drawable =
+                    runCatching {
+                        IconicsDrawable(context, name).apply {
+                            sizePx = dp(22)
+                            colorFilter = PorterDuffColorFilter(currentFg, PorterDuff.Mode.SRC_IN)
+                        }
+                    }.getOrNull()
+                if (drawable != null) {
+                    iconView.setImageDrawable(drawable)
+                    iconView.visibility = View.VISIBLE
+                    labelView.visibility = View.GONE
+                    return
+                }
+            }
+            iconView.visibility = View.GONE
+            labelView.visibility = View.VISIBLE
+        }
     }
 
     private fun dp(v: Int): Int = (v * density).toInt()
@@ -719,10 +833,13 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
 
     /** 长按空格 = 按住说话；录音期间空格自己就是状态指示，松手恢复。 */
     private var voiceActive = false
-    private var spaceView: TextView? = null
+    private var spaceView: ToolKey? = null
+
+    /** 全板统一间距（buildView 里由 density 算出来，工具栏的按键要靠它留缝）。 */
+    private var gapPx: Int = 0
     private val voiceLongPress = Runnable { startVoiceHold() }
 
-    private fun attachVoiceHold(button: TextView) {
+    private fun attachVoiceHold(button: ToolKey) {
         button.setOnTouchListener { v, event ->
             when (event.actionMasked) {
                 android.view.MotionEvent.ACTION_DOWN -> v.postDelayed(voiceLongPress, 400L)
@@ -747,7 +864,7 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
         if (!ok) return
         voiceActive = true
         spaceButton()?.let {
-            it.text = "松手结束"
+            it.setLabelOnly("松手结束")
             it.background = GradientDrawable().apply {
                 setColor(colorAccent)
                 cornerRadius = cornerPx
@@ -761,12 +878,12 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
         runCatching { inputBar.stopAsrkbVoiceFromToolbar() }
             .onFailure { Timber.w(it, "handwriting: voice stop failed") }
         spaceButton()?.let {
-            it.text = "空格"
+            it.setContent("空格", ToolIcons.SPACE)
             it.background = keyDrawable("key_back_color", colorKeyBg, dp(1), cornerPx)
         }
     }
 
-    private fun spaceButton(): TextView? = spaceView
+    private fun spaceButton(): ToolKey? = spaceView
 
     private fun refillSymbolColumn() {
         symbolColumnCn.removeAllViews()
@@ -797,78 +914,312 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
 
     // ---------------------------------------------------------------- 面板
 
+    /**
+     * 工具栏上的「数字」「符号」：同页再点一次 = 收起，换页 = 直接切过去。
+     *
+     * 换页**不能**动「从哪进来」这个标记（[panelOrigin]）：面板一旦从键盘唤起，
+     * 里面怎么切页、点了数字还是符号，返回/收起都该回键盘；只有最初从画布进来的才回画布。
+     */
     private fun togglePanel(page: Int) {
-        if (panel.visibility == View.VISIBLE && currentPage == page) {
-            hidePanel()
+        if (panelOpen) {
+            if (currentPage == page) {
+                closePanelOrLeave()
+                return
+            }
+            showPanel(page, panelOrigin, panelOpenedBy)
         } else {
-            showPanel(page)
+            showPanel(page, ORIGIN_CANVAS, page)
+        }
+        syncPanelOnlyPage(page)
+    }
+
+    /** 从键盘唤起的面板要记住当前页：窗口被系统重建后按它恢复，切页时也要跟着变。 */
+    private fun syncPanelOnlyPage(page: Int) {
+        if (panelOpen && panelOrigin == ORIGIN_KEYBOARD) {
+            panelOnlyPage = page
         }
     }
 
-    private fun showPanel(page: Int) {
+    /** 当前在数字页时，「数字」按钮显示「收起」。 */
+    private fun numberShowsCollapse(): Boolean = panelOpen && currentPage == SymbolPages.PAGE_NUMBER
+
+    /** 面板开着且不在数字页时，「符号」按钮显示「收起」。 */
+    private fun symbolShowsCollapse(): Boolean = panelOpen && currentPage != SymbolPages.PAGE_NUMBER
+
+    /**
+     * 打开「数字和符号」面板。
+     *
+     * @param origin 从哪进来：[ORIGIN_CANVAS] 手写画布 / [ORIGIN_KEYBOARD] 主题 token 从键盘唤起
+     * @param openedBy 哪个按钮开的（0 数字 / 3 符号），决定哪个按钮显示「收起」
+     */
+    private fun showPanel(page: Int, origin: Int, openedBy: Int) {
+        hideGroupPopup()
+        currentGroup = 0
+        panelOpen = true
+        panelOrigin = origin
+        panelOpenedBy = openedBy
         currentPage = page
         rebuildPanelTabs()
         buildPanelGrid(page)
         panel.visibility = View.VISIBLE
-        symbolButton?.text = "收起"
+        refreshToolButtons()
         board.clear()
+        // 面板里没有候选：清掉手写分段与候选格子，空格就落回「输出空格」
+        segs.clear()
+        lastCandidates = emptyList()
+        cells.clear()
+        selectedIndex = 0
         showCandidates(emptyList())
     }
 
     private fun hidePanel() {
+        hideGroupPopup()
+        panelOpen = false
         panel.visibility = View.GONE
-        symbolButton?.text = "符号"
+        refreshToolButtons()
+    }
+
+    /** 「返回」和「收起」共用：面板开着就按来源决定回画布还是回键盘。 */
+    private fun closePanelOrLeave() {
+        if (!panelOpen) {
+            leaveToKeyboard()
+            return
+        }
+        if (panelOrigin == ORIGIN_KEYBOARD) {
+            // 从键盘唤起的面板：收起 = 回键盘，并把会话状态清掉
+            panelOpen = false
+            panelOnlyPage = -1
+            leaveToKeyboard()
+        } else {
+            hidePanel()
+        }
+    }
+
+    /** 哪个按钮开的哪个显示「收起」，另一个保持原名。 */
+    private fun refreshToolButtons() {
+        // 「收起」跟着**当前页**走，不跟「最初点了哪个按钮」走：
+        // 在数字页 → 数字显示收起；在其它页 → 符号显示收起。这样文字与点下去的效果永远一致。
+        if (numberShowsCollapse()) {
+            numberButton?.setContent("收起", ToolIcons.COLLAPSE)
+        } else {
+            numberButton?.setContent("数字", ToolIcons.NUMBER)
+        }
+        if (symbolShowsCollapse()) {
+            symbolButton?.setContent("收起", ToolIcons.COLLAPSE)
+        } else {
+            symbolButton?.setContent("符号", ToolIcons.SYMBOL)
+        }
+    }
+
+    /**
+     * 主题 token（`BambooNumber` / `BambooSymbol`）从键盘唤起面板。
+     * 与手写画布进面板的区别：返回/收起都回键盘；候选态整个清空（含 Rime 组合），
+     * 否则面板里的数字会直接 commit、而 Rime 还挂着编码，返回键盘时文字与候选对不上。
+     */
+    fun openPanelStandalone(requested: Int) {
+        // 清 Rime 组合要在 rime 线程（RimeApi 只能在 runOnReady 里用）；
+        // 视图操作留在主线程，所以分成两步，不把建视图塞进 postKeyJob。
+        runCatching { service.postKeyJob { clearComposition() } }
+            .onFailure { Timber.w(it, "handwriting: clear composition failed") }
+        board.clear()
+        segs.clear()
+        lastCandidates = emptyList()
+        cells.clear()
+        selectedIndex = 0
+        showCandidates(emptyList())
+        val page = resolveEntryPage(requested)
+        panelOnlyPage = page
+        showPanel(page, ORIGIN_KEYBOARD, if (page == SymbolPages.PAGE_NUMBER) 0 else 3)
+    }
+
+    /**
+     * 从键盘 token 进来时定落哪一页。
+     *
+     * 「符号」不是一个固定的页：中文编码时落「中文」页，英文编辑模式落「英文」页；
+     * 判不出来（读不到 Rime 状态等）一律兜底「中文」。「数字」和「数字」按钮不变。
+     */
+    private fun resolveEntryPage(requested: Int): Int {
+        if (requested != SymbolPages.PAGE_SYMBOL) return requested
+        val ascii = runCatching { RimeDaemon.isAsciiMode }.getOrDefault(false)
+        val page = if (ascii) SymbolPages.PAGE_EN else SymbolPages.PAGE_CN
+        HandwritingLog.d("panel", "entry token -> " + (if (ascii) "EN" else "CN") + " page=" + page)
+        return page
+    }
+
+    /** 面板内切页（页签 / 子分类都走这里）：只换页与分组，不改「从哪进来」。 */
+    private fun gotoPage(page: Int, group: Int) {
+        currentPage = page
+        currentGroup = group
+        rebuildPanelTabs()
+        buildPanelGrid(page)
+        hideGroupPopup()
+        syncPanelOnlyPage(page)
+        refreshToolButtons()
     }
 
     private fun rebuildPanelTabs() {
         panelTabs.removeAllViews()
-        val titles = listOf("数字", "中文", "英文", "符号")
-        titles.forEachIndexed { i, title ->
-            panelTabs.addView(
+        SymbolPages.PAGES.forEachIndexed { i, page ->
+            val selected = i == currentPage
+            val group = page.groups.getOrNull(if (selected) currentGroup else 0)
+            // 选中且选了子分类时，页签显示「表情·笑脸」
+            val label = if (selected && currentGroup > 0 && group != null) {
+                "${page.title}·${group.name}"
+            } else {
+                page.title
+            }
+            val tab = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+            tab.addView(
                 TextView(context).apply {
-                    text = title
+                    text = label
                     textSize = 15f
                     gravity = Gravity.CENTER
                     includeFontPadding = false
-                    setTextColor(if (i == currentPage) colorKeyText else colorSub)
-                    background = if (i == currentPage) {
-                        GradientDrawable().apply {
-                            setColor(colorAccent)
-                            cornerRadius = cornerPx
-                        }
-                    } else {
-                        null
-                    }
-                    setOnClickListener {
-                        currentPage = i
-                        rebuildPanelTabs()
-                        buildPanelGrid(i)
-                    }
+                    setTextColor(if (selected) colorKeyText else colorSub)
+                    setPadding(dp(8), 0, dp(2), 0)
+                    setOnClickListener { gotoPage(i, 0) }
                 },
-                LinearLayout.LayoutParams(0, MATCH_PARENT, 1f),
+                LinearLayout.LayoutParams(WRAP_CONTENT, MATCH_PARENT),
+            )
+            if (page.groups.size > 1) {
+                // ▾ 单独可点：弹子分类下拉
+                tab.addView(
+                    TextView(context).apply {
+                        text = "▾"
+                        textSize = 18f
+                        gravity = Gravity.CENTER
+                        includeFontPadding = false
+                        setTextColor(if (selected) colorKeyText else colorSub)
+                        setPadding(dp(2), 0, dp(8), 0)
+                        contentDescription = "${page.title}的子分类"
+                        setOnClickListener { showGroupPopup(i, this) }
+                    },
+                    LinearLayout.LayoutParams(dp(28), MATCH_PARENT),
+                )
+            } else {
+                tab.addView(View(context), LinearLayout.LayoutParams(dp(8), MATCH_PARENT))
+            }
+            tab.background = if (selected) {
+                GradientDrawable().apply {
+                    setColor(colorAccent)
+                    cornerRadius = cornerPx
+                }
+            } else {
+                null
+            }
+            tab.minimumWidth = dp(76)
+            panelTabs.addView(
+                tab,
+                LinearLayout.LayoutParams(WRAP_CONTENT, MATCH_PARENT).apply {
+                    setMargins(dp(1), 0, dp(1), 0)
+                },
             )
         }
+        // 让当前页签滚进可见范围
+        panelTabs.post {
+            val target = panelTabs.getChildAt(currentPage) ?: return@post
+            val scroll = (target.left - (panelTabsScroll.width - target.width) / 2)
+                .coerceAtLeast(0)
+            panelTabsScroll.smoothScrollTo(scroll, 0)
+        }
+    }
 
+    /** 子分类下拉：就地覆盖在页签正下方，可上下滑，配色跟随主题。 */
+    private fun showGroupPopup(page: Int, anchor: View) {
+        val pageData = SymbolPages.PAGES.getOrNull(page) ?: return
+        if (pageData.groups.size <= 1) return
+        hideGroupPopup()
+
+        val names = pageData.groups.map { it.name }
+        val scrim = FrameLayout(context).apply {
+            // 半透明遮罩：点空白处收起
+            setBackgroundColor(0x66000000)
+            isClickable = true
+            setOnClickListener { hideGroupPopup() }
+        }
+
+        val list = ListView(context).apply {
+            isVerticalScrollBarEnabled = true
+            dividerHeight = dp(1)
+            divider = ColorDrawable(colorSub and 0x33FFFFFF)
+            setBackgroundColor(colorKeyBg)
+            // 宽度跟内容自适应（左右各留 10dp），高度由下面按可用空间夹紧
+            minimumWidth = dp(88)
+            setPadding(dp(10), 0, dp(10), 0)
+        }
+        list.adapter = object : BaseAdapter() {
+            override fun getCount(): Int = names.size
+            override fun getItem(position: Int): Any = names[position]
+            override fun getItemId(position: Int): Long = position.toLong()
+            override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
+                val tv = (convertView as? TextView) ?: TextView(context).apply {
+                    textSize = 15f
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(dp(14), 0, dp(14), 0)
+                    layoutParams = AbsListView.LayoutParams(WRAP_CONTENT, dp(46))
+                }
+                val selected = position == currentGroup
+                tv.text = if (selected) "✓ " + names[position] else names[position]
+                tv.setTextColor(if (selected) colorAccent else colorKeyText)
+                tv.setTypeface(null, if (selected) Typeface.BOLD else Typeface.NORMAL)
+                tv.setOnClickListener { gotoPage(page, position) }
+                return tv
+            }
+        }
+
+        // 贴在页签条正下方、右侧对齐；高度绝不超过「下方功能键行」的顶边
+        val itemH = dp(46)
+        val top = panelTabsScroll.bottom + dp(1)
+        val room = (contentFrame.height - top - dp(6)).coerceAtLeast(dp(120))
+        val wanted = names.size * itemH + dp(2)
+        val height = minOf(wanted, dp(252), room)
+        // 宽度按最长选项量出来（含 ✓ 前缀），再夹在 88–220dp 之间，左右各留白 10dp
+        val paint = Paint().apply { textSize = dp(15).toFloat() }
+        val widest = names.maxOf { paint.measureText(it) }
+        val checkW = paint.measureText("✓ ")
+        val width = (widest + checkW + dp(28)).toInt().coerceIn(dp(88), dp(220))
+        // 水平方向居中到「整个页签」（标题 + ▾ 这个整体）的正下方，再夹在容器内
+        val ref = (anchor.parent as? View) ?: anchor
+        val refPos = IntArray(2)
+        ref.getLocationInWindow(refPos)
+        val hostPos = IntArray(2)
+        contentFrame.getLocationInWindow(hostPos)
+        val refLeft = refPos[0] - hostPos[0]
+        val refCenter = refLeft + ref.width / 2
+        val maxLeft = (contentFrame.width - width - dp(2)).coerceAtLeast(dp(2))
+        val left = (refCenter - width / 2).coerceIn(dp(2), maxLeft)
+        val lp = FrameLayout.LayoutParams(width, height).apply {
+            gravity = Gravity.TOP or Gravity.START
+            topMargin = top
+            leftMargin = left
+        }
+        scrim.addView(list, lp)
+        contentFrame.addView(scrim, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
+        groupOverlay = scrim
+    }
+
+    private fun hideGroupPopup() {
+        val overlay = groupOverlay ?: return
+        groupOverlay = null
+        runCatching { contentFrame.removeView(overlay) }
     }
 
     private fun buildPanelGrid(page: Int) {
-        val items = when (page) {
-            0 -> PAGE_NUMBER
-            1 -> PAGE_PUNCT_CN
-            2 -> PAGE_PUNCT_EN
-            else -> PAGE_SYMBOL
-        }
+        val pageData = SymbolPages.PAGES.getOrNull(page) ?: SymbolPages.PAGES[0]
+        val group = pageData.groups.getOrNull(currentGroup) ?: pageData.groups.firstOrNull()
+        val items = group?.items ?: pageData.items
+        val columns = pageData.columns.coerceIn(1, 8)
         panelGrid.removeAllViews()
         panelScroll.scrollTo(0, 0)
-        items.chunked(6).forEach { row ->
+        items.chunked(columns).forEach { row ->
             val rowView = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
             row.forEach { item ->
                 rowView.addView(panelCell(item), LinearLayout.LayoutParams(0, MATCH_PARENT, 1f).apply {
                     setMargins(dp(2), dp(2), dp(2), 0)
                 })
             }
-            // 补齐少于 6 个的最后一排，保持列宽一致
-            repeat(6 - row.size) {
+            // 补齐最后一排，保持列宽一致
+            repeat(columns - row.size) {
                 rowView.addView(View(context), LinearLayout.LayoutParams(0, MATCH_PARENT, 1f))
             }
             // 36dp：数字页 4 行一屏放得下（不用滚动就能点到常用数字），符号页靠滑动看更多
@@ -895,6 +1246,7 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
 
     private fun panelCell(item: String) = TextView(context).apply {
         text = item
+        textSize = if (item.length >= 6) 11f else if (item.length >= 3) 14f else 18f
         textSize = 18f
         gravity = Gravity.CENTER
         includeFontPadding = false
@@ -1047,14 +1399,16 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
         // 只有识别出东西时才清，避免认不出时把用户写的字擦掉。
         if (list.isNotEmpty()) board.clear()
         candidateRow.removeAllViews()
+        // 候选清空时必须一起清掉 cells/selectedIndex：空格上屏读的是 cells，
+        // 不清就会把上一次上屏过的词再上屏一次（哪怕候选条已经空了）。
+        cells.clear()
+        selectedIndex = 0
         if (list.isEmpty()) {
             // 失败提示放在候选条内部（那里本来就有固定高度），不新增行
             setMessage(if (board.isEmpty) null else "没认出字，重写一次试试")
             return
         }
         setMessage(null)
-        cells.clear()
-        selectedIndex = 0
         list.forEachIndexed { index, c ->
             val charCount = c.text.codePointCount(0, c.text.length)
             val pinyinText = if (HandwritingPrefs.showPinyin && charCount <= 2) {
@@ -1195,8 +1549,12 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
     /** 空格：有候选时上屏首选，否则上普通空格。 */
     private fun commitSpace() {
         // 空格上屏「当前高亮」那一项（滑动后就是滑到 A 位置的那个），没有候选时打普通空格
-        val picked = cells.getOrNull(selectedIndex)?.textValue
-            ?: lastCandidates.firstOrNull()?.text
+        // 没有候选时一定走普通空格：不能因为 cells 里残留旧值又把上次的词上屏一遍
+        val picked = if (lastCandidates.isEmpty()) {
+            null
+        } else {
+            cells.getOrNull(selectedIndex)?.textValue ?: lastCandidates.firstOrNull()?.text
+        }
         if (picked != null) commit(picked) else commit(" ")
     }
 
@@ -1278,6 +1636,10 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
     }
 
     private fun leaveToKeyboard() {
+        hideGroupPopup()
+        panelOpen = false
+        panelOnlyPage = -1
+        runCatching { refreshToolButtons() }
         val self = windowManager.isAttached(this)
         val onScreen = rootView?.isAttachedToWindow == true
         HandwritingLog.d(
@@ -1317,6 +1679,7 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
     }
 
     override fun onDetached() {
+        hideGroupPopup()
         // 不管从哪条路离开（返回键 / 切输入法 / 换输入框 / 打开剪贴板等其它面板），
         // 都算这一次手写结束：清候选、清笔迹，避免下次进来接着拼（日志里 segs 2→3→4 就是这个坑）。
         // 切 App（收起输入法）不会 detach，所以「切走再回来接着写」不受影响。
@@ -1327,4 +1690,20 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
     }
 
     override fun toString(): String = "HandwritingWindow"
+}
+
+/**
+ * 底部工具栏用到的图标名。
+ *
+ * 来自 Community Material 图标字体（`com.mikepenz:community-material-typeface`），
+ * 名字是下划线连接的全小写形式；写错不会崩，只会退回文字（见 ToolKey.applyContent）。
+ */
+private object ToolIcons {
+    const val BACK = "cmd_arrow_left"
+    const val NUMBER = "cmd_numeric"
+    const val SPACE = "cmd_keyboard_space"
+    const val SYMBOL = "cmd_symbol"
+    const val COLLAPSE = "cmd_keyboard_close"
+    const val ENTER = "cmd_keyboard_return"
+    const val BACKSPACE = "cmd_backspace"
 }

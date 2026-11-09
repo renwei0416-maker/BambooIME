@@ -175,6 +175,19 @@ class CommonKeyboardActionListener {
                     return
                 }
 
+                // 主题 token：BambooNumber / BambooSymbol —— 从键盘直接唤起「数字和符号」面板，
+                // 与手写画布进面板的区别是返回/收起都回键盘。同样要建视图，不能进 postKeyJob。
+                if (action.code == 0) {
+                    HandwritingWindow.panelTokenPage(action.getText(KeyboardWindow.currentKeyboard))
+                        ?.let { page ->
+                            if (!windowManager.isAttached(handwritingWindow)) {
+                                windowManager.attachWindow(handwritingWindow)
+                            }
+                            handwritingWindow.openPanelStandalone(page)
+                            return
+                        }
+                }
+
                 // 苍竹 token：主题里可直接把某个动作绑成 BambooRevert / BambooAiSend / BambooAi1 …
                 // 同样是 code==0 的纯文本，必须放在 commit / getText 分支之前，否则会被当成文字上屏。
                 // 拍照识字入口：同样是 code==0 的纯文本，放在 token 分发之前，

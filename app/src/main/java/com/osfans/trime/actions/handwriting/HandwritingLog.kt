@@ -26,7 +26,10 @@ object HandwritingLog {
 
     // 编译期常量：release 包里 BuildConfig.DEBUG 是 false，R8 会把下面每个
     // `if (!enabled) return` 折叠成死代码，正式版不产生任何日志文件。
-    private const val enabled: Boolean = BuildConfig.DEBUG
+    // 注意：必须是 val 不能是 const —— AGP 生成的 BuildConfig.DEBUG 是
+    // Boolean.parseBoolean("true") 而不是字面量，Kotlin 的 const 不接受它。
+    // R8 在 release 里仍会常量折叠，日志分支照样是死代码。
+    private val enabled: Boolean = BuildConfig.DEBUG
     private val timeFmt = SimpleDateFormat("HH:mm:ss.SSS", Locale.US)
     private val dayFmt = SimpleDateFormat("yyyyMMdd", Locale.US)
     private val lock = Any()
