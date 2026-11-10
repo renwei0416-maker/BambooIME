@@ -65,8 +65,8 @@ class LabeledCandidateItemUi(
         val commentFg = if (highlighted) highlightCommentTextColor else commentColor
         root.text =
             buildSpannedString {
-                // 外接键盘时用候选序号代替方案给的 label，按数字键选词时好对号
-                if (number != null) {
+                // 外接键盘时补上序号（按数字键选词好对号）；方案自带 label 的保留方案自己的
+                if (number != null && candidate.label.isEmpty()) {
                     inSpanWith(labelFg, ctx.sp(labelSize * textScale), font) { append(number.toString()) }
                 } else {
                     inSpanWith(labelFg, ctx.sp(labelSize * textScale), font) { append(candidate.label) }

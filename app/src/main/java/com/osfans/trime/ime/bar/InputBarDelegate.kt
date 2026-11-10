@@ -163,7 +163,7 @@ class InputBarDelegate : InputBroadcastReceiver {
     private val alwaysUi: AlwaysUi by lazy {
         AlwaysUi(context, theme) { action ->
             if (action.isNotEmpty()) {
-                commonKeyboardActionListener.listener.onAction(KeyActionManager.getAction(action))
+                onToolBarAction(action)
             } else {
                 windowManager.attachWindow(SwitchOptionWindow())
             }
@@ -411,6 +411,12 @@ class InputBarDelegate : InputBroadcastReceiver {
                 asrkbVoiceHoldController.stop()
             }
         }
+    }
+
+    /** 工具条按钮入口：与点击虚拟键盘工具条上的按钮走同一条分发路径。 */
+    fun onToolBarAction(action: String) {
+        if (action.isEmpty()) return
+        commonKeyboardActionListener.listener.onAction(KeyActionManager.getAction(action))
     }
 
     private fun startAsrkbVoiceFromToolbar() {

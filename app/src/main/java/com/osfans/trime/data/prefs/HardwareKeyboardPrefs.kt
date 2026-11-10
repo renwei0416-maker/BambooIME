@@ -19,10 +19,6 @@ object HardwareKeyboardPrefs {
 
     private var sp: SharedPreferences? = null
 
-    fun init(context: Context) {
-        sp = context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
-    }
-
     private fun p(): SharedPreferences =
         sp ?: TrimeApplication.getInstance()
             .getSharedPreferences(FILE, Context.MODE_PRIVATE)
@@ -79,21 +75,6 @@ object HardwareKeyboardPrefs {
     var preeditTextScale: Int
         get() = p().getInt("preedit_text_scale", 100).coerceIn(40, 200)
         set(value) = p().edit().putInt("preedit_text_scale", value.coerceIn(40, 200)).apply()
-
-    /** 浮动候选条是否竖排（默认横排）。 */
-    var candidateVertical: Boolean
-        get() = p().getBoolean("candidate_vertical", false)
-        set(value) = p().edit().putBoolean("candidate_vertical", value).apply()
-
-    /** 候选条贴到光标下方时，若会盖住输入框就改为贴到上方。 */
-    var candidateAvoidEditor: Boolean
-        get() = p().getBoolean("candidate_avoid_editor", true)
-        set(value) = p().edit().putBoolean("candidate_avoid_editor", value).apply()
-
-    /** 接硬件键盘时强制把候选位置改成跟随光标（断开后恢复用户原设置）。 */
-    var candidateFollowCursor: Boolean
-        get() = p().getBoolean("candidate_follow_cursor", true)
-        set(value) = p().edit().putBoolean("candidate_follow_cursor", value).apply()
 
     /** 状态条位置，按屏幕比例存，换分辨率不会跑偏。 */
     var statusBarX: Float

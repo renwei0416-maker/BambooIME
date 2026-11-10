@@ -147,14 +147,14 @@ class CandidatesView(
         val isHorizontalLayout = rime.run {
             getRuntimeOption("_linear") || getRuntimeOption("_horizontal")
         }
-        // 接外接键盘时：候选加序号、按设置截断个数、可选竖排
+        // 接外接键盘时：候选补序号、按设置截断个数
         val hardware = !service.inputDeviceManager.useVirtualKeyboard
         val candidateScale = if (hardware) HardwareKeyboardPrefs.candidateTextScale / 100f else 1f
         preeditUi.textScale = if (hardware) HardwareKeyboardPrefs.preeditTextScale / 100f else 1f
         candidatesUi.update(
             menu,
             isHorizontalLayout,
-            if (hardware && HardwareKeyboardPrefs.candidateVertical) PopupCandidatesLayout.VERTICAL else layout,
+            layout,
             isVerticalReversed,
             numbering = hardware,
             limit = if (hardware) HardwareKeyboardPrefs.candidateCount else Int.MAX_VALUE,

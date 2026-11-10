@@ -28,13 +28,22 @@ import android.widget.PopupWindow
 import android.widget.TextView
 import com.mikepenz.iconics.IconicsDrawable
 import com.mikepenz.iconics.utils.sizePx
-import com.osfans.trime.daemon.RimeDaemon
+import com.osfans.trime.core.RimeMessage
 import com.osfans.trime.daemon.RimeSession
 import com.osfans.trime.daemon.launchOnReady
+import com.osfans.trime.data.prefs.AppPrefs
 import com.osfans.trime.data.prefs.HardwareKeyboardPrefs
 import com.osfans.trime.data.theme.ColorManager
 import com.osfans.trime.ime.core.TrimeInputMethodService
+import com.osfans.trime.link.AsrkbSpeechClient
+import com.osfans.trime.link.AsrkbVoiceHoldSessionController
+import com.osfans.trime.link.SherpaSpeechClient
 import com.osfans.trime.ui.main.MainActivity
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import splitties.dimensions.dp
 import timber.log.Timber
 
@@ -52,6 +61,23 @@ class HardwareStatusBar(
 
 
     private val handler = Handler(Looper.getMainLooper())
+
+    /**
+     * 语音会话。外接键盘时没有键盘窗口，波形回调留空；AIDL / 内置 / 第三方怎么走由控制器决定。
+     */
+    private val voiceController by lazy {
+        AsrkbVoiceHoldSessionController(
+            service = service,
+            showOverlay = {},
+            startWave = {},
+            updateAmplitude = {},
+            hideOverlay = {},
+            onSessionFinished = {
+                rime.launchOnReady { api -> runCatching { api.setRuntimeOption("_voice_assist", false) } }
+            },
+            useAidl = { AppPrefs.defaultInstance().voiceInput.asrkbAidlVoiceInputEnabled.getValue() },
+        )
+    }
 
     private val row =
         LinearLayout(ctx).apply {
@@ -95,6 +121,9 @@ class HardwareStatusBar(
     /** 上一次真正绘制的内容，用来判断要不要重建视图。 */
     private var lastSignature: String? = null
 
+    /** 订阅 rime 的选项变化，物理键盘切中英/全半角/标点时不必等定时器。 */
+    private var optionJob: Job? = null
+
     val isShowing: Boolean
         get() = runCatching { window.isShowing }.getOrDefault(false)
 
@@ -116,12 +145,36 @@ class HardwareStatusBar(
             }.getOrDefault(false)
         Timber.d("hwstatus: show at (%d,%d) ok=%s", x, y, ok)
         if (!ok) return
+        startOptionWatch()
         handler.removeCallbacks(ticker)
         handler.post(ticker)
     }
 
+    /** 只关心影响状态条显示的三项。 */
+    private fun startOptionWatch() {
+        if (optionJob != null) return
+        optionJob =
+            CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate).launch {
+                rime.run { messageFlow }.collect { message ->
+                    if (message !is RimeMessage.OptionMessage) return@collect
+                    when (message.data.option) {
+                        "ascii_mode", "ascii_punct", "full_shape" -> refresh()
+                    }
+                }
+            }
+        Timber.d("hwstatus: option watch started")
+    }
+
+    private fun stopOptionWatch() {
+        if (optionJob == null) return
+        optionJob?.cancel()
+        optionJob = null
+        Timber.d("hwstatus: option watch stopped")
+    }
+
     fun hide() {
         if (isShowing) Timber.d("hwstatus: hide at (%d,%d)", lastX, lastY)
+        stopOptionWatch()
         handler.removeCallbacks(ticker)
         runCatching { window.dismiss() }
     }
@@ -151,15 +204,15 @@ class HardwareStatusBar(
     }
 
     fun refresh() {
-        asciiMode = runCatching { RimeDaemon.isAsciiMode }.getOrDefault(false)
         rime.launchOnReady { api ->
+            // 三项都直接问引擎：读状态缓存拿到的是上一次处理完的值，点击后立刻刷新会慢一拍。
+            val ascii = runCatching { api.getRuntimeOption("ascii_mode") }.getOrDefault(asciiMode)
             val shape = runCatching { api.getRuntimeOption("full_shape") }.getOrDefault(false)
             val punct = runCatching { api.getRuntimeOption("ascii_punct") }.getOrDefault(false)
             handler.post {
-                if (shape != fullShape || punct != asciiPunct) {
-                    fullShape = shape
-                    asciiPunct = punct
-                }
+                asciiMode = ascii
+                fullShape = shape
+                asciiPunct = punct
                 rebuild()
             }
         }
@@ -248,6 +301,29 @@ class HardwareStatusBar(
                             },
                     )
             }
+            // 语音：只做唤醒，具体走 AIDL / 内置 / 第三方由 App 自己决定
+            val holding = voiceHolding()
+            items +=
+                Node(
+                    text = if (holding) "■" else "音",
+                    icon = if (holding) ICON_VOICE_STOP else ICON_VOICE,
+                    bgOverride = if (holding) VOICE_RED else null,
+                    onClick = {
+                        Timber.d("hwstatus: click voice holding=%s", holding)
+                        if (holding) {
+                            voiceController.stop()
+                            rime.launchOnReady { api ->
+                                runCatching { api.setRuntimeOption("_voice_assist", false) }
+                            }
+                        } else {
+                            voiceController.start()
+                            rime.launchOnReady { api ->
+                                runCatching { api.setRuntimeOption("_voice_assist", true) }
+                            }
+                        }
+                        handler.postDelayed({ refresh() }, 300L)
+                    },
+                )
             if (HardwareKeyboardPrefs.showSettings) {
                 items +=
                     Node(
@@ -269,13 +345,14 @@ class HardwareStatusBar(
         // 最右侧的折叠/展开按钮，两种状态都要在
         items +=
             Node(
-                triangle = if (collapsed) Triangle.LEFT else Triangle.DOWN,
+                triangle = if (collapsed) Triangle.RIGHT else Triangle.LEFT,
                 onClick = { toggleCollapsed() },
             )
 
         val signature =
             items.joinToString("/") {
-                (it.text ?: "") + (it.icon ?: "") + (if (it.active) "*" else "") + (it.triangle?.name ?: "")
+                (it.text ?: "") + (it.icon ?: "") + (if (it.active) "*" else "") +
+                    (it.bgOverride?.toString() ?: "") + (it.triangle?.name ?: "")
             } + "#" + fg + "," + activeBg + "," + s(10)
         if (signature == lastSignature && row.childCount > 0) {
             // 内容没变就不要再摘视图，否则正在拖的手指会丢事件
@@ -301,8 +378,9 @@ class HardwareStatusBar(
                 rime.launchOnReady { api ->
                     runCatching { api.setRuntimeOption("ascii_mode", next) }
                         .onFailure { Timber.w(it, "hwstatus: set ascii_mode failed") }
+                    // 同一队列里先设后读，读到的就是刚设进去的值
+                    handler.post { refresh() }
                 }
-                refresh()
             },
         )
 
@@ -312,6 +390,9 @@ class HardwareStatusBar(
         HardwareKeyboardPrefs.statusBarCollapsed = next
         rebuild()
     }
+
+    private fun voiceHolding(): Boolean =
+        runCatching { AsrkbSpeechClient.isHolding() || SherpaSpeechClient.isHolding() }.getOrDefault(false)
 
     private fun firstColor(vararg keys: String): Int = firstColorOrNull(*keys) ?: FALLBACK_BG
 
@@ -353,7 +434,12 @@ class HardwareStatusBar(
             }
         }
 
-        val tint = if (node.active) activeFg else fg
+        val tint =
+            when {
+                node.bgOverride != null -> VOICE_FG
+                node.active -> activeFg
+                else -> fg
+            }
         val container =
             LinearLayout(ctx).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -363,7 +449,7 @@ class HardwareStatusBar(
                 setPadding(s(7), s(4), s(7), s(4))
                 background =
                     GradientDrawable().apply {
-                        setColor(if (node.active) activeBg else Color.TRANSPARENT)
+                        setColor(node.bgOverride ?: if (node.active) activeBg else Color.TRANSPARENT)
                         cornerRadius = s(7).toFloat()
                     }
                 node.onClick?.let { action -> setOnClickListener { action.invoke() } }
@@ -430,16 +516,16 @@ class HardwareStatusBar(
             val arm = minOf(width, height) * 0.20f
             path.reset()
             when (direction) {
-                Triangle.DOWN -> {
-                    path.moveTo(cx - arm, cy - arm * 0.7f)
-                    path.lineTo(cx + arm, cy - arm * 0.7f)
-                    path.lineTo(cx, cy + arm)
-                }
-
                 Triangle.LEFT -> {
                     path.moveTo(cx + arm * 0.7f, cy - arm)
                     path.lineTo(cx + arm * 0.7f, cy + arm)
                     path.lineTo(cx - arm, cy)
+                }
+
+                Triangle.RIGHT -> {
+                    path.moveTo(cx - arm * 0.7f, cy - arm)
+                    path.lineTo(cx - arm * 0.7f, cy + arm)
+                    path.lineTo(cx + arm, cy)
                 }
             }
             path.close()
@@ -564,11 +650,12 @@ class HardwareStatusBar(
         val text: String? = null,
         val icon: String? = null,
         val active: Boolean = false,
+        val bgOverride: Int? = null,
         val triangle: Triangle? = null,
         val onClick: (() -> Unit)? = null,
     )
 
-    private enum class Triangle { DOWN, LEFT }
+    private enum class Triangle { LEFT, RIGHT }
 
     private companion object {
         const val REFRESH_MS = 500L
@@ -578,9 +665,13 @@ class HardwareStatusBar(
 
         const val ICON_SETTINGS = "cmd_cog"
 
+        const val ICON_VOICE = "cmd_microphone"
+        const val ICON_VOICE_STOP = "cmd_stop_circle"
+
+        /** 识别中底色：酒红偏亮一档，不跟主题走。 */
+        const val VOICE_RED = 0xFFA0394A.toInt()
+        const val VOICE_FG = 0xFFFFFFFF.toInt()
+
         const val FALLBACK_BG = 0xFF2B2B2B.toInt()
-        const val FALLBACK_ACTIVE = 0xFF4A6B5E.toInt()
-        const val FALLBACK_FG = 0xFFEDEDED.toInt()
-        const val FALLBACK_ACTIVE_FG = 0xFFFFFFFF.toInt()
     }
 }

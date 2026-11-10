@@ -36,18 +36,15 @@ class HardwareKeyboardFragment : PaddingPreferenceFragment() {
 
         screen.addRestoreAll(restorers)
 
-        screen.addCategory("候选条", "接硬件键盘时浮在屏幕上跟随光标")
-        screen.addSwitch(
-            title = "接键盘时跟随光标",
-            subtitle = "开（默认）＝接上键盘后候选条浮在光标附近；断开后恢复原来的位置设置",
-            default = true,
-            current = HardwareKeyboardPrefs.candidateFollowCursor,
-            restorers = restorers,
-        ) { HardwareKeyboardPrefs.candidateFollowCursor = it }
+        screen.addNote(
+            title = "使用前提",
+            summary = "要先在「候选窗口 → 显示候选词窗口」里选「根据输入设备而定」（或「输入设备」）。选「总是显示」时接了硬件键盘也会弹虚拟键盘，状态条和浮动候选条都不会出现。候选条的位置由「候选窗口 → 位置」决定，接键盘时建议选「跟随光标」。",
+        )
 
+        screen.addCategory("候选条", "接硬件键盘时浮在屏幕上，位置由「候选窗口 → 位置」决定")
         screen.addSeek(
             title = "候选个数",
-            subtitle = "候选条上最多显示几个；方案一次最多给 6 个",
+            subtitle = "候选条上最多显示几个；方案一次最多给 6 个，超出部分翻页可见",
             min = 1,
             max = 6,
             step = 1,
@@ -80,18 +77,6 @@ class HardwareKeyboardFragment : PaddingPreferenceFragment() {
             unit = "%",
             restorers = restorers,
         ) { HardwareKeyboardPrefs.preeditTextScale = it }
-
-        screen.addChoice(
-            title = "排列方式",
-            subtitle =
-                if (HardwareKeyboardPrefs.candidateVertical) {
-                    "竖排：一个候选一行，字多也不挤"
-                } else {
-                    "横排（默认）：排成一行，占地方小"
-                },
-            restorers = restorers,
-            restore = { HardwareKeyboardPrefs.candidateVertical = false },
-        ) { chooseOrientation() }
 
         screen.addCategory("状态条", "显示输入状态，点一下就能切换")
         screen.addSwitch(
@@ -172,20 +157,6 @@ class HardwareKeyboardFragment : PaddingPreferenceFragment() {
             HardwareKeyboardPrefs.statusBarY = Float.NaN
             refresh()
         }
-    }
-
-    private fun chooseOrientation() {
-        val labels = arrayOf("横排（默认）", "竖排")
-        val checked = if (HardwareKeyboardPrefs.candidateVertical) 1 else 0
-        AlertDialog.Builder(requireContext())
-            .setTitle("排列方式")
-            .setSingleChoiceItems(labels, checked) { dialog: DialogInterface, which: Int ->
-                HardwareKeyboardPrefs.candidateVertical = which == 1
-                dialog.dismiss()
-                refresh()
-            }
-            .setNegativeButton("取消", null)
-            .show()
     }
 
     private fun PreferenceScreen.addSeek(
@@ -317,13 +288,21 @@ class HardwareKeyboardFragment : PaddingPreferenceFragment() {
         )
     }
 
-    private fun PreferenceScreen.addChoice(
+    /** 只作说明，不可点，也不进恢复列表。 */
+    private fun PreferenceScreen.addNote(
         title: String,
-        subtitle: String,
-        restorers: MutableList<() -> Unit>,
-        restore: () -> Unit,
-        onClick: () -> Unit,
-    ) = addRow(title = title, subtitle = subtitle, restorers = restorers, restore = restore, onClick = onClick)
+        summary: String,
+    ) {
+        addPreference(
+            Preference(requireContext()).apply {
+                key = "hw_note_${title.hashCode()}"
+                this.title = title
+                this.summary = summary
+                isPersistent = false
+                isIconSpaceReserved = false
+            },
+        )
+    }
 
     private fun refresh() {
         rebuildPreferencesKeepingScroll {

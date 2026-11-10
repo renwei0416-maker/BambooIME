@@ -11,9 +11,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import com.osfans.trime.data.prefs.AppPrefs
-import com.osfans.trime.data.prefs.HardwareKeyboardPrefs
 import com.osfans.trime.ime.candidates.popup.PopupCandidatesMode
-import com.osfans.trime.ime.composition.PopupPosition
 import com.osfans.trime.ime.composition.CandidatesView
 import com.osfans.trime.util.isLandscape
 
@@ -52,9 +50,6 @@ class InputDeviceManager(
         setupCandidatesViewCallback(isVirtual)
     }
 
-    /** 接上外接键盘前的候选位置，断开时要恢复回去。 */
-    private var positionBeforeHardware: PopupPosition? = null
-
     var useVirtualKeyboard = true
         private set(value) {
             val newUseCandidatesView = !value || alwaysShowCandidatesView
@@ -63,31 +58,11 @@ class InputDeviceManager(
             }
             field = value
             useCandidatesView = newUseCandidatesView
-            applyHardwareCandidatePosition(value)
             setupViewCallbacks(value)
             // fire change AFTER updating InputView(s),
             // make the view(s) ready for incoming events during `onChange`
             onChange(value, newUseCandidatesView)
         }
-
-    /**
-     * 外接键盘时把候选改成跟随光标，断开后恢复用户原来的位置设置。
-     *
-     * 只在 [HardwareKeyboardPrefs.candidateFollowCursor] 打开时生效，
-     * 且不会覆盖用户自己选的位置：原值先存起来，断开时写回。
-     */
-    private fun applyHardwareCandidatePosition(isVirtual: Boolean) {
-        val pref = AppPrefs.defaultInstance().candidates.position
-        if (!isVirtual) {
-            if (positionBeforeHardware != null || !HardwareKeyboardPrefs.candidateFollowCursor) return
-            positionBeforeHardware = pref.getValue()
-            pref.setValue(PopupPosition.FOLLOW)
-        } else {
-            val saved = positionBeforeHardware ?: return
-            positionBeforeHardware = null
-            pref.setValue(saved)
-        }
-    }
 
     var useCandidatesView = false
 

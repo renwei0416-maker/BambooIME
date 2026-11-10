@@ -117,3 +117,14 @@
 | 语音输入 | sherpa-onnx | **已有**（`KeywordSpotter` / 语音设置页） | 跳过 |
 | 输入统计 | 有 | **已有**（`InputStatsFragment`） | 跳过 |
 | 游戏键盘（按键直通） | `gamePassthrough` | 无 | 受众小 |
+
+## 5. 候选旁「译词」（学英语用，用户 2026-11-10 决定先记着、暂不做）
+
+- 数据来自青简 `qingjian-team/qingjian`（GPL-3.0-or-later）：`assets/glossary/glossary-en.tsv`，6,556,053 B / 232,213 条，
+  格式 `词\t[词性. ]译词\t…`；同目录另有 `glossary-zh.tsv`(980,956 B，英→中，约 4.5 万词) 与日/西/越/德四张表。
+- 显示位就是我们候选的 `comment`（`core/RimeProto.kt:14`、`ime/candidates/CandidateItemUi.kt:268`），
+  主题已有 `comment_text_color` / `comment_size` / `commentPosition = RIGHT|TOP|OVERLAY`，显示端基本不用改。
+- 关键取舍：**不要全量 HashMap**（23 万条在 Kotlin 下约 25–40 MB 堆）；走 mmap + 二分/哈希索引，
+  或仿青简 `.qj`（字符串 arena + 定长表 + 文件内哈希索引），常驻内存≈0。
+- 候选注入点在 `core/Rime.kt:472` 的 `CandidateListMessage` 分支：方案自带 comment 优先，空则填译词；加开关。
+- 估计 2–3 天（不含「点译词直接上屏英文」，那项要 ClickableSpan，另加半天）。
