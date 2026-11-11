@@ -15,37 +15,11 @@ import com.osfans.trime.data.theme.Theme
 class SegmentsAdapter(
     private val theme: Theme,
     private val onItemClick: () -> Unit,
-    private val rawText: String = "",
 ) : BaseQuickAdapter<String, SegmentsAdapter.ViewHolder>() {
 
     class ViewHolder(val ui: SegmentUi) : RecyclerView.ViewHolder(ui.root)
 
     private val selection = mutableSetOf<Int>()
-
-    private val separators: List<String> by lazy {
-        if (rawText.isEmpty() || items.isEmpty()) emptyList() else computeSeparators()
-    }
-
-    private fun computeSeparators(): List<String> {
-        val result = mutableListOf<String>()
-        var idx = 0
-        for (item in items) {
-            val sb = StringBuilder()
-            var pos = idx + item.length
-            while (pos < rawText.length) {
-                val c = rawText[pos]
-                if (c == ' ' || c == '\n' || c == '\t' || c == '\r') {
-                    sb.append(c)
-                    pos++
-                } else {
-                    break
-                }
-            }
-            result.add(sb.toString())
-            idx = pos
-        }
-        return result
-    }
 
     override fun onCreateViewHolder(
         context: Context,
@@ -59,7 +33,10 @@ class SegmentsAdapter(
         item: String?,
     ) {
         val text = item ?: return
-        holder.ui.textView.text = text
+        // 空白块本身就是一个块：显示成可见记号，选它就是选那段空白
+        holder.ui.textView.text = displayOf(text)
+        // 空白写得淡一点，一眼能看出来“这不是词”
+        holder.ui.textView.alpha = if (isBlankPiece(text)) 0.55f else 1f
         val isSelected = selection.contains(position)
         holder.ui.update(isSelected)
         holder.itemView.setOnClickListener {
@@ -71,6 +48,29 @@ class SegmentsAdapter(
             }
         }
     }
+
+    /** 空白块在界面上画成 `␣`（空格）、`⇥`（制表符）、`↵`（换行），太长就折中显示。 */
+    private fun displayOf(text: String): String {
+        if (text.isEmpty() || !isBlankPiece(text)) return text
+        val sb = StringBuilder(text.length)
+        var i = 0
+        while (i < text.length) {
+            when (text[i]) {
+                '\r' -> {
+                    sb.append('↵')
+                    if (i + 1 < text.length && text[i + 1] == '\n') i++
+                }
+                '\n' -> sb.append('↵')
+                '\t' -> sb.append('⇥')
+                else -> sb.append('␣')
+            }
+            i++
+        }
+        return if (sb.length > 6) sb.substring(0, 5) + "…" else sb.toString()
+    }
+
+    private fun isBlankPiece(text: String): Boolean =
+        text.isNotEmpty() && text.all { it.isWhitespace() }
 
     val selectionSnapshot: Set<Int>
         get() = selection.toSet()
@@ -104,15 +104,15 @@ class SegmentsAdapter(
     val isAllSelected: Boolean
         get() = selection.size == items.size
 
+    /**
+     * 选中的块按原顺序直接拼起来。
+     *
+     * 块里已经包含空白，所以不需要再补分隔符 —— 选哪几块，上屏的就是那几块的原样。
+     */
     val joinedSegments: String
         get() = buildString {
             items.forEachIndexed { i, item ->
-                if (isSegmentSelected(i)) {
-                    append(item)
-                    if (isSegmentSelected(i + 1)) {
-                        append(separators.getOrElse(i) { "" })
-                    }
-                }
+                if (isSegmentSelected(i)) append(item)
             }
         }
 }

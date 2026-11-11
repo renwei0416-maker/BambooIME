@@ -23,7 +23,6 @@ import com.osfans.trime.ime.core.TrimeInputMethodService
 import com.osfans.trime.ime.keyboard.KeyboardWindow
 import com.osfans.trime.ime.window.BoardWindow
 import com.osfans.trime.ime.window.BoardWindowManager
-import com.osfans.trime.util.NativeTokenizer
 import com.osfans.trime.util.toast
 import kotlinx.coroutines.launch
 import org.kodein.di.instance
@@ -40,7 +39,7 @@ class SegmentsWindow(private val source: String) : BoardWindow.BarBoardWindow() 
     }
 
     private val adapter by lazy {
-        SegmentsAdapter(theme, { onSelectionChanged() }, source)
+        SegmentsAdapter(theme, { onSelectionChanged() })
     }
 
     private val touchListener by lazy {
@@ -146,7 +145,7 @@ class SegmentsWindow(private val source: String) : BoardWindow.BarBoardWindow() 
     override fun onCreateView() = ui.root
 
     override fun onAttached() {
-        val segments = NativeTokenizer.tokenize(source)
+        val segments = PieceTokenizer.split(source)
         service.lifecycleScope.launch {
             adapter.submitList(segments)
         }
