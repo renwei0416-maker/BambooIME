@@ -188,7 +188,6 @@ object OcrCard {
         val service = TrimeInputMethodService.current ?: return
         bypass = true
         try {
-            BambooActions.onCommitted(value)
             service.commitText(value)
         } finally {
             bypass = false

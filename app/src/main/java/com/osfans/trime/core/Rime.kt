@@ -269,11 +269,22 @@ class Rime :
 
     override suspend fun clearComposition() = withRimeContext {
         clearRimeComposition()
+        runCatching { com.osfans.trime.actions.wenquxing.WenquxingTips.clear() }
         emitResponse()
     }
 
     override suspend fun getRawInput(): String = withRimeContext {
         getRimeRawInput()
+    }
+
+    /**
+     * 重新发一次组合/候选消息。
+     *
+     * 外部（如文曲星）改写了编码后面要显示的内容、但引擎状态没变时，用它把界面刷一遍，
+     * 否则要等下一次按键才会重绘。
+     */
+    suspend fun refreshComposition() = withRimeContext {
+        emitResponse()
     }
 
     override suspend fun setRawInput(input: String): Boolean = withRimeContext {
@@ -317,8 +328,11 @@ class Rime :
             val staging: File = DataManager.stagingDir
             !staging.exists() || (staging.list()?.isEmpty() ?: true)
         }
-        // glog only writes files when the directory already exists.
-        File(DataManager.userDataDir, "logs").mkdirs()
+        // glog only writes files when the directory already exists；正式包不开文件日志，
+        // 目录也不建，避免在用户目录里留空文件夹。
+        if (BuildConfig.BAMBOO_LOG_TO_FILE) {
+            File(DataManager.userDataDir, "logs").mkdirs()
+        }
         val sharedDataDir = DataManager.sharedDataDir.absolutePath
         val userDataDir = DataManager.userDataDir.absolutePath
         Timber.d(
@@ -414,6 +428,11 @@ class Rime :
     private var asciiTipsTextCached: String = ""
 
     private fun handlePreedit(composition: CompositionProto) {
+        runCatching {
+            if (composition.length == 0) {
+                com.osfans.trime.actions.wenquxing.WenquxingTips.onCompositionCleared()
+            }
+        }
         val mode = if (isNullInputType) {
             InlinePreeditMode.DISABLE
         } else {

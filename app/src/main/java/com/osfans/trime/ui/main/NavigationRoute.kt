@@ -14,6 +14,7 @@ import com.osfans.trime.ui.main.settings.AdvancedSettingsFragment
 import com.osfans.trime.ui.main.settings.BambooActionFragment
 import com.osfans.trime.ui.main.settings.BambooAppearanceFragment
 import com.osfans.trime.ui.main.settings.BambooTokensFragment
+import com.osfans.trime.ui.main.settings.WenquxingFragment
 import com.osfans.trime.ui.main.settings.HardwareKeyboardFragment
 import com.osfans.trime.ui.main.settings.CandidatesSettingsFragment
 import com.osfans.trime.ui.main.settings.ClipboardSettingsFragment
@@ -57,6 +58,9 @@ sealed class NavigationRoute : Parcelable {
     data object BambooAction : NavigationRoute()
     @Serializable
     data object BambooTokens : NavigationRoute()
+
+    @Serializable
+    data object Wenquxing : NavigationRoute()
 
 
     @Serializable
@@ -152,6 +156,10 @@ sealed class NavigationRoute : Parcelable {
             }
             fragment<BambooTokensFragment, BambooTokens> {
                 label = "按键动作调用"
+            }
+
+            fragment<WenquxingFragment, Wenquxing> {
+                label = "文曲星"
             }
             fragment<HandwritingSettingsFragment, Handwriting> {
                 label = "手写"

@@ -5,6 +5,8 @@
 
 package com.osfans.trime.ime.keyboard
 
+import com.osfans.trime.actions.wenquxing.WenquxingTips
+
 import android.app.Dialog
 import android.content.Context
 import android.content.Intent
@@ -162,6 +164,26 @@ class CommonKeyboardActionListener {
             }
 
             override fun onAction(action: KeyAction, key: Key?, behavior: KeyBehavior) {
+                // 文曲星：命中诗词时，逗号/句号改成上屏对应的正文
+                when (val key = WenquxingTips.consumeKey(action.code)) {
+                    is WenquxingTips.KeyResult.Commit -> {
+                        WenquxingTips.clear()
+                        service.postKeyJob { clearComposition() }
+                        service.commitText(key.text)
+                        return
+                    }
+                    WenquxingTips.KeyResult.Rotated -> {
+                        com.osfans.trime.actions.handwriting.HandwritingLog.d(
+                            "wenquxing",
+                            "rotated branch ownLine=" + (WenquxingTips.ownLineText()?.length ?: -1),
+                        )
+                        // 只换了显示顺序，没有上屏：重绘一次编码行让新顺序可见
+                        service.refreshCandidatesPreedit(WenquxingTips.ownLineText())
+                        return
+                    }
+                    WenquxingTips.KeyResult.None -> Unit
+                }
+
                 // 主题弹窗里的「手写」入口：占住键盘区。
                 // 必须放在 commit / getText 分支之前，否则 "Handwriting" 会被当成普通文字上屏。
                 if (action.code == 0 &&

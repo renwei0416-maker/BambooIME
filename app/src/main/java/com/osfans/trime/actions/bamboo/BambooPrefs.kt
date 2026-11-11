@@ -56,13 +56,13 @@ object BambooPrefs {
     private const val K_AI_SEND_AFTER = "ai_send_after"
     private const val K_AI_CLIP_CODE = "ai_clip_code"
     private const val K_AI_EXIT_CODE = "ai_exit_code"
+    private const val K_WENQUXING_CODE = "wenquxing_code"
     private const val K_AI_SOURCE = "ai_source"
     private const val K_AI_DISCARD_COMPOSITION = "ai_discard_composition"
     private const val K_AI_SENTENCE_ONLY = "ai_sentence_only"
     private const val K_AI_SENTENCE_MARKS = "ai_sentence_marks"
     private const val K_AI_SEND_DOUBLE = "ai_send_double"
     private const val K_AI_SEND_COMBO = "ai_send_combo"
-    private const val K_LOG_FILE = "log_to_file"
 
     /** AI 接口地址默认值（DeepSeek 官方兼容端点）。 */
     const val DEFAULT_AI_BASE_URL = "https://api.deepseek.com/v1/chat/completions"
@@ -370,6 +370,11 @@ object BambooPrefs {
         get() = p().getString(K_AI_EXIT_CODE, "tc;") ?: "tc;"
         set(v) = p().edit().putString(K_AI_EXIT_CODE, v.trim()).apply()
 
+    /** 文曲星触发码：与模式码同一套语义（前缀 + 终结键），默认 `mj;`。 */
+    var wenquxingCode: String
+        get() = p().getString(K_WENQUXING_CODE, "mj;") ?: "mj;"
+        set(v) = p().edit().putString(K_WENQUXING_CODE, v.trim()).apply()
+
     /**
      * 发送时用哪段文本：
      *  * [SOURCE_AUTO]（默认）—— 有拼写就用拼写，没有就用最近一次上屏；
@@ -397,13 +402,6 @@ object BambooPrefs {
     var aiSentenceMarks: String
         get() = p().getString(K_AI_SENTENCE_MARKS, DEFAULT_SENTENCE_MARKS) ?: DEFAULT_SENTENCE_MARKS
         set(v) = p().edit().putString(K_AI_SENTENCE_MARKS, v).apply()
-
-    // ---------- 日志 ----------
-
-    /** 打开后 glog 的 WARNING/ERROR 会写到 <方案包>/logs/。 */
-    var logToFile: Boolean
-        get() = p().getBoolean(K_LOG_FILE, false)
-        set(v) = p().edit().putBoolean(K_LOG_FILE, v).apply()
 
     fun registerListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) {
         p().registerOnSharedPreferenceChangeListener(listener)

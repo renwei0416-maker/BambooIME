@@ -136,6 +136,23 @@ class CandidatesView(
         }
     }
 
+    /** 外部（文曲星）改了编码行要显示的提示后，按当前组合重绘一次，不经过引擎。 */
+    fun refreshPreedit(text: String? = null) {
+        if (!text.isNullOrEmpty()) {
+            preeditUi.update(CompositionProto(length = text.length, preedit = text))
+            preeditUi.root.visibility = if (preeditUi.visible) VISIBLE else GONE
+            return
+        }
+        com.osfans.trime.actions.handwriting.HandwritingLog.d(
+            "wenquxing",
+            "refreshPreedit len=" + composition.length +
+                " preeditLen=" + (composition.preedit?.length ?: -1) +
+                " tipLen=" + com.osfans.trime.actions.wenquxing.WenquxingTips.suffix().length,
+        )
+        preeditUi.update(composition)
+        preeditUi.root.visibility = if (preeditUi.visible) VISIBLE else GONE
+    }
+
     private fun evaluateVisibility(): Boolean = !composition.preedit.isNullOrEmpty() ||
         menu.candidates.isNotEmpty()
 

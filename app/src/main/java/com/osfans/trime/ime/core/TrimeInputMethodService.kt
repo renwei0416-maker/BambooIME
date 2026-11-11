@@ -43,6 +43,8 @@ import androidx.core.view.updateLayoutParams
 import androidx.lifecycle.lifecycleScope
 import com.osfans.trime.R
 import com.osfans.trime.actions.bamboo.BambooActions
+import com.osfans.trime.actions.wenquxing.WenquxingStore
+import com.osfans.trime.actions.wenquxing.WenquxingTips
 import com.osfans.trime.actions.ocr.OcrCard
 import com.osfans.trime.core.KeyModifiers
 import com.osfans.trime.core.KeyValue
@@ -117,6 +119,26 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
     internal val currentInputView: InputView?
         get() = inputView
     private var candidatesView: CandidatesView? = null
+
+    /** 文曲星查完提示后调用：把两处编码行都按当前组合重绘一次。 */
+    fun refreshCandidatesPreedit(preeditOverride: String? = null) {
+        if (preeditOverride != null) {
+            // 只有提示的一行只画一处：谁在屏幕上就画谁，否则两块都会显示
+            val target = candidatesView?.takeIf { it.visibility == android.view.View.VISIBLE }
+            if (target != null) {
+                runCatching { target.refreshPreedit(preeditOverride) }
+                    .onFailure { android.util.Log.w("wenquxing", "refresh candidates preedit failed", it) }
+                return
+            }
+            runCatching { currentInputView?.refreshPreedit(preeditOverride) }
+                .onFailure { android.util.Log.w("wenquxing", "refresh input preedit failed", it) }
+            return
+        }
+        runCatching { currentInputView?.refreshPreedit(null) }
+            .onFailure { android.util.Log.w("wenquxing", "refresh input preedit failed", it) }
+        runCatching { candidatesView?.refreshPreedit(null) }
+            .onFailure { android.util.Log.w("wenquxing", "refresh candidates preedit failed", it) }
+    }
 
     /** 外接键盘的浮动状态条，只在硬件键盘连接时存在。 */
     private var hardwareStatusBar: HardwareStatusBar? = null
@@ -256,6 +278,7 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
     override fun onCreate() {
         current = this
         BambooActions.init(this)
+        WenquxingStore.ensureLoaded(this)
         rime = RimeDaemon.createSession(javaClass.name)
         lifecycleScope.launch {
             jobs.consumeEach { it.join() }
@@ -290,7 +313,6 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
                         // 拍照识字的确认卡片正在接管输出：写进卡片，不上屏、不记账
                         OcrCard.append(it.data.text)
                     } else {
-                        BambooActions.onCommitted(it.data.text)
                         commitText(it.data.text)
                     }
                 }
@@ -427,6 +449,7 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
             if (inputType and InputType.TYPE_MASK_CLASS == InputType.TYPE_NULL ||
                 imeOptions.hasFlag(EditorInfo.IME_FLAG_NO_ENTER_ACTION)
             ) {
+                runCatching { BambooActions.onCommitted("\n") }
                 sendDownUpKeyEvents(KeyEvent.KEYCODE_ENTER)
                 return
             }
@@ -437,7 +460,10 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
             when (val action = imeOptions and EditorInfo.IME_MASK_ACTION) {
                 EditorInfo.IME_ACTION_UNSPECIFIED,
                 EditorInfo.IME_ACTION_NONE,
-                -> sendDownUpKeyEvents(KeyEvent.KEYCODE_ENTER)
+                -> {
+                    runCatching { BambooActions.onCommitted("\n") }
+                    sendDownUpKeyEvents(KeyEvent.KEYCODE_ENTER)
+                }
 
                 else -> currentInputConnection.performEditorAction(action)
             }
@@ -660,6 +686,7 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
     ) {
         composingText = ""
         cursorComposingText = ""
+        runCatching { com.osfans.trime.actions.wenquxing.WenquxingTips.clear() }
         BambooActions.onEditorStart(attribute, restarting)
         Timber.d("onStartInput: restarting=$restarting")
         val isNullType = attribute.inputType and InputType.TYPE_MASK_CLASS == InputType.TYPE_NULL
@@ -734,12 +761,19 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
     }
 
     fun commitText(text: String) {
+        // 任何上屏（空格、回车、点候选、我们自己的键）都要把文曲星提示清掉
+        runCatching { com.osfans.trime.actions.wenquxing.WenquxingTips.clear() }
         // 确认卡片接管时，文本先写进卡片（「上屏」按钮会临时 bypass）
         if (OcrCard.isActive && !OcrCard.bypass) {
             OcrCard.append(text)
             return
         }
         val ic = currentInputConnection ?: return
+
+        // 记账放在这个唯一漏斗里：引擎提交、手写、拍照、剪贴板、文曲星、主题里的 commit 键
+        // 最终都走这里，qq/ 回退才能删到它们。
+        runCatching { BambooActions.onCommitted(text) }
+            .onFailure { Timber.w(it, "commit: ledger record failed") }
 
         // when composing text equals commit content, finish composing text as-is
         if (composingText.isNotEmpty() && composingText == text) {

@@ -9,16 +9,13 @@
     <!-- 输入法平台名称  -->
     <string name="app_name_release">苍竹输入法</string>
     <string name="app_name_debug">苍竹输入法（调试）</string>
-    <string name="qq_group_lyraime">灵韵 QQ 群</string>
-    <string name="qq_group_1">同文 QQ 群 1</string>
-    <string name="qq_group_2">同文 QQ 群 2</string>
-    <string name="rime_qq_group">中州韵 QQ 群</string>
+    <string name="qq_group_1">苍竹输入法 QQ 群</string>
+    <string name="qq_group_copied">群号已复制，打开 QQ 搜索添加即可</string>
     <string name="librime_version">RIME 版本</string>
     <string name="opencc_version">OpenCC 版本</string>
     <string name="sherpa_onnx_version">Sherpa-Onnx 版本</string>
     <string name="current_version">当前版本</string>
     <string name="license">许可证</string>
-    <string name="privacy_policy">隐私策略</string>
     <string name="build_info_format">构建者：%1$s\n构建 Git 哈希：%2$s\n构建时间：%3$s</string>
     <string name="selected_theme">主题</string>
     <string name="selected_theme_summary">选取主题</string>
@@ -92,7 +89,6 @@
     <string name="hook_ctrl_zy">拦截 Ctrl+Z/Y</string>
     <string name="key_swipe_velocity">触发按键滑动手势的速度（距离/速度满足其一即可）</string>
     <string name="build_info">构建信息</string>
-    <string name="telegram">Telegram</string>
     <string name="quick_bar">快捷栏</string>
     <string name="copy_done">已复制</string>
     <string name="hook_shift_space">点击空格时，忽略Shift的锁定状态</string>

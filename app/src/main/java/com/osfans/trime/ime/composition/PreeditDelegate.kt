@@ -55,7 +55,28 @@ class PreeditDelegate : InputBroadcastReceiver {
 
     private val touchEventReceiverWindow = TouchEventReceiverWindow(ui.root)
 
+    private var lastComposition = CompositionProto()
+
+    /** 外部改了编码行要显示的提示后，按最近一次组合重绘。 */
+    fun refresh(text: String? = null) {
+        com.osfans.trime.actions.handwriting.HandwritingLog.d(
+            "wenquxing",
+            "delegate refresh override=" + (text?.length ?: -1) +
+                " lastLen=" + lastComposition.length +
+                " lastPrev=" + (lastComposition.preedit?.length ?: -1),
+        )
+        if (text.isNullOrEmpty()) {
+            onCompositionUpdate(lastComposition)
+            return
+        }
+        // 只有提示的一行：直接画，不记进 lastComposition，也不走 composition 的拼接
+        ui.showTipLine(text)
+        ui.root.visibility = if (ui.visible) View.VISIBLE else View.INVISIBLE
+        touchEventReceiverWindow.show()
+    }
+
     override fun onCompositionUpdate(data: CompositionProto) {
+        lastComposition = data
         ui.update(data)
         ui.root.visibility = if (ui.visible) View.VISIBLE else View.INVISIBLE
         if (data.length > 0) {

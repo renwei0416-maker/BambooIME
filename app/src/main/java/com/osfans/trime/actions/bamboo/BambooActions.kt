@@ -11,6 +11,9 @@ import android.view.inputmethod.InputConnection
 import android.widget.Toast
 import androidx.lifecycle.lifecycleScope
 import com.osfans.trime.actions.handwriting.HandwritingLog
+import com.osfans.trime.actions.wenquxing.WenquxingPrefs
+import com.osfans.trime.actions.wenquxing.WenquxingTips
+import com.osfans.trime.core.Rime
 import com.osfans.trime.core.RimeApi
 import com.osfans.trime.ime.core.TrimeInputMethodService
 import android.content.Intent
@@ -120,6 +123,9 @@ object BambooActions {
         HandwritingLog.d("ledger", "backspace replay -> consume 1, total=${RevertLedger.size()}")
     }
 
+    /** 文曲星模式在 AiMode.key 上的标记。 */
+    private const val TIPS_KEY = "wenquxing"
+
     // ---------------------------------------------------------------- 按键
 
     /**
@@ -139,7 +145,7 @@ object BambooActions {
         if (ctrl || alt || meta || shift) {
             // 快捷组合键：命中就吞掉执行（不交给方案、也不给 App）。
             // 这两个开关只约束「组合键」本身；主题里的动作名（token）不受它们影响，见 handleToken。
-            if (BambooPrefs.aiEnabled) {
+            if (BambooPrefs.aiEnabled || armed?.key == TIPS_KEY) {
                 if (BambooPrefs.aiComboEnabled &&
                     KeyCombo.matches(BambooPrefs.aiCombo, keyCode, metaState) &&
                     aiDispatch(service, api, fromClipboard = false)
@@ -165,13 +171,15 @@ object BambooActions {
         // ---- 拼写非空：先匹配触发码（前缀 + 终结键）----
         if (raw.isNotEmpty()) {
             // 1) 退出码：只在模式里有效
-            if (mode != null && BambooPrefs.aiEnabled) {
+            if (mode != null && (BambooPrefs.aiEnabled || mode.key == TIPS_KEY)) {
                 val exitCode = BambooPrefs.aiExitCode
                 if (exitCode.length >= 2 && matches(exitCode, ch, raw)) {
+                    val wasTips = mode.key == TIPS_KEY
                     api.clearComposition()
                     armed = null
                     lastSendTapAt = 0
-                    toast("已退出 AI 模式")
+                    WenquxingTips.clear()
+                    toast(if (wasTips) "已退出文曲星" else "已退出 AI 模式")
                     Timber.d("bamboo: ai disarmed by exit code")
                     return true
                 }
@@ -210,6 +218,27 @@ object BambooActions {
                 }
             }
 
+            // 3b) 文曲星触发码：与模式码同一套语义（同码退出、异码切换、没进则进入）。
+            //     进模式后按发送键（Ctrl+; / jt; / 主题 token）改为查词包，不发 AI。
+            run {
+                val code = BambooPrefs.wenquxingCode
+                if (WenquxingPrefs.enabled && code.length >= 2 && matches(code, ch, raw)) {
+                    val wasTips = mode?.key == TIPS_KEY
+                    api.clearComposition()
+                    lastSendTapAt = 0
+                    WenquxingTips.clear()
+                    if (wasTips) {
+                        armed = null
+                        toast("已退出文曲星")
+                    } else {
+                        armed = tipsMode()
+                        toast("文曲星（$code）")
+                    }
+                    Timber.d("bamboo: tips code %s -> %s", code, if (armed == null) "off" else "on")
+                    return true
+                }
+            }
+
             // 4) 回退触发码（AI 模式下也照常可用）
             if (BambooPrefs.revertEnabled) {
                 for (code in BambooPrefs.revertTriggers) {
@@ -225,7 +254,9 @@ object BambooActions {
         //   有编码时：第一下放行给方案（`/` 该干嘛干嘛），第二下吞掉并发送
         val now = SystemClock.elapsedRealtime()
 
-        if (mode != null && BambooPrefs.aiEnabled && BambooPrefs.aiDoubleTapEnabled) {
+        if (mode != null && (BambooPrefs.aiEnabled || mode.key == TIPS_KEY) &&
+            BambooPrefs.aiDoubleTapEnabled
+        ) {
             val sendKey = BambooPrefs.aiSendKey.firstOrNull()
             if (sendKey != null && ch == sendKey) {
                 val doubled =
@@ -298,7 +329,8 @@ object BambooActions {
                 // 与组合键 Ctrl+; / Ctrl+Alt+; 完全等效：
                 //  * 同一个出口 aiDispatch()，同样的目标模式、同样的发送内容；
                 //  * 唯一区别是不受「快捷组合键」开关约束——主题绑了就一直有效。
-                if (!BambooPrefs.aiEnabled) {
+                // 文曲星模式不吃 AI 总开关：和组合键入口保持同一条件
+                if (!BambooPrefs.aiEnabled && armed?.key != TIPS_KEY) {
                     toast("AI 模式未开")
                     return true
                 }
@@ -555,6 +587,29 @@ object BambooActions {
         val scope = service.lifecycleScope
         scope.launch {
             try {
+                if (mode.key == TIPS_KEY) {
+                    if (!WenquxingPrefs.enabled) {
+                        toast("文曲星已在设置里关闭")
+                        return@launch
+                    }
+                    // 发剪贴板那一条查剪贴板，其余查候选/光标前文本
+                    val query = if (fromClipboard) readClipboard(service) else tipsQueryText(service, api)
+                    if (query.isNullOrBlank()) {
+                        toast("没有对应条目")
+                        return@launch
+                    }
+                    // 锚点必须与显示层比对的值同源（PreeditUi 传的是 composition.preedit）
+                    val preedit = runCatching { api.compositionCached.preedit }.getOrNull().orEmpty()
+                    val noComposition = runCatching {
+                        api.compositionCached.length == 0
+                    }.getOrDefault(false)
+                    val count = WenquxingTips.show(query, preedit, ownLine = noComposition)
+                    toast(if (count > 0) "共匹配 $count 条" else "没有对应条目")
+                    // 引擎状态没变，靠 emitResponse 那条路刷不动编码行，直接让候选视图重绘。
+                    // 没有编码行时（剪贴板查询、进模式时清过组合）用提示本身合成一行显示。
+                    service.refreshCandidatesPreedit(WenquxingTips.ownLineText())
+                    return@launch
+                }
                 val text: String
                 if (fromClipboard) {
                     val clip = readClipboard(service)
@@ -629,6 +684,34 @@ object BambooActions {
             }
         }
     }
+
+    /**
+     * 文曲星查哪段文本：正在拼写就用首选候选；否则用光标前那句话，再退到刚上屏的那句。
+     * 与 AI 取值同一个来源，只是不发给模型。
+     */
+    private suspend fun tipsQueryText(service: TrimeInputMethodService, api: RimeApi): String? {
+        if (api.getRawInput().isNotEmpty()) {
+            val first = runCatching { api.getCandidates(0, 1).firstOrNull()?.text }.getOrNull()
+            if (!first.isNullOrBlank()) return first
+        }
+        val sentence = runCatching { sentenceBeforeCursor(service) }.getOrNull()
+        if (!sentence.isNullOrBlank()) return sentence
+        return RevertLedger.lastText().takeIf { it.isNotBlank() }
+    }
+
+    /** 文曲星模式是否已进入（供提示层判断「直接显示」要不要自动查）。 */
+    fun isTipsArmed(): Boolean = armed?.key == TIPS_KEY
+
+    /** 设置里改了使用模式时调用：把已进入的文曲星模式退掉。 */
+    fun exitTipsMode() {
+        if (armed?.key != TIPS_KEY) return
+        armed = null
+        runCatching { WenquxingTips.clear() }
+        Timber.d("bamboo: tips mode exited by preference change")
+    }
+
+    /** 文曲星借用一个 AiMode 当状态位：只在 `key` 上区分，不查提示词、不发请求。 */
+    private fun tipsMode(): AiMode = AiMode(BambooPrefs.wenquxingCode, "文曲星", "", TIPS_KEY)
 
     private suspend fun readClipboard(service: TrimeInputMethodService): String? =
         withContext(Dispatchers.Main) {

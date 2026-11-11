@@ -24,12 +24,11 @@ import java.util.Locale
 object HandwritingLog {
     private const val TAG = "handwriting"
 
-    // 编译期常量：release 包里 BuildConfig.DEBUG 是 false，R8 会把下面每个
-    // `if (!enabled) return` 折叠成死代码，正式版不产生任何日志文件。
-    // 注意：必须是 val 不能是 const —— AGP 生成的 BuildConfig.DEBUG 是
-    // Boolean.parseBoolean("true") 而不是字面量，Kotlin 的 const 不接受它。
-    // R8 在 release 里仍会常量折叠，日志分支照样是死代码。
-    private val enabled: Boolean = BuildConfig.DEBUG
+    // 编译期常量：BuildConfig.BAMBOO_LOG_TO_FILE 由 build.gradle.kts 按构建类型
+    // 写死成字面量 true / false（不能用 BuildConfig.DEBUG，那是
+    // Boolean.parseBoolean("true")，不是编译期常量）。release 里 R8 会把每个
+    // `if (!enabled) return` 折叠成死代码，正式包既不写文件也不留日志字符串。
+    private const val enabled: Boolean = BuildConfig.BAMBOO_LOG_TO_FILE
     private val timeFmt = SimpleDateFormat("HH:mm:ss.SSS", Locale.US)
     private val dayFmt = SimpleDateFormat("yyyyMMdd", Locale.US)
     private val lock = Any()

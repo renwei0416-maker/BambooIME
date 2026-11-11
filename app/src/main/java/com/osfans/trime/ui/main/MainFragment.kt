@@ -127,6 +127,10 @@ class MainFragment : PaddingPreferenceFragment() {
                 ) {
                     findNavController().navigateWithAnim(NavigationRoute.BambooTokens)
                 }
+
+                addPreference("文曲星", "诗词提示：候选/剪贴板/光标前文本命中名句、唐诗宋词时在编码后给出摘要", R.drawable.ic_baseline_book_24) {
+                    findNavController().navigateWithAnim(NavigationRoute.Wenquxing)
+                }
             }
             addCategory("") {
                 isIconSpaceReserved = false

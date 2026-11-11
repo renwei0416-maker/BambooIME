@@ -1573,8 +1573,6 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
         // 注意：不在这里收起面板——数字/符号面板要一直留着，直到点「收起」或再点同一个按钮
         // 和服务层 commit 同一条路（立刻上屏），并手动记账，保证 qq/ 回退能删到手写的字
         service.commitText(text)
-        runCatching { BambooActions.onCommitted(text) }
-            .onFailure { Timber.w(it, "handwriting: ledger record failed") }
     }
 
     /** 深色往文字色方向混合，用作没有主题高亮色时的兜底。 */

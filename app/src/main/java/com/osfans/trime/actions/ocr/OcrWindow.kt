@@ -806,7 +806,6 @@ class OcrWindow : BoardWindow.NoBarBoardWindow() {
             return
         }
         runCatching {
-            BambooActions.onCommitted(text)
             service.commitText(text)
         }.onFailure { HandwritingLog.w("ocr", "commit failed", it) }
         HandwritingLog.d("ocr", "commit ${text.length} chars, back to keyboard")

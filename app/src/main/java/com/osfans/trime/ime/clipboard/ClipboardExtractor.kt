@@ -77,8 +77,6 @@ class ClipboardExtractor(
         }
         val dialog = context.buildDialog(R.string.select_extracted_content)
             .setItems(extracted.toTypedArray()) { _, which ->
-                // 和剪贴板其它上屏路径一样记一笔账本，qq/ 才能回退掉
-                com.osfans.trime.actions.bamboo.BambooActions.onCommitted(extracted[which])
                 service.commitText(extracted[which])
                 if (clipboardReturnAfterPaste) {
                     windowManager.attachWindow(KeyboardWindow)

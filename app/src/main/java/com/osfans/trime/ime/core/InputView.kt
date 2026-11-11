@@ -125,6 +125,9 @@ class InputView(
     private val popup: PopupDelegate by di.instance()
     private val enterKeyDisplay: EnterKeyDisplayDelegate by di.instance()
     private val preedit: PreeditDelegate by di.instance()
+
+    /** 文曲星查完提示后调用：让键盘区里的编码行重绘一次。 */
+    fun refreshPreedit(text: String? = null) = runCatching { preedit.refresh(text) }
     private val windowManager: BoardWindowManager by di.instance()
     private val inputBar: InputBarDelegate by di.instance()
     private val keyboardWindow: KeyboardWindow by di.instance()

@@ -10,16 +10,13 @@
     <string name="app_name_release">蒼竹輸入法</string>
     <string name="app_name_debug">蒼竹輸入法（除錯模式）</string>
     <!-- Preference settings -->
-    <string name="qq_group_lyraime">靈韻 QQ 羣</string>
-    <string name="qq_group_1">同文 QQ 羣 1</string>
-    <string name="qq_group_2">同文 QQ 羣 2</string>
-    <string name="rime_qq_group">中州韻 QQ 羣</string>
+    <string name="qq_group_1">蒼竹輸入法 QQ 羣</string>
+    <string name="qq_group_copied">羣號已複製，開啟 QQ 搜尋加入即可</string>
     <string name="librime_version">RIME 版本</string>
     <string name="opencc_version">OpenCC 版本</string>
     <string name="sherpa_onnx_version">Sherpa-Onnx 版本</string>
     <string name="current_version">當前版本</string>
     <string name="license">許可證</string>
-    <string name="privacy_policy">隱私權政策</string>
     <string name="build_info_format">建構者：%1$s\n建構 Git 雜湊值：%2$s\n建構時間：%3$s</string>
     <string name="selected_theme">主題</string>
     <string name="selected_theme_summary">選取想要的主題</string>
@@ -115,7 +112,6 @@
     <string name="hook_ctrl_zy">攔截 Ctrl+Z/Y</string>
     <string name="key_swipe_velocity">觸發按鍵滑動手勢的速度（距離/速度滿足其一即可）</string>
     <string name="build_info">建構資訊</string>
-    <string name="telegram">Telegram</string>
     <string name="quick_bar">快捷欄</string>
     <string name="copy_done">已複製</string>
     <string name="hook_shift_space">點擊空格時，忽略Shift的鎖定狀態</string>

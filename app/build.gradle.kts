@@ -30,6 +30,10 @@ val bundleHandwritingModel =
 val bundleOcrModel =
     (project.findProperty("bundleOcrModel") as String?)?.toBoolean() ?: true
 
+// 内置文曲星诗词包（4 个包共约 4.3 MB）；-PbundleWenquxingPacks=false 出「无内置包」版。
+val bundleWenquxingPacks =
+    (project.findProperty("bundleWenquxingPacks") as String?)?.toBoolean() ?: true
+
 android {
     namespace = "com.osfans.trime"
     compileSdk = 37
@@ -43,6 +47,9 @@ android {
             if (bundleOcrModel) {
                 assets.srcDir("src/main/ocr-assets")
             }
+            if (bundleWenquxingPacks) {
+                assets.srcDir("src/main/wenquxing-assets")
+            }
         }
     }
 
@@ -51,7 +58,7 @@ android {
         minSdk = 29
         targetSdk = 37
         versionCode = LocalDate.now(ZoneId.of("Asia/Shanghai")).format(DateTimeFormatter.BASIC_ISO_DATE).toInt()
-        versionName = "2.3.0"
+        versionName = "2.4.0"
 
         multiDexEnabled = true
         buildConfigField("String", "BUILDER", "\"${project.builder}\"")
@@ -62,6 +69,15 @@ android {
         buildConfigField("String", "QNN_VARIANT", "\"${project.qnnVariant ?: ""}\"")
         buildConfigField("boolean", "BUNDLED_HANDWRITING_MODEL", "$bundleHandwritingModel")
         buildConfigField("boolean", "BUNDLED_OCR_MODEL", "$bundleOcrModel")
+    // 诊断日志开关。写死成字面量而不是用 BuildConfig.DEBUG（那是
+    // Boolean.parseBoolean("true")，不是编译期常量），R8 才能在 release 里
+    // 把日志分支整段折叠掉，正式包既不写文件也不留日志字符串。
+    buildConfigField("boolean", "BAMBOO_LOG_TO_FILE", "true")
+        buildConfigField(
+            "boolean",
+            "BUNDLED_WENQUXING_PACKS",
+            "$bundleWenquxingPacks",
+        )
     }
 
     buildTypes {
@@ -86,6 +102,7 @@ android {
                     }
                 }
 
+            buildConfigField("boolean", "BAMBOO_LOG_TO_FILE", "false")
             resValue("string", "trime_app_name", "@string/app_name_release")
         }
         debug {

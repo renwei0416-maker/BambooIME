@@ -10,16 +10,13 @@
     <string name="app_name_release">BambooIME</string>
     <string name="app_name_debug">BambooIME (Debug)</string>
     <!-- Preference settings -->
-    <string name="qq_group_lyraime">LyraIME QQ group</string>
-    <string name="qq_group_1">Trime QQ group 1</string>
-    <string name="qq_group_2">Trime QQ group 2</string>
-    <string name="rime_qq_group">RIME QQ group</string>
+    <string name="qq_group_1">BambooIME QQ group</string>
+    <string name="qq_group_copied">Group number copied. Search it in QQ to join.</string>
     <string name="librime_version">RIME version</string>
     <string name="opencc_version">OpenCC version</string>
     <string name="sherpa_onnx_version">Sherpa-Onnx version</string>
     <string name="current_version">Current version</string>
     <string name="license">License</string>
-    <string name="privacy_policy">Privacy Policy</string>
     <string name="build_info_format">Builder: %1$s\nBuild Git Hash: %2$s\nBuild Time: %3$s</string>
     <string name="selected_theme">Themes</string>
     <string name="selected_theme_summary">Select desired theme</string>
@@ -115,7 +112,6 @@
     <string name="hook_ctrl_zy">Hook Ctrl+Z/Y</string>
     <string name="key_swipe_velocity">The speed of triggering the button swipe gesture (the distance/velocity is sufficient)</string>
     <string name="build_info">Build Info</string>
-    <string name="telegram">Telegram</string>
     <string name="quick_bar">Quick bar</string>
     <string name="copy_done">Copied to clipboard!</string>
     <string name="hook_shift_space">Ignore Shift locked for Space</string>

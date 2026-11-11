@@ -1,238 +1,162 @@
-<!--
-SPDX-FileCopyrightText: 2015 - 2026 Rime community
+﻿# 苍竹输入法 / BambooIME
 
-SPDX-License-Identifier: GPL-3.0-or-later
--->
+Android 中文输入法。
 
-# LyraIME — 灵韵输入法
+除了引擎与键盘体系自带的能力，这里另外加了：**回退、AI 发送、手写板、拍照识字、符号面板、剪贴板增强、外接键盘、文曲星、外观**，以及把常用编辑动作做成主题可绑定的**动作名**。
 
-> Rime IME for Android
+包名 `com.bambooime`，可以与灵韵、同文同时安装、互不影响。许可证与上游出处见文末。
 
-[![License: GPL v3](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
-[![GitHub release](https://img.shields.io/github/release/Carlson24/LyraIME.svg)](https://github.com/Carlson24/LyraIME/releases)
-[![Latest build](https://img.shields.io/github/last-commit/Carlson24/LyraIME.svg)](https://github.com/Carlson24/LyraIME)
+---
 
-## 关于
+## 功能
 
-灵韵输入法（LyraIME）是一款基于 [RIME] 输入法框架的 Android 输入法平台，使用 JNI 的 C 语言和
-Android 的 Java/Kotlin 语言开发。Fork 自[同文输入法（Trime）](https://github.com/osfans/trime)，
-旨在保护汉语各地方言母语，音码、形码通用的输入法平台。
+### 回退
 
-[主题 DSL 文档](doc/theme-dsl.lua)
+在拼写框里打触发码（默认 `qq/`），删掉**最近一次上屏**的内容，一次退一笔。自己记账，删完按编辑器实际删除的量扣账，不会多删也不会少删。
 
-## 特色功能
+也可以在主题里把键位绑成动作名 `BambooRevert`，行为完全一致（配套主题里退格的右滑就是它）。
 
-### 离线语音输入
+### AI 发送
 
-基于 [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) 的本地语音识别引擎：
+内置 9 套提示词模式，触发码可改、提示词可改、也可以自己新增：
 
-- 完全离线运行，无需网络连接，保护输入隐私
-- 支持中文、英文等多种语言的语音识别
-- 低延迟流式识别，边说边出字
+| 模式 | 触发码 | 模式 | 触发码 | 模式 | 触发码 |
+| --- | --- | --- | --- | --- | --- |
+| 默认 | `ai;` | 润色 | `rs;` | 校对 | `jd;` |
+| 英文翻译 | `eg;` | 中文翻译 | `fy;` | 扩写 | `kx;` |
+| 日文翻译 | `jp;` | 回复 | `hf;` | 聊天 | `lt;` |
 
-### Qualcomm NPU 加速
+- **两种触发方式**，各自独立开关：快捷组合键 `ctrl+;`（默认开，主要给外接键盘）与双击 `/`（默认关）；
+- **模式常驻**：再打同一个码退出，打另一个码直接切换，也可以打退出码 `tc;`；
+- **剪贴板**两条独立通道：快捷码 `jt;` 与组合键 `ctrl+alt+;`；
+- 非编码状态下可只发送「最后一个结束符号之后」的那一句，结束符号可配置；
+- 结果以纯文本上屏，不会再被当成触发码解析；
+- 默认接口 `https://api.deepseek.com/v1/chat/completions`，默认模型 `deepseek-flash`，接口与模型都能自己改。
 
-在 Qualcomm Snapdragon 平台上，自动利用 NPU（QNN DSP）硬件加速语音识别：
+### 手写板
 
-- 运行时自动检测设备 SoC 型号，按需下载对应的 QNN HTP 运行时库
-- 支持以下平台：
+- 内置 `ochwpro` 中文字迹模型（约 7 MB，MIT 许可），**完全离线**，随安装包一起装好，不需要额外下载；
+- 从切换键长按弹窗进入，占住键盘区域；
+- 抬笔 0.5 秒自动识别；候选按段累加，可以连写多段再整段上屏；
+- 候选带拼音；⌫ 三层语义（清候选 → 清笔迹 → 删编辑器里的字），长按连删；
+- 面板带数字 / 中文 / 英文 / 符号四页，数字页可以直接列算式。
 
-| HTP 版本 | SoC |
-|----------|-----|
-| V81 | SM8850 (Snapdragon 8 Gen 5) |
-| V79 | SM8750 (Snapdragon 8 Gen 4) |
-| V75 | SM8650 (Snapdragon 8 Gen 3) |
-| V73 | SM8550 (Snapdragon 8 Gen 2) |
-| V69 | SM8450 / SM8475 (Snapdragon 8 Gen 1 / 8+ Gen 1) |
-| V68 | SM8350 (Snapdragon 888) |
+### 拍照识字
 
-- 非高通设备或 x86_64 模拟器自动回退至 CPU 推理，无需额外配置
+- **相机取字**：把文字对准取景框，识别结果进确认卡片；
+- **相册取字**：从相册挑一张已有照片，拖动 / 双指缩放 / 双指旋转对准取景框，再识别；
+- **两种取景模式**：整段（长条框，读多行）与单字（方框，只认框中央那一个字）；
+- **镜头与倍率**：支持双指捏合缩放，按设备镜头切换倍率档；
+- **确认卡片**：结果可以先改字、复制到剪贴板，确认后一键上屏；上屏后照样能用 `qq/` 回退；
+- 卡片浮在键盘上方，不透明度可调，不会死死挡住聊天软件的输入框。
 
-### 强大自定义
+### 符号面板
 
-- 高度可自定义的键盘布局与主题系统
-- 灵活的多点触控手势操作
-- 丰富的按键映射与快捷键支持
-- 通过外部方案包按需导入 Rime 输入方案，无需预装大量码表
+建立新的符号模块，规划了一整套符号体系：22 个分类、约 2900 条。
 
-## 下载
+- 覆盖数字、中文、英文、符号、表情、颜文字、数学、序号、箭头、图形、单位、货币、希腊、日文、韩文、拼音声调、音标、上标下标、圈号中文、星座、结构笔画、花体字母；
+- 页签可以左右滑动，22 类都放得下；
+- 「表情」按笑脸 / 手势 / 人物 / 动物 / 食物 / 旅行 / 活动 / 物品 / 符号 / 旗帜 10 类全收（1900 多个），「颜文字」按 21 类收（490 多条），点页签后面的 ▾ 就能切；
+- 每个分类的第一项都是「常用」，放这类里最常打的那些；
+- 也能从键盘直接打开：主题里把键位绑成 `BambooSymbol` 进符号页、绑 `BambooNumber` 进数字页。
 
-> **注意**：APK 不内置 QNN DSP 库，首次使用 QNN 语音输入功能时会自动从 GitHub
-> Releases 下载对应平台的 HTP 库。
+### 剪贴板
 
-- 稳定版 <br>
-  [<img alt='Get it on F-Droid'
-  src='https://fdroid.gitlab.io/artwork/badge/get-it-on.png'
-  height='80px'/>](https://f-droid.org/packages/com.carlson.lyraime)
-  [<img alt='Google Play 立即下载'
-  src='https://play.google.com/intl/en_us/badges/images/generic/zh-cn_badge_web_generic.png'
-  height='80px'/>](https://play.google.com/store/apps/details?id=com.carlson.lyraime)
+新增的能力：
 
-- 每夜版 [点击下载](https://github.com/Carlson24/LyraIME/releases)
+- **按内容类型分页**：全部 / 文本 / 链接 / 电话 / 邮箱 / 地址 / 图片，找东西按类型翻，不用在一条长列表里刨；
+- **筛选**：只看收藏、只看本地、只看远程；
+- **长按动作**：提取内容（验证码、链接、邮箱、手机号、金额、日期、身份证、单号）、复制文本、复制验证码、分词、删除；
+- **提取规则可自定义**：设置里一行一条正则，留空就用内置的那几条；
+- **上屏可回退**：从剪贴板上屏的内容照样能按 `qq/` 退回（图片除外）。
 
-## 开发入门
+### 外接键盘
 
-### 准备
+接上实体键盘后，输入法会让出屏幕，改在光标附近显示：
 
-#### 开发环境要求
+- **候选条**跟着光标走，每个候选带 1–9 的序号，直接按数字选；显示 1–6 个都可调，可横排可竖排，候选字与上方编码的字号也能单独调；
+- **状态条**显示中/英、CAPS、全角/半角、中文/英文标点，点一下切换；另有齿轮进设置、三角把整条收成只剩中/英。两种形态都能拖动，位置和大小时刻记住；
+- 设置里新增一级「外接键盘」，可以逐项决定状态条显示什么、候选条显示几个、字号多大。
 
-- Android SDK 和 Android NDK 29.0.14206865
-  - 如果还不熟悉 Android 开发，建议安装
-    [Android Studio](https://developer.android.google.cn/studio)
-- JDK（OpenJDK）17
-- CMake 4.1.2
-- Python 3（用于 OpenCC 生成词典文本文件）
+### 文曲星
 
-#### Windows 上的前提条件
+打字时顺手查诗词名句，查到的东西可以直接上屏。
 
-当前构建过程会创建符号链接，开发者需要：
+- **三种用法**：常开（边打边查）、触发码直接显示、触发码发送再查；触发码默认 `mj;`，再打一次退出，也可以打 `tc;` 退出；
+- **查什么**：正在拼写按候选查，不在拼写按光标前那句查；发送键与 AI 共用（`Ctrl+;`、`Ctrl+Alt+;`）——进的是哪个模式就走哪个；
+- **怎么显示**：结果接在编码那行后面，几条命中显示几条（1–5 可设），每条带圆圈编号、字数可调（默认 40），末尾「共 N 组」；
+- **怎么上屏**：`,` 上屏第一条；命中 2 条时 `.` 直接上屏第二条；3 条以上时 `.` 按条目轮换，编号跟着条目走，轮一圈回原位；
+- **词包**：内置《诗词名句》《楚辞》《唐诗三百首》《宋词三百首》，其余（全唐诗、全宋词、元曲、明诗、清诗、明清词、名句大全）可导入；设置里能看目录、逐个启用、从文件导入。
 
-- 启用[开发者模式](https://learn.microsoft.com/zh-cn/windows/apps/get-started/enable-your-device-for-development)
-- 启用 `git` 的符号链接支持：
+### 外观
 
-  ```powershell
-  git config --global core.symlinks true
-  ```
+设置界面可以跟着键盘主题配色
 
-如果无法启用上述设置，构建系统会自动使用复制替代。
+### 主题动作名
 
-#### QNN SDK（可选，用于 NPU 加速）
+主题的键位可以直接绑定这些动作名（大小写不敏感）：
 
-如需编译带 Qualcomm NPU 加速的版本，需设置 QNN SDK 路径：
+| 动作名 | 作用 |
+| --- | --- |
+| `BambooRevert` | 回退最近一次上屏 |
+| `BambooClear` | 清空整个编辑区（光标前后全删） |
+| `BambooDeleteLine` | 删到行首 |
+| `BambooDeleteWord` | 删光标前一个词 |
+| `BambooAiSend` | AI 发送（等效 `ctrl+;`） |
+| `BambooAiClip` | 发送剪贴板（等效 `ctrl+alt+;`） |
+| `BambooAiOff` | 退出当前 AI 模式 |
+| `BambooOcr` | 打开拍照识字 |
+| `Handwriting` | 打开手写板 |
+| `BambooNumber` | 打开数字面板 |
+| `BambooSymbol` | 打开符号面板 |
+| `BambooSettings` | 打开「回退与AI」设置 |
 
-```bash
-export QNN_SDK_ROOT=$HOME/.local/share/Android/qairt/2.48.40.260702
-```
+### 输入能力
 
-或在 `gradle.properties` 中设置：
+Rime 引擎的全部能力都在：多方案（万象、小鹤双拼等）、用户词库与学习、候选栏样式、以及整套 Trime 主题体系。本应用**不内置任何输入方案**，与上游一致，首次使用需要自己导入方案包。
 
-```properties
-qnnSdkRoot=/path/to/qairt/version
-```
+---
 
-未设置时自动回退至 CPU-only 构建。QNN 仅支持 arm64-v8a。
+## 安装
 
-### 构建
+安装包与配套主题都在 **Releases** 页面。
 
-#### 1. 克隆并拉取子模块
+1. 安装 APK（`arm64-v8a`，Android 10 及以上）；
+2. 在系统「语言与输入法」里启用「苍竹输入法」并设为当前输入法；
+3. 导入方案包：把含 `default.yaml` 与 `*.schema.yaml` 的方案目录放到 `/sdcard/Documents/BambooIME/`，在「设置 → 方案包」里选中；
+4. 用 AI 的话，在「设置 → 回退与AI」里填接口地址、模型、API Key（留空即用默认值）。
 
-```sh
-git clone git@github.com:Carlson24/LyraIME.git
-git submodule update --init --recursive
-# 可使用部分克隆节约时间
-git submodule update --init --recursive --filter=blob:none
-```
+配套主题 `themes-*.7z` 解压后覆盖到用户目录的 `themes/` 下。
 
-#### 2. 编译调试版本
+---
 
-```sh
-make debug
-```
-
-默认仅构建 arm64-v8a。如需构建 x86_64：
-
-```sh
-BUILD_ABI=x86_64 make debug
-```
-
-#### 3. 编译正式版本
-
-创建 `keystore.properties` 文件，包含[签名信息](https://developer.android.com/studio/publish/app-signing.html)：
-
-```properties
-storePassword=myStorePassword
-keyPassword=myKeyPassword
-keyAlias=myKeyAlias
-storeFile=myStoreFileLocation
-# 或使用 Base64 编码的密钥文件
-keyBase64=<base64-encoded-keystore>
-```
-
-然后执行：
-
-```sh
-make release
-```
-
-#### 4. 原生代码缓存
-
-如果 `app/prebuilt/` 目录存在，构建时会复用预编译的 `.so`
-文件，跳过原生编译。如需强制完整构建，删除该目录即可。
-
-### 代码格式化
-
-```bash
-make style-lint    # 检查格式（Spotless + clang-format）
-make style-apply   # 应用格式化
-```
-
-### 测试
-
-```bash
-./gradlew :app:test
-```
-
-### 故障排除
-
-```
-Target "boost_log_setup" links to target "Boost::coroutine" but the target was not found.
-```
-
-执行 `make clean`。
-
-其他问题：
-
-1. 首先尝试 `make clean`
-2. 确保仓库与最新版本一致。修改了子模块，请确保它们兼容当前版本
-3. 如果问题依然存在，尝试一次新的克隆
-4. 检查是否有相关 issue/PR
-5. 以上方法无效，可以提 issue 寻求帮助
-
-## 鸣谢
-
-本项目 Fork 自[同文输入法（Trime）](https://github.com/osfans/trime)，感谢上游项目的所有贡献者。
-
-- 原项目开发：[osfans](https://github.com/osfans)
-- 原项目贡献：
-  [boboIqiqi](https://github.com/boboIqiqi)、
-  [Bambooin](https://github.com/Bambooin)、
-  [senchi96](https://github.com/senchi96)、
-  [heiher](https://github.com/heiher)、
-  [abay](https://github.com/a342191555)、
-  [iovxw](https://github.com/iovxw)、
-  [huyz-git](https://github.com/huyz-git)、
-  [tumuyan](https://github.com/tumuyan)、
-  [WhiredPlanck](https://github.com/WhiredPlanck)、
-  [nopdan](https://github.com/nopdan)……
-- [维基](https://github.com/osfans/trime/wiki)：
-  [xiaoqun2016](https://github.com/xiaoqun2016)、
-  [boboIqiqi](https://github.com/boboIqiqi)……
-- 翻译：天真可爱的满满（繁体中文）、点解（英文）……
-- 键盘设计：天真可爱的满满、皛筱晓小笨鱼、吴琛 11、熊猫阿 Bo、默默ㄇㄛ ˋ……
-- 社区：在 [Issues](https://github.com/osfans/trime/issues)、
-  [QQ 群 (811142286)](https://jq.qq.com/?_wv=1027&k=AXdR80HN)、
-  [贴吧](http://tieba.baidu.com/f?kw=rime)、
-  [Telegram](https://t.me/trime_dev)
-  中反馈意见的网友
-- 项目：[RIME]、[OpenCC]、
-  [靓企鹅输入法](https://github.com/fxliang/fcitx5-android)（参考了文本编辑、悬浮键盘）、
-  [简意输入法](https://github.com/danjian/fcitx5-android)（参考了 T9 输入、语音动画）
-  等开源项目
-
-## 第三方库
-
-- [RIME](https://rime.im) (BSD License)
-- [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) (Apache License 2.0)
-- [onnxruntime](https://github.com/microsoft/onnxruntime) (MIT License)
-- [OpenCC](https://github.com/BYVoid/OpenCC) (Apache License 2.0)
-- [Boost C++ Libraries](https://www.boost.org/) (Boost Software License)
-- [LevelDB](https://github.com/google/leveldb) (New BSD License)
-- [marisa-trie](https://github.com/s-yata/marisa-trie) (BSD License)
-- [snappy](https://github.com/google/snappy) (BSD License)
-- [yaml-cpp](https://github.com/jbeder/yaml-cpp) (MIT License)
-- [darts-clone](https://github.com/s-yata/darts-clone) (New BSD License)
-- [glog](https://github.com/google/glog) (New BSD License)
-- [utfcpp](https://github.com/nemtrif/utfcpp) (Boost Software License)
-
-[RIME]: https://rime.im
-[OpenCC]: https://github.com/BYVoid/OpenCC
+## 隐私
+
+- **不上传任何内容**：只有你主动触发发送时，才会把当时那段文本发给**你自己配置的**接口；
+- **密码框不参与**：密码输入框里不记账、不参与回退、不发送；
+- **API Key 加密**：用 Android Keystore（AES-256-GCM）保存，磁盘上没有明文，也排除在系统备份和换机迁移之外；
+- **手写与识字**：模型全部在本地推理，不联网、不上传笔迹和照片。
+
+---
+
+## 版本
+
+| 版本 | 说明 |
+| --- | --- |
+| 1.0.0 | 首个公开版本：品牌化 + 回退 + AI 发送 |
+| 1.1.0 | 新增手写板与主题动作名；AI 模式增至 9 套 |
+| 2.0.0 | 新增拍照识字；确认卡片可调透明度；配套主题图标化 |
+| 2.1.0 | 符号面板扩为 22 类；手写板工具栏图标化；新增「按键动作调用」页；自建设置项支持恢复默认 |
+| 2.2.0 | 剪贴板按内容类型分页，修好点击失灵、切分类闪退与「上屏后回退不了」；符号面板补子分类；设置界面可跟随键盘主题配色 |
+| 2.3.0 | 外接键盘：浮候选条带序号、光标跟随、个数与字号可调；状态条显示中/英、CAPS、全半角、标点并可折叠拖动 |
+| 2.4.0 | 新增文曲星（诗词名句检索，四种内置词包、三种用法、可导入词包）；状态条加语音按钮；回退补记空格与回车 |
+
+## 上游与许可
+
+本项目的输入能力来自这三个上游，按 GPL-3.0 发布，与上游一致：
+
+- [Rime](https://github.com/rime/librime) —— 输入法引擎；
+- [同文输入法 Trime](https://github.com/osfans/trime) —— 键盘界面体系；
+- [灵韵输入法 LyraIME](https://github.com/Carlson24/LyraIME) —— 本项目的宿主分支。
+
+上面这些之外的功能（回退、AI 发送、手写板、拍照识字、符号面板、剪贴板增强、外接键盘、文曲星、外观）是本项目自己加的。

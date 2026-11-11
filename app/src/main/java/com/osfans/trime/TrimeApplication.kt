@@ -23,6 +23,7 @@ import com.osfans.trime.data.db.ClipboardHelper
 import com.osfans.trime.data.db.SyncEntryType
 import com.osfans.trime.data.prefs.AppPrefs
 import com.osfans.trime.data.theme.ColorManager
+import com.osfans.trime.actions.bamboo.BambooPrefs
 import com.osfans.trime.actions.handwriting.HandwritingLog
 import com.osfans.trime.data.theme.ThemeManager
 import com.osfans.trime.ime.clipboard.ScreenshotClipboardWatcher
@@ -132,8 +133,11 @@ class TrimeApplication : Application() {
             registerBroadcastReceiver()
             startWorkManager()
             coroutineScope.launch {
-                runCatching { CrashLogExporter.checkAndExportHistoricalExits(applicationContext, getLastPid()) }
-                runCatching { CrashLogExporter.cleanupOldLogs() }
+                // 正式包默认不产生任何日志文件；只有用户主动打开「日志落盘」才写。
+                if (BuildConfig.BAMBOO_LOG_TO_FILE) {
+                    runCatching { CrashLogExporter.checkAndExportHistoricalExits(applicationContext, getLastPid()) }
+                    runCatching { CrashLogExporter.cleanupOldLogs() }
+                }
             }
         } catch (e: Exception) {
             e.fillInStackTrace()
@@ -168,7 +172,10 @@ class TrimeApplication : Application() {
     private fun installCrashHandler() {
         val previous = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, error ->
-            runCatching { CrashLogExporter.exportCrash(applicationContext, error) }
+            // 同上：正式包默认不写崩溃文件，避免用户目录被日志撑大。
+            if (BuildConfig.BAMBOO_LOG_TO_FILE) {
+                runCatching { CrashLogExporter.exportCrash(applicationContext, error) }
+            }
             runCatching {
                 HandwritingLog.d(
                     "crash",

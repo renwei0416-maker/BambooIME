@@ -116,8 +116,6 @@ class ClipboardWindow(
                         ?: "image/*"
                     service.commitImage(uri, mimeType)
                 } else {
-                    // 和其它上屏路径一样先记一笔账本，qq/ 才能把粘贴进来的内容删掉
-                    com.osfans.trime.actions.bamboo.BambooActions.onCommitted(entry.text)
                     service.commitText(entry.text)
                 }
                 if (clipboardReturnAfterPaste) {

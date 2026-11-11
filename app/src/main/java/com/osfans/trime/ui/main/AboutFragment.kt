@@ -6,9 +6,12 @@
 package com.osfans.trime.ui.main
 
 import android.annotation.SuppressLint
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.widget.Toast
 import androidx.navigation.fragment.findNavController
 import androidx.preference.Preference
 import com.osfans.trime.BuildConfig
@@ -76,14 +79,6 @@ class AboutFragment : PaddingPreferenceFragment() {
             )
             addCategory("") {
                 isIconSpaceReserved = false
-                addPreference(R.string.privacy_policy) {
-                    startActivity(
-                        Intent(
-                            Intent.ACTION_VIEW,
-                            Uri.parse(Const.PRIVACY_POLICY_URL),
-                        ),
-                    )
-                }
                 addPreference(R.string.source_code, R.string.git_repo) {
                     startActivity(
                         Intent(
@@ -110,36 +105,36 @@ class AboutFragment : PaddingPreferenceFragment() {
             addCategory("") {
                 isIconSpaceReserved = false
                 addPreference(R.string.qq_group_1, Const.QQ_GROUP_1_NUM) {
-                    startActivity(
-                        Intent(
-                            Intent.ACTION_VIEW,
-                            Uri.parse(Const.QQ_GROUP_1_URL),
-                        ),
-                    )
-                }
-                addPreference(R.string.qq_group_2, Const.QQ_GROUP_2_NUM) {
-                    startActivity(
-                        Intent(
-                            Intent.ACTION_VIEW,
-                            Uri.parse(Const.QQ_GROUP_2_URL),
-                        ),
-                    )
-                }
-                addPreference(R.string.rime_qq_group, Const.RIME_QQ_GROUP_NUM) {
-                    startActivity(
-                        Intent(
-                            Intent.ACTION_VIEW,
-                            Uri.parse(Const.RIME_QQ_GROUP_URL),
-                        ),
-                    )
-                }
-                addPreference(R.string.telegram, Const.TELEGRAM_NAME) {
-                    startActivity(
-                        Intent(
-                            Intent.ACTION_VIEW,
-                            Uri.parse(Const.TELEGRAM_URL),
-                        ),
-                    )
+                    // 先让 QQ 直接打开加群页；装不上 QQ 再退回网页链接；都不行就复制群号
+                    val opened = runCatching {
+                        startActivity(
+                            Intent(
+                                Intent.ACTION_VIEW,
+                                Uri.parse(Const.QQ_GROUP_1_URL),
+                            ),
+                        )
+                    }.isSuccess || runCatching {
+                        startActivity(
+                            Intent(
+                                Intent.ACTION_VIEW,
+                                Uri.parse(Const.QQ_GROUP_1_WEB),
+                            ),
+                        )
+                    }.isSuccess
+                    if (!opened) {
+                        val clipboard = requireContext().getSystemService(ClipboardManager::class.java)
+                        clipboard?.setPrimaryClip(
+                            ClipData.newPlainText(
+                                getString(R.string.qq_group_1),
+                                Const.QQ_GROUP_1_NUM,
+                            ),
+                        )
+                        Toast.makeText(
+                            requireContext(),
+                            getString(R.string.qq_group_copied),
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                    }
                 }
             }
         }

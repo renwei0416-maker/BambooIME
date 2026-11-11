@@ -14,6 +14,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.text.buildSpannedString
 import com.osfans.trime.core.CompositionProto
+import com.osfans.trime.actions.wenquxing.WenquxingTips
 import com.osfans.trime.data.theme.ColorManager
 import com.osfans.trime.data.theme.FontManager
 import com.osfans.trime.data.theme.Theme
@@ -30,6 +31,11 @@ open class PreeditUi(
 ) : Ui {
     private val textColor = ColorManager.getColor("text_color")
     private val highlightTextColor = ColorManager.getColor("hilited_text_color")
+
+    /** 文曲星提示用的颜色：主题里的注释色，取不到就退回高亮色。 */
+    private val tipColor =
+        runCatching { ColorManager.getColorOr("comment_text_color", highlightTextColor) }
+            .getOrDefault(highlightTextColor)
 
     val preedit =
         view(::PreeditTextView) {
@@ -75,7 +81,24 @@ open class PreeditUi(
         visibility = if (visible) View.VISIBLE else View.GONE
     }
 
+    /** 没有编码行可挂时，直接把提示单独画成这一行。 */
+    fun showTipLine(text: CharSequence) {
+        if (text.isEmpty()) {
+            visible = false
+            updateTextView("", false)
+            return
+        }
+        visible = true
+        updateTextView(text, true)
+    }
+
     fun update(composition: CompositionProto) {
+        com.osfans.trime.actions.handwriting.HandwritingLog.d(
+            "wenquxing",
+            "preedit update enter len=" + composition.length +
+                " preeditLen=" + (composition.preedit?.length ?: -1) +
+                " tipLen=" + com.osfans.trime.actions.wenquxing.WenquxingTips.suffix().length,
+        )
         val string = composition.toSpannedString()
         val cursorPos = composition.cursorPos
         val hasPreedit = composition.length > 0
@@ -93,7 +116,31 @@ open class PreeditUi(
                     append(string, cursorPos, string.length)
                 }
             }
-        updateTextView(stringWithCursor, true)
+        WenquxingTips.onComposition(composition.preedit, composition.commitTextPreview)
+        val tip = WenquxingTips.suffix()
+        com.osfans.trime.actions.handwriting.HandwritingLog.d(
+            "wenquxing",
+            "preedit render tipLen=" + tip.length,
+        )
+        // 没有编码行时提示本身被合成进 preedit，这里不能再拼一遍
+        val alreadyThere = tip.isNotEmpty() &&
+            stringWithCursor.toString().endsWith(tip.toString())
+        val withTip =
+            if (tip.isEmpty() || alreadyThere) {
+                stringWithCursor
+            } else {
+                buildSpannedString {
+                    append(stringWithCursor)
+                    val start = length
+                    append(tip)
+                    setSpan(ForegroundColorSpan(tipColor), start, length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
+                }
+            }
+        com.osfans.trime.actions.handwriting.HandwritingLog.d(
+            "wenquxing",
+            "preedit render already=" + alreadyThere + " final=" + withTip,
+        )
+        updateTextView(withTip, true)
     }
 
     private companion object {
