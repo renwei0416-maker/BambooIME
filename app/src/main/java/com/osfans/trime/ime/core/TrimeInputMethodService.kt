@@ -781,11 +781,15 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
             }
         if (pairAction is AutoPair.Action.SkipRight) {
             // 光标后面已经是对称的右半边：只把光标挪过去，不重复输入，也不记账
-            runCatching { sendDownUpKeyEvents(KeyEvent.KEYCODE_DPAD_RIGHT) }
+            val caret = absoluteCaret(ic)
+            moveCaretTo(ic, if (caret >= 0) caret + 1 else -1, 1)
             scheduleFloatingSyncInputUpdate()
             return
         }
-        val committed = (pairAction as? AutoPair.Action.Insert)?.text ?: text
+        val insert = pairAction as? AutoPair.Action.Insert
+        val committed = insert?.text ?: text
+        // 绝对光标位必须在提交「之前」读：提交之后再读可能拿到旧值，算错就会把光标放到别处
+        val caretBefore = if (insert != null) absoluteCaret(ic) else -1
 
         // 记账放在这个唯一漏斗里：引擎提交、手写、拍照、剪贴板、文曲星、主题里的 commit 键
         // 最终都走这里，qq/ 回退才能删到它们。
@@ -798,15 +802,88 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
         } else {
             ic.commitText(committed, 1)
         }
-        // 补全成对符号后把光标退回一对符号之间
-        repeat((pairAction as? AutoPair.Action.Insert)?.caretBack ?: 0) {
-            runCatching { sendDownUpKeyEvents(KeyEvent.KEYCODE_DPAD_LEFT) }
+        if (insert != null) {
+            // 光标要停在「左半边之后」：插入起点 + 左半边长度（即整串长度减去要退的格数）
+            val caretTarget =
+                if (caretBefore >= 0) caretBefore + insert.text.length - insert.caretBack else -1
+            moveCaretTo(ic, caretTarget, -insert.caretBack)
+            // 有的编辑框会在 commit 之后异步把光标推到末尾，延时确认一次
+            settleCaret(
+                ic,
+                caretTarget,
+                if (caretBefore >= 0) caretBefore + insert.text.length else -1,
+            )
         }
         lastCommittedText = committed
         composingText = ""
         cursorComposingText = ""
         InputFeedbackManager.textCommitSpeak(committed)
         scheduleFloatingSyncInputUpdate()
+    }
+
+    /**
+     * 成对符号补全用：读编辑框的绝对光标位置（文档坐标）。
+     *
+     * 读不到、或者当前是「一段选区」而不是单一光标时返回 -1 —— 这种情况下调用方不做补全，
+     * 因为没法保证光标能停到正确的位置，宁可不补也不要把光标放到别处。
+     */
+    private fun absoluteCaret(ic: InputConnection): Int =
+        runCatching {
+            val req = ExtractedTextRequest().apply { token = 0 }
+            val et = ic.getExtractedText(req, 0) ?: return@runCatching -1
+            if (et.selectionStart < 0 || et.selectionStart != et.selectionEnd) return@runCatching -1
+            // 坐标口径与 clearTextSelection/移到下一段那两处保持一致
+            et.startOffset + et.selectionStart
+        }.getOrDefault(-1)
+
+    /**
+     * 成对符号补全用：把光标移到绝对位置 [absolute]。
+     *
+     * 主路径是 [InputConnection.setSelection] 绝对定位 —— 方向键事件（DPAD_LEFT/RIGHT）在大量
+     * 自绘输入框里会被直接丢掉，1.x 版本就是踩了这个坑（符号补上了、光标没回中间）。
+     * 只有在拿不到绝对位置时才退回方向键：[steps] 正数右移、负数左移。
+     */
+    private fun moveCaretTo(
+        ic: InputConnection,
+        absolute: Int,
+        steps: Int,
+    ) {
+        if (absolute >= 0) {
+            val ok = runCatching { ic.setSelection(absolute, absolute) }.getOrDefault(false)
+            Timber.d("autopair: setSelection($absolute) accepted=$ok")
+            return
+        }
+        val count = if (steps >= 0) steps else -steps
+        val code = if (steps >= 0) KeyEvent.KEYCODE_DPAD_RIGHT else KeyEvent.KEYCODE_DPAD_LEFT
+        repeat(count) { runCatching { sendDownUpKeyEvents(code) } }
+        Timber.d("autopair: no absolute caret, dpad fallback code=$code x$count")
+    }
+
+    /**
+     * 成对符号补全用：延时再确认一次光标位置。
+     *
+     * 有些编辑框在 `commitText` 之后会异步把光标挪到文本末尾，把刚才的定位覆盖掉。
+     * 这里只在「光标恰好停在 [ifLostAt]」时才补设一次 —— 也就是确认我们的定位被吃掉了，
+     * 并且用户在这几十毫秒内没有继续打字；否则什么都不做，不抢用户的光标。
+     * 绝对定位是幂等的，重复设同一个位置没有副作用。
+     */
+    private fun settleCaret(
+        ic: InputConnection,
+        target: Int,
+        ifLostAt: Int,
+    ) {
+        if (target < 0 || ifLostAt < 0) return
+        Handler(Looper.getMainLooper()).postDelayed(
+            {
+                runCatching {
+                    if (absoluteCaret(ic) == ifLostAt) {
+                        val ok = ic.setSelection(target, target)
+                        Timber.d("autopair: settleCaret -> $target accepted=$ok")
+                    }
+                }
+            },
+            80L,
+        )
     }
 
     fun commitImage(
