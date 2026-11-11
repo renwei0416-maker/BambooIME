@@ -294,6 +294,21 @@ object BambooActions {
      * 返回 true 表示已处理（调用方不应再按普通文字/按键处理）。
      */
     suspend fun handleToken(service: TrimeInputMethodService, api: RimeApi, token: String): Boolean {
+        // 引号补全 token 属于「输入增强」，与「回退与AI」不是同一个功能模块，
+        // 所以必须放在总开关之前：用户关掉 AI/回退后引号键照样能用。
+        if (token == BambooTokens.QUOTE || token == BambooTokens.QUOTE_SINGLE) {
+            val isDouble = token == BambooTokens.QUOTE
+            if (AutoPairPrefs.enabled) {
+                // 先把正在打的拼音上屏，再提交真正的左引号；
+                // 右半边与光标居中由 AutoPair 在 commitText 里完成。
+                api.commitComposition()
+                service.commitText(if (isDouble) "\u201C" else "\u2018")
+            } else {
+                // 「符号补全」没开：把原来的键还给引擎，引号交替照旧
+                api.simulateKeySequence(if (isDouble) "\"" else "'")
+            }
+            return true
+        }
         if (!BambooPrefs.enabled) return false
         when (token) {
             BambooTokens.REVERT ->

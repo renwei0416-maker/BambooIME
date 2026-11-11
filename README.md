@@ -110,6 +110,29 @@ Android 中文输入法。
 | `BambooNumber` | 打开数字面板 |
 | `BambooSymbol` | 打开符号面板 |
 | `BambooSettings` | 打开「回退与AI」设置 |
+| `BambooQuote` | 上屏左双引号“；开启「符号补全」时自动补右半边并居中 |
+| `BambooQuoteSingle` | 上屏左单引号‘；同上 |
+
+#### 引号的两枚 token（可绑到任何键）
+
+Rime 引擎的 `punctuator` 里有 `'"' : { pair: [ '“', '”' ] }` 这样的配置，引号会**左右交替**：第一次出左引号，第二次只出右引号。开着「符号补全」时，碰上交替到右边的那一次就只能打出一个孤零零的右引号。这两枚 token 就是为了绕开它：
+
+- `BambooQuote`：提交**真正的左双引号**，由「符号补全」补右半边；
+- `BambooQuoteSingle`：提交**真正的左单引号**，同上。
+
+它们**不受「回退与AI」总开关影响**，只跟「符号补全」联动：补全开着就走上面这条路；补全关着就把原键还给引擎，交替照旧。
+
+自带主题里已经绑好：45 键系 `j` 键上滑 = `BambooQuote`，37/45 键系 `/` 键上滑 = `BambooQuoteSingle`。用别人的主题时，把下面这两行加进对应键位就行（token 名不区分大小写）：
+
+```lua
+-- 双引号：j 键上滑
+key(merge(S.mantle, key { click = "j", swipe_up = "BambooQuote" }))
+
+-- 单引号：/ 键上滑
+key(merge(S.slash, key { click = "/", swipe_up = "BambooQuoteSingle" }))
+```
+
+不开「符号补全」时，这两枚 token 的表现就跟原来的引号键一模一样，所以可以放心用。
 
 ### 输入能力
 

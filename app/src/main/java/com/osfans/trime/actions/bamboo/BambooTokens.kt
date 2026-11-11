@@ -40,8 +40,20 @@ object BambooTokens {
     /** 打开「回退与AI」设置页。 */
     const val SETTINGS = "BambooSettings"
 
+    /**
+     * 双引号补全：提交真正的左双引号 `“`，右半边与光标居中由「符号补全」完成。
+     * 不受「回退与AI」总开关影响，属于「输入增强」。
+     */
+    const val QUOTE = "BambooQuote"
+
+    /** 单引号补全：提交真正的左单引号 `‘`，其余同 [QUOTE]。 */
+    const val QUOTE_SINGLE = "BambooQuoteSingle"
+
     val fixed: List<String> =
-        listOf(REVERT, CLEAR, DELETE_LINE, DELETE_WORD, AI_SEND, AI_CLIP, AI_OFF, SETTINGS)
+        listOf(
+            REVERT, CLEAR, DELETE_LINE, DELETE_WORD, AI_SEND, AI_CLIP, AI_OFF, SETTINGS,
+            QUOTE, QUOTE_SINGLE,
+        )
 
     /** 设置页「动作名一览」用的说明表；与 [fixed] 同源，不会漏项。 */
     private val docMap: Map<String, String> =
@@ -54,6 +66,8 @@ object BambooTokens {
             AI_CLIP to "用当前 AI 模式发送剪贴板（等价 jt;）",
             AI_OFF to "退出 AI 模式（等价 tc;）",
             SETTINGS to "打开「回退与AI」设置页",
+            QUOTE to "提交左双引号“（开启「符号补全」时自动补右半边并居中）",
+            QUOTE_SINGLE to "提交左单引号‘（同上）",
         )
 
     /** 名字 → 说明，与 [fixed] 同源。 */
