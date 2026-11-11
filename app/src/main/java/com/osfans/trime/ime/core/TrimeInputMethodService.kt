@@ -973,6 +973,36 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
     ): Boolean {
         if (onSearchKeyListener?.invoke(event) == true) return true
         hardwareStatusBar?.onKeyEvent(event)
+        // BambooIME hook: 物理按键不经过 CommonKeyboardActionListener，这里补同一道判定。
+        // 命中就吞掉执行（进模式 / 发送 / 上屏），没命中把这次按键原样补发给方案，不丢字。
+        if (event.repeatCount == 0 && BambooActions.mightBeShortcut(keyCode, event.metaState)) {
+            val shortcutKey = KeyValue.fromKeyEvent(event)
+            val shortcutModifiers = KeyModifiers.fromKeyEvent(event)
+            postKeyJob {
+                val handled =
+                    runCatching {
+                        BambooActions.handleKey(this@TrimeInputMethodService, this, keyCode, event.metaState)
+                    }.getOrDefault(false)
+                if (handled) return@postKeyJob
+                // BambooIME hook: 文曲星命中时，上屏键/轮换键要在主线程处理（上屏、重绘编码行）。
+                ContextCompat.getMainExecutor(this@TrimeInputMethodService).execute {
+                    when (val tipsKey = WenquxingTips.consumeKey(keyCode)) {
+                        is WenquxingTips.KeyResult.Commit -> {
+                            WenquxingTips.clear()
+                            postKeyJob { clearComposition() }
+                            commitText(tipsKey.text)
+                        }
+                        WenquxingTips.KeyResult.Rotated -> {
+                            refreshCandidatesPreedit(WenquxingTips.ownLineText())
+                        }
+                        WenquxingTips.KeyResult.None -> {
+                            postKeyJob { processKey(shortcutKey, shortcutModifiers, isVirtual = false) }
+                        }
+                    }
+                }
+            }
+            return true
+        }
         if (inputDeviceManager.evaluateOnKeyDown(event, this)) {
             decorLocationUpdated = false
             forceShowSelf()

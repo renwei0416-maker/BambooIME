@@ -342,12 +342,16 @@ object BambooActions {
             }
 
             BambooTokens.AI_OFF -> {
-                if (armed == null) {
+                val current = armed
+                if (current == null) {
                     toast("本来就不在 AI 模式")
                 } else {
+                    // 与退出码 tc; 完全一致：退出哪个模式就提示哪个
+                    val wasTips = current.key == TIPS_KEY
                     armed = null
                     lastSendTapAt = 0
-                    toast("已退出 AI 模式")
+                    WenquxingTips.clear()
+                    toast(if (wasTips) "已退出文曲星" else "已退出 AI 模式")
                 }
                 return true
             }
@@ -738,6 +742,44 @@ object BambooActions {
     }
 
     /** 软键盘按键 → 字符。只覆盖触发码用得到的键。 */
+    /**
+     * 物理键盘专用：判断这次按键有没有可能是苍竹的码或组合键。
+     *
+     * 物理按键走 [com.osfans.trime.ime.core.TrimeInputMethodService.onKeyDown] →
+     * `forwardKeyEvent`，不经过虚拟键盘的 `CommonKeyboardActionListener`，所以要先筛一遍，
+     * 只把可能的键交给 [handleKey]，其余按键保持原路径，不影响正常输入。
+     */
+    fun mightBeShortcut(keyCode: Int, metaState: Int): Boolean {
+        if (!BambooPrefs.enabled) return false
+        // 带 Ctrl/Alt/Meta 的一律交给 handleKey 判定（快捷组合键、双击发送都在那里面）。
+        if (metaState and (KeyEvent.META_CTRL_ON or KeyEvent.META_ALT_ON or KeyEvent.META_META_ON) != 0) {
+            return true
+        }
+        // 只有 Shift 时不拦：Shift+; 是冒号，应当当普通字符打出去。
+        if (metaState and KeyEvent.META_SHIFT_ON != 0) return false
+        // 文曲星的「上屏 / 轮换」键（默认逗号、句号），键名跟着设置走。
+        if (WenquxingTips.isTipsKey(keyCode)) return true
+        val ch = charOf(keyCode) ?: return false
+        // 空格是上屏键，不参与码的判定。
+        if (ch == ' ') return false
+        return ch in terminatorChars()
+    }
+
+    /** 各码的末字符集合，随设置实时变化；用于物理键盘的按键预筛。 */
+    private fun terminatorChars(): Set<Char> {
+        val out = HashSet<Char>(8)
+        fun addCode(code: String?) {
+            val last = code?.trim()?.lastOrNull() ?: return
+            if (last != ' ') out.add(last)
+        }
+        for (mode in BambooPrefs.aiModes) addCode(mode.code)
+        for (code in BambooPrefs.revertTriggers) addCode(code)
+        addCode(BambooPrefs.aiClipCode)
+        addCode(BambooPrefs.aiExitCode)
+        addCode(BambooPrefs.wenquxingCode)
+        return out
+    }
+
     private fun charOf(keyCode: Int): Char? =
         when (keyCode) {
             KeyEvent.KEYCODE_SLASH -> '/'

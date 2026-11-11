@@ -194,6 +194,17 @@ object WenquxingTips {
      * 第一档键上屏当前第一条；第二档键在两条时上屏第二条，三条以上只轮换顺序，
      * 一条时既不轮换也不上屏（按键按普通标点走）。
      */
+    /**
+     * 物理键盘预筛用：当前有提示，且这个键是「第一档 / 第二档上屏键」。
+     *
+     * 键名随设置实时变化（见 [WenquxingPrefs.keyFirst] / [WenquxingPrefs.keySecond]），
+     * 所以设置里改完不用重启。
+     */
+    fun isTipsKey(keyCode: Int): Boolean {
+        if (tips.isEmpty()) return false
+        return keyCode == codeOf(WenquxingPrefs.keyFirst) || keyCode == codeOf(WenquxingPrefs.keySecond)
+    }
+
     fun consumeKey(keyCode: Int): KeyResult {
         if (tips.isEmpty()) return KeyResult.None
         val first = codeOf(WenquxingPrefs.keyFirst)
