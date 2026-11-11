@@ -78,7 +78,7 @@ $env:LYRAIME_DL_CACHE = "C:\Users\Administrator\Downloads\lyraime-build-env"
 `keystore.properties`（仓库根，已被 `.gitignore` 忽略）：
 
 ```
-storeFile=C:\\Users\\Administrator\\Desktop\\Ai_Work\\keys\\bambooime.jks
+storeFile=C:\\Users\\Administrator\\Desktop\\Ai_Work\\BambooIME\\keys\\bambooime.jks
 storePassword=...
 keyAlias=bambooime
 keyPassword=...
