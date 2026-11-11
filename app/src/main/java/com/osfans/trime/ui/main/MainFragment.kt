@@ -131,6 +131,9 @@ class MainFragment : PaddingPreferenceFragment() {
                 addPreference("文曲星", "诗词提示：候选/剪贴板/光标前文本命中名句、唐诗宋词时在编码后给出摘要", R.drawable.ic_baseline_book_24) {
                     findNavController().navigateWithAnim(NavigationRoute.Wenquxing)
                 }
+                addPreference("输入增强", "成对符号自动补全：打左半边自动补右半边，光标停在中间", R.drawable.ic_baseline_spellcheck_24) {
+                    findNavController().navigateWithAnim(NavigationRoute.InputEnhance)
+                }
             }
             addCategory("") {
                 isIconSpaceReserved = false

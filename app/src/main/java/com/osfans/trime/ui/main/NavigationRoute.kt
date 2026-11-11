@@ -21,6 +21,7 @@ import com.osfans.trime.ui.main.settings.ClipboardSettingsFragment
 import com.osfans.trime.ui.main.settings.CustomTasksFragment
 import com.osfans.trime.ui.main.settings.GeneralSettingsFragment
 import com.osfans.trime.ui.main.settings.HandwritingSettingsFragment
+import com.osfans.trime.ui.main.settings.InputEnhanceFragment
 import com.osfans.trime.ui.main.settings.InputStatsFragment
 import com.osfans.trime.ui.main.settings.KeyboardSettingsFragment
 import com.osfans.trime.ui.main.settings.OcrSettingsFragment
@@ -74,6 +75,9 @@ sealed class NavigationRoute : Parcelable {
 
     @Serializable
     data object HardwareKeyboard : NavigationRoute()
+
+    @Serializable
+    data object InputEnhance : NavigationRoute()
 
     @Serializable
     data object VirtualKeyboard : NavigationRoute()
@@ -172,6 +176,9 @@ sealed class NavigationRoute : Parcelable {
             }
             fragment<HardwareKeyboardFragment, HardwareKeyboard> {
                 label = "外接键盘"
+            }
+            fragment<InputEnhanceFragment, InputEnhance> {
+                label = "输入增强"
             }
             fragment<AdvancedSettingsFragment, Advanced> {
                 label = ctx.getString(R.string.advanced)

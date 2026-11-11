@@ -42,6 +42,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.updateLayoutParams
 import androidx.lifecycle.lifecycleScope
 import com.osfans.trime.R
+import com.osfans.trime.actions.bamboo.AutoPair
 import com.osfans.trime.actions.bamboo.BambooActions
 import com.osfans.trime.actions.wenquxing.WenquxingStore
 import com.osfans.trime.actions.wenquxing.WenquxingTips
@@ -770,21 +771,41 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
         }
         val ic = currentInputConnection ?: return
 
+        // 成对符号自动补全：只接手「单个字符、当前不在组句」的提交，其余原样走下面的老逻辑。
+        val pairAction =
+            if (composingText.isEmpty()) {
+                runCatching { AutoPair.plan(ic, text, currentInputEditorInfo) }
+                    .getOrDefault(AutoPair.Action.Pass)
+            } else {
+                AutoPair.Action.Pass
+            }
+        if (pairAction is AutoPair.Action.SkipRight) {
+            // 光标后面已经是对称的右半边：只把光标挪过去，不重复输入，也不记账
+            runCatching { sendDownUpKeyEvents(KeyEvent.KEYCODE_DPAD_RIGHT) }
+            scheduleFloatingSyncInputUpdate()
+            return
+        }
+        val committed = (pairAction as? AutoPair.Action.Insert)?.text ?: text
+
         // 记账放在这个唯一漏斗里：引擎提交、手写、拍照、剪贴板、文曲星、主题里的 commit 键
         // 最终都走这里，qq/ 回退才能删到它们。
-        runCatching { BambooActions.onCommitted(text) }
+        runCatching { BambooActions.onCommitted(committed) }
             .onFailure { Timber.w(it, "commit: ledger record failed") }
 
         // when composing text equals commit content, finish composing text as-is
         if (composingText.isNotEmpty() && composingText == text) {
             ic.finishComposingText()
         } else {
-            ic.commitText(text, 1)
+            ic.commitText(committed, 1)
         }
-        lastCommittedText = text
+        // 补全成对符号后把光标退回一对符号之间
+        repeat((pairAction as? AutoPair.Action.Insert)?.caretBack ?: 0) {
+            runCatching { sendDownUpKeyEvents(KeyEvent.KEYCODE_DPAD_LEFT) }
+        }
+        lastCommittedText = committed
         composingText = ""
         cursorComposingText = ""
-        InputFeedbackManager.textCommitSpeak(text)
+        InputFeedbackManager.textCommitSpeak(committed)
         scheduleFloatingSyncInputUpdate()
     }
 
