@@ -298,13 +298,15 @@ object BambooActions {
         // 所以必须放在总开关之前：用户关掉 AI/回退后引号键照样能用。
         if (token == BambooTokens.QUOTE || token == BambooTokens.QUOTE_SINGLE) {
             val isDouble = token == BambooTokens.QUOTE
-            if (AutoPairPrefs.enabled) {
+            // 两个开关都开才走补全：总开关「符号补全」+ 子开关「引号也配对」。
+            // 任意一个关了，就把原键还给引擎，回到原来的引号交替行为。
+            if (AutoPairPrefs.enabled && AutoPairPrefs.quotes) {
                 // 先把正在打的拼音上屏，再提交真正的左引号；
                 // 右半边与光标居中由 AutoPair 在 commitText 里完成。
                 api.commitComposition()
                 service.commitText(if (isDouble) "\u201C" else "\u2018")
             } else {
-                // 「符号补全」没开：把原来的键还给引擎，引号交替照旧
+                // 补全没开（或「引号也配对」关了）：把原键还给引擎，引号交替照旧
                 api.simulateKeySequence(if (isDouble) "\"" else "'")
             }
             return true
