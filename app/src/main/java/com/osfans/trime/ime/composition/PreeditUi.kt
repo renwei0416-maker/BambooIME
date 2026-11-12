@@ -62,6 +62,14 @@ open class PreeditUi(
         runCatching { ColorManager.getColorOr("comment_text_color", highlightTextColor) }
             .getOrDefault(highlightTextColor)
 
+    /** 三角标记的颜色：跟候选高亮那块底色一致；对比度不够（浅色主题）就退回文字高亮色。 */
+    private val markColor =
+        runCatching {
+            val cand = ColorManager.getColorOr("hilited_candidate_back_color", highlightTextColor)
+            val back = ColorManager.getColor("text_back_color")
+            if (contrastRatio(cand, back) >= MIN_MARK_CONTRAST) cand else highlightTextColor
+        }.getOrDefault(highlightTextColor)
+
     val preedit =
         view(::PreeditTextView) {
             setTextColor(textColor)
@@ -183,13 +191,20 @@ open class PreeditUi(
         // 三角跟在高亮那一条前面；文曲星块没有高亮，就落在第一条
         val markAt = lines.indexOfFirst { it.highlighted }.takeIf { it >= 0 } ?: 0
         val unmatchedAlpha = runCatching { GlossaryPrefs.unmatchedAlpha }.getOrDefault(80)
+        val unmatchedScale = runCatching { GlossaryPrefs.unmatchedTextScale }.getOrDefault(100)
         return buildSpannedString {
             lines.forEachIndexed { index, line ->
                 if (index > 0) append('\n')
                 val markStart = length
                 append(if (index == markAt) MARK else INDENT)
                 if (index == markAt) {
-                    // 只放大三角字形本身，颜色跟随正文文字色，后面的空格保持原宽度
+                    // 只放大三角字形本身，后面的全角空格保持原宽度，避免各行文字错位
+                    setSpan(
+                        ForegroundColorSpan(markColor),
+                        markStart,
+                        markStart + 1,
+                        Spanned.SPAN_INCLUSIVE_EXCLUSIVE,
+                    )
                     setSpan(
                         StyleSpan(Typeface.BOLD),
                         markStart,
@@ -219,6 +234,12 @@ open class PreeditUi(
                         Spanned.SPAN_INCLUSIVE_EXCLUSIVE,
                     )
                     setSpan(
+                        RelativeSizeSpan(unmatchedScale / 100f),
+                        cnStart,
+                        cnEnd,
+                        Spanned.SPAN_INCLUSIVE_EXCLUSIVE,
+                    )
+                    setSpan(
                         ForegroundColorSpan(withAlpha(textColor, unmatchedAlpha)),
                         cnStart,
                         cnEnd,
@@ -239,6 +260,26 @@ open class PreeditUi(
     private fun withAlpha(color: Int, percent: Int): Int {
         val a = ((color ushr 24) and 0xFF) * percent.coerceIn(0, 100) / 100
         return (color and 0x00FFFFFF) or (a shl 24)
+    }
+
+    /** 相对亮度（WCAG），只看 RGB。 */
+    private fun luminance(color: Int): Double {
+        fun ch(v: Int): Double {
+            val s = v / 255.0
+            return if (s <= 0.03928) s / 12.92 else Math.pow((s + 0.055) / 1.055, 2.4)
+        }
+        return 0.2126 * ch((color shr 16) and 0xFF) +
+            0.7152 * ch((color shr 8) and 0xFF) +
+            0.0722 * ch(color and 0xFF)
+    }
+
+    /** 两色的对比度（1.0–21.0）。 */
+    private fun contrastRatio(a: Int, b: Int): Double {
+        val la = luminance(a)
+        val lb = luminance(b)
+        val hi = if (la > lb) la else lb
+        val lo = if (la > lb) lb else la
+        return (hi + 0.05) / (lo + 0.05)
     }
 
     /** 一块提示 + 它来自哪个模块（决定用谁的显示设置）。 */
@@ -297,8 +338,10 @@ open class PreeditUi(
         private const val MIN_SCALE = 0.4f
         private const val MAX_SCALE = 2f
         private const val EN_SCALE = 0.82f
-        private const val MARK_SCALE = 1.3f
-        private const val MARK = "> "
-        private const val INDENT = "\u3000"
+        private const val MARK_SCALE = 1.1f
+        /** 三角和提示块底色的最低对比度，低于这个就退回文字色，避免箭头看不见。 */
+        private const val MIN_MARK_CONTRAST = 2.0
+        private const val MARK = "\u25B6\u3000"
+        private const val INDENT = "\u3000\u3000"
     }
 }

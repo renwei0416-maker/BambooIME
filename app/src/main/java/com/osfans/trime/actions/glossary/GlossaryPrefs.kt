@@ -40,7 +40,7 @@ object GlossaryPrefs {
 
     /** 学习条最多显示几条（1–6）。 */
     var tipsMax: Int
-        get() = p().getInt("tips_max", 3).coerceIn(1, 6)
+        get() = p().getInt("tips_max", 4).coerceIn(1, 6)
         set(v) = p().edit().putInt("tips_max", v.coerceIn(1, 6)).apply()
 
     /** 和文曲星同时开启时怎么办，见 [GlossaryTips.CONFLICT_AUTO]。 */
@@ -55,8 +55,8 @@ object GlossaryPrefs {
 
     /** 每条义项最多显示多少字符（8–70）。 */
     var maxChars: Int
-        get() = p().getInt("max_chars", 20).coerceIn(8, 70)
-        set(v) = p().edit().putInt("max_chars", v.coerceIn(8, 70)).apply()
+        get() = p().getInt("max_chars", 40).coerceIn(8, 100)
+        set(v) = p().edit().putInt("max_chars", v.coerceIn(8, 100)).apply()
 
     /** 提示块的字号，相对编码行的百分比（50–150）。 */
     var tipsTextScale: Int
@@ -72,6 +72,11 @@ object GlossaryPrefs {
     var unmatchedAlpha: Int
         get() = p().getInt("unmatched_alpha", 80).coerceIn(0, 100)
         set(v) = p().edit().putInt("unmatched_alpha", v.coerceIn(0, 100)).apply()
+
+    /** 查不到英文的那些行，字号相对上面「字号」的百分比（50–150），默认 100。 */
+    var unmatchedTextScale: Int
+        get() = p().getInt("unmatched_text_scale", 100).coerceIn(50, 150)
+        set(v) = p().edit().putInt("unmatched_text_scale", v.coerceIn(50, 150)).apply()
 
     /** 显示词性（v. / n. …）。 */
     var showPos: Boolean
@@ -101,13 +106,14 @@ object GlossaryPrefs {
     fun resetToDefault() {
         p().edit()
             .putBoolean("enabled", false)
-            .putInt("tips_max", 3)
+            .putInt("tips_max", 4)
             .putInt("conflict", GlossaryTips.CONFLICT_AUTO)
             .putInt("sense_count", 2)
-            .putInt("max_chars", 20)
+            .putInt("max_chars", 40)
             .putInt("tips_text_scale", 90)
             .putInt("tips_alpha", 90)
             .putInt("unmatched_alpha", 80)
+            .putInt("unmatched_text_scale", 100)
             .putBoolean("show_pos", true)
             .putBoolean("show_style", true)
             .putBoolean("show_domain", false)

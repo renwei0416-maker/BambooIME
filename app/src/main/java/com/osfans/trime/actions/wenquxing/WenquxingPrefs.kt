@@ -47,13 +47,13 @@ object WenquxingPrefs {
 
     /** 提示里每条摘要显示多少字。 */
     var displayLen: Int
-        get() = p().getInt("display_len", 40).coerceIn(4, 60)
-        set(value) = p().edit().putInt("display_len", value.coerceIn(4, 60)).apply()
+        get() = p().getInt("display_len", 40).coerceIn(4, 100)
+        set(value) = p().edit().putInt("display_len", value.coerceIn(4, 100)).apply()
 
     /** 最多显示几条。 */
     var maxDisplay: Int
-        get() = p().getInt("max_display", 3).coerceIn(1, 5)
-        set(value) = p().edit().putInt("max_display", value.coerceIn(1, 5)).apply()
+        get() = p().getInt("max_display", 3).coerceIn(1, 6)
+        set(value) = p().edit().putInt("max_display", value.coerceIn(1, 6)).apply()
 
     /** 提示块的字号，相对编码行的百分比（50–150）。 */
     var tipsTextScale: Int

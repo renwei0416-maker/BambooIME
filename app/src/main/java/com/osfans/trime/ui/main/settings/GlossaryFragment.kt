@@ -81,7 +81,7 @@ class GlossaryFragment : PaddingPreferenceFragment() {
                         min = 1,
                         max = 6,
                         step = 1,
-                        default = 3,
+                        default = 4,
                         current = GlossaryPrefs.tipsMax,
                         unit = " 条",
                         resetters = resetters,
@@ -126,7 +126,7 @@ class GlossaryFragment : PaddingPreferenceFragment() {
                         min = 8,
                         max = 70,
                         step = 2,
-                        default = 20,
+                        default = 40,
                         current = GlossaryPrefs.maxChars,
                         unit = " 字符",
                         resetters = resetters,
@@ -171,6 +171,19 @@ class GlossaryFragment : PaddingPreferenceFragment() {
                         resetters = resetters,
                     ) {
                         GlossaryPrefs.unmatchedAlpha = it
+                    }
+                    addSeek(
+                        "未命中行字号",
+                        "没命中的那行中文相对上面「字号」的百分比；默认 100% ＝ 和命中行一样大",
+                        min = 50,
+                        max = 150,
+                        step = 5,
+                        default = 100,
+                        current = GlossaryPrefs.unmatchedTextScale,
+                        unit = " %",
+                        resetters = resetters,
+                    ) {
+                        GlossaryPrefs.unmatchedTextScale = it
                     }
                     addRow(
                         "学习条和上屏共用这里的设置",
