@@ -215,9 +215,13 @@ open class PreeditUi(
      * 编码行（上游）的宽度不受影响。
      */
     private fun syncTipsWidth() {
-        val parentWidth = (root.parent as? View)?.width ?: 0
-        if (parentWidth > 0 && tips.minimumWidth != parentWidth) {
-            tips.minimumWidth = parentWidth
+        // 不能只信 root.parent 的宽度：它可能是刚挂上去、还没量完，也可能不是 ConstraintLayout
+        // 本身。屏宽是稳的上界，父容器窄的话测量时会被 AT_MOST 夹回来，不会溢出。
+        val screen = ctx.resources.displayMetrics.widthPixels
+        val parent = (root.parent as? View)?.width ?: 0
+        val target = maxOf(screen, parent)
+        if (target > 0 && tips.minimumWidth != target) {
+            tips.minimumWidth = target
         }
     }
 
