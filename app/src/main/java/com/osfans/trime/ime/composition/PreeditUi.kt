@@ -176,8 +176,10 @@ open class PreeditUi(
 
             init {
                 orientation = VERTICAL
-                add(preedit, lParams(matchParent, wrapContent))
+                add(preedit, lParams(wrapContent, wrapContent))
                 add(tips, lParams(matchParent, wrapContent))
+                // 上游把整块挂成 wrapContent 宽，提示块得自己钉到可用宽度，否则展开时只有内容那么宽
+                addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> syncTipsWidth() }
             }
         }
 
@@ -203,6 +205,20 @@ open class PreeditUi(
     /** 编码行的透明度只作用于它自己，不再连累提示块。 */
     fun applyPreeditAlpha(alpha: Float) {
         preedit.alpha = alpha.coerceIn(0f, 1f)
+    }
+
+    /**
+     * 提示块横向占满输入法宽度。
+     *
+     * 上游 [com.osfans.trime.ime.core.InputView] 把这一整块按 `wrapContent` 挂进 ConstraintLayout，
+     * 所以子 View 的 `matchParent` 撑不出宽度；这里用 `minimumWidth` 把可用宽度钉住，
+     * 编码行（上游）的宽度不受影响。
+     */
+    private fun syncTipsWidth() {
+        val parentWidth = (root.parent as? View)?.width ?: 0
+        if (parentWidth > 0 && tips.minimumWidth != parentWidth) {
+            tips.minimumWidth = parentWidth
+        }
     }
 
     /** 这一份该不该由自己画提示块：候选窗显示着就让候选窗画，否则键盘画。 */
@@ -246,6 +262,7 @@ open class PreeditUi(
             }
         tips.visibility = View.VISIBLE
         visible = true
+        tips.post { syncTipsWidth() }
         if (expandedIndex >= 0) {
             tips.scrollTo(0, 0)
         } else {
@@ -379,6 +396,12 @@ open class PreeditUi(
                         iconEnd[index],
                         Spanned.SPAN_INCLUSIVE_EXCLUSIVE,
                     )
+                    setSpan(
+                        StyleSpan(Typeface.BOLD),
+                        iconStart[index],
+                        iconEnd[index],
+                        Spanned.SPAN_INCLUSIVE_EXCLUSIVE,
+                    )
                 }
             }
         }
@@ -419,19 +442,21 @@ open class PreeditUi(
         val offset = layout.getOffsetForHorizontal(line, vx.coerceAtLeast(0f))
 
         if (expandedIndex >= 0) {
-            if (offset < iconEnd[0]) {
-                collapse()
-            } else {
-                commitPayload(blockEntries.getOrNull(expandedIndex)?.payload.orEmpty())
-            }
+            // 展开态第一行整行都是「收起」，点正文区域则上屏这一条
+            if (line == 0) collapse() else commitPayload(blockEntries.getOrNull(expandedIndex)?.payload.orEmpty())
             return
         }
 
         val index = entryIndexOf(offset)
         if (index < 0) return
-        if (iconStart[index] >= 0 && offset in iconStart[index] until iconEnd[index]) {
-            expand(index)
-            return
+        // 图标热区：点到这一条图标所在的视觉行、且落在行尾 40dp 内，都算点图标
+        if (iconStart[index] >= 0) {
+            val iconLine = layout.getLineForOffset(iconStart[index])
+            val nearRight = vx >= layout.getLineRight(iconLine) - ctx.dp(ICON_TOUCH_DP)
+            if (line == iconLine && nearRight) {
+                expand(index)
+                return
+            }
         }
         // 落在行首缩进、三角标记上不算点到这一条
         if (offset < entryStart[index] || offset >= entryBlockEnd[index]) return
@@ -571,13 +596,16 @@ open class PreeditUi(
         private const val EN_SCALE = 0.82f
         private const val MARK_SCALE = 1.1f
         private const val COUNT_SCALE = 0.78f
-        private const val ICON_SCALE = 1.05f
+        private const val ICON_SCALE = 1.3f
 
         /** 三角和提示块底色的最低对比度，低于这个就退回文字色，避免箭头看不见。 */
         private const val MIN_MARK_CONTRAST = 2.0
 
         /** 手动滑动之后多久之内不再自动把视口拉回高亮项。 */
         private const val MANUAL_SCROLL_GRACE_MS = 2500L
+
+        /** 展开图标的热区宽度（dp）：从行尾往左这么多都算点到图标，不用精确点那个小三角。 */
+        private const val ICON_TOUCH_DP = 40
 
         private const val MARK = "\u25B6\u3000"
         private const val INDENT = "\u3000\u3000"
