@@ -19,6 +19,7 @@ import androidx.preference.PreferenceCategory
 import androidx.preference.PreferenceScreen
 import com.osfans.trime.R
 import com.osfans.trime.data.base.DataManager
+import com.osfans.trime.ime.core.TrimeInputMethodService
 import com.osfans.trime.actions.glossary.GlossaryDownloader
 import com.osfans.trime.actions.glossary.GlossaryPrefs
 import com.osfans.trime.actions.glossary.GlossaryStore
@@ -86,6 +87,23 @@ class GlossaryFragment : PaddingPreferenceFragment() {
                 }
 
                 addCategory("显示", "编码行下面按候选顺序列出「中文 + 英文」，一行一个") {
+                    addChoice(
+                        title = "在提示区显示哪些",
+                        subtitle =
+                            if (GlossaryPrefs.displayMode == GlossaryPrefs.MODE_HITS_ONLY) {
+                                "只显示命中项：没查到的整条不出现，从当前候选往后最多看 6 个"
+                            } else {
+                                "始终显示候选项：每个候选都占一行，没查到的只有中文（斜体）"
+                            },
+                        entries = arrayOf("始终显示候选项", "只显示命中项"),
+                        currentIndex = GlossaryPrefs.displayMode,
+                        defaultIndex = GlossaryPrefs.MODE_ALWAYS,
+                        resetters = resetters,
+                    ) { idx ->
+                        GlossaryPrefs.displayMode = idx
+                        TrimeInputMethodService.current?.refreshCandidatesPreedit()
+                        rebuildScreen()
+                    }
                     addSwitch(
                         "边打字边显示英文",
                         "开＝在编码行下面显示学习条；关掉就完全不占地方，上屏英文的按键照样能用",
@@ -97,7 +115,7 @@ class GlossaryFragment : PaddingPreferenceFragment() {
                     }
                     addSeek(
                         "最多显示几条",
-                        "按候选顺序取前几个；没命中的候选也会列出来（只显示中文），方便对上位置",
+                        "最多显示几行；「只显示命中项」时这些行都带英文",
                         min = 1,
                         max = 6,
                         step = 1,
@@ -293,10 +311,17 @@ class GlossaryFragment : PaddingPreferenceFragment() {
                 }
 
                 addCategory("说明与许可", null) {
-                    addRow(
-                        "词库来源：CC-CEDICT",
-                        "CC BY-SA 4.0，由 MDBG 发布；本项目的 .bge 是它的改编版本，同样以 CC BY-SA 4.0 提供",
-                    )
+                    if (GlossaryPrefs.lang == GlossaryPrefs.LANG_JA) {
+                        addRow(
+                            "词库来源：青简释义表（MIT）",
+                            "由青简项目用 DeepSeek 离线生成，按 MIT 许可使用；本项目只做了格式转换与字段清洗",
+                        )
+                    } else {
+                        addRow(
+                            "词库来源：CC-CEDICT",
+                            "CC BY-SA 4.0，由 MDBG 发布；本项目的 .bge 是它的改编版本，同样以 CC BY-SA 4.0 提供",
+                        )
+                    }
                 }
             }
     }

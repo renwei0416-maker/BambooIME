@@ -20,6 +20,12 @@ object GlossaryPrefs {
 
     /** 默认下载地址（发布资产；用户可在设置里改成任意镜像）。 */
     /** 学习语言：.bge 头部里的 lang 字段（'en' / 'ja'）。 */
+    /** 显示模式：始终把候选都列出来（没命中的只显示中文）。 */
+    const val MODE_ALWAYS = 0
+
+    /** 显示模式：只列有英文的候选，没命中的整条不出现。 */
+    const val MODE_HITS_ONLY = 1
+
     const val LANG_EN = "en"
     const val LANG_JA = "ja"
 
@@ -52,6 +58,11 @@ object GlossaryPrefs {
 
     /** 总开关：候选后面要不要显示英文。 */
     /** 一次只学一门语言；只加载 lang 匹配的词库包。 */
+    /** 显示模式，见 [MODE_ALWAYS] / [MODE_HITS_ONLY]。 */
+    var displayMode: Int
+        get() = p().getInt("display_mode", MODE_ALWAYS).coerceIn(0, 1)
+        set(value) = p().edit().putInt("display_mode", value.coerceIn(0, 1)).apply()
+
     var lang: String
         get() = p().getString("lang", LANG_EN) ?: LANG_EN
         set(v) = p().edit().putString("lang", if (v == LANG_JA) LANG_JA else LANG_EN).apply()

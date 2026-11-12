@@ -74,6 +74,9 @@ object GlossaryTips {
         return line?.english?.takeIf { it.isNotEmpty() }
     }
 
+    /** 往后看几个候选位置（含高亮那个）。 */
+    private const val SCAN_WINDOW = 6
+
     private fun build(max: Int): List<TipLine> {
         if (!shouldShow()) return emptyList()
         val limit = max.coerceIn(1, 6)
@@ -83,17 +86,22 @@ object GlossaryTips {
         // 窗口跟着高亮走：高亮那个永远排第一行，下面依次是它后面的候选。
         // 这样候选条只显示几条、而总数更多时，往后移动候选块也会跟着滚，箭头不会卡在末行。
         val start = if (highlight in candidates.indices) highlight else 0
+        // 扫描窗口固定 6 个候选位置（含高亮这个），走到末尾就截断、不绕回。
+        val end = (start + SCAN_WINDOW).coerceAtMost(candidates.size)
+        val hitsOnly = GlossaryPrefs.displayMode == GlossaryPrefs.MODE_HITS_ONLY
         val senseCount = GlossaryPrefs.senseCount
         val maxChars = GlossaryPrefs.maxChars
         val out = ArrayList<TipLine>(limit)
-        for (i in start until candidates.size) {
+        for (i in start until end) {
             if (out.size >= limit) break
             val text = candidates[i].text
             if (text.isEmpty()) continue
             if (text.length > 8) continue
             val english = GlossaryFormatter.format(GlossaryStore.lookup(text), senseCount, maxChars)
                 ?.takeIf { it.isNotEmpty() }
-            // 查不到也占一行（只显示中文、斜体），保证「第几行 = 高亮往后第几个候选」
+            // 「只显示命中项」：没命中的整条不出现，行数不再等于候选位置。
+            if (hitsOnly && english == null) continue
+            // 「始终显示」：查不到也占一行（只显示中文、斜体），保证「第几行 = 高亮往后第几个候选」
             out.add(TipLine(text, english, i == highlight, english == null))
         }
         return out
