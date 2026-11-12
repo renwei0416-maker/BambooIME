@@ -176,6 +176,39 @@ open class PreeditUi(
         object : LinearLayout(ctx) {
             override fun onInterceptTouchEvent(ev: MotionEvent?): Boolean = false
 
+            private var lastMeasureLog = ""
+
+            override fun onMeasure(
+                widthMeasureSpec: Int,
+                heightMeasureSpec: Int,
+            ) {
+                // root 自己是「整行」容器：宽度必须等于父容器宽度，不能按内容收缩。
+                // 父级给的是 AT_MOST（wrap 语义），而 LinearLayout 在 wrap 模式下会先按内容
+                // 定宽、再把 MATCH_PARENT 的子 View 重测成这个宽度——于是提示块被夹成编码行宽度。
+                // 这里直接把测量规格改成 EXACTLY(父宽)，一次解决。
+                val parentWidth =
+                    (parent as? View)?.width?.takeIf { it > 0 }
+                        ?: ctx.resources.displayMetrics.widthPixels
+                val forced = MeasureSpec.makeMeasureSpec(parentWidth, MeasureSpec.EXACTLY)
+                super.onMeasure(forced, heightMeasureSpec)
+                val mode =
+                    when (MeasureSpec.getMode(widthMeasureSpec)) {
+                        MeasureSpec.EXACTLY -> "EXACT"
+                        MeasureSpec.AT_MOST -> "ATMOST"
+                        else -> "UNSPEC"
+                    }
+                val line =
+                    "measure spec=$mode:${MeasureSpec.getSize(widthMeasureSpec)} forced=$parentWidth " +
+                        "-> rootW=$measuredWidth " +
+                        "preeditW=${preedit.measuredWidth}/${preedit.layoutParams.width} " +
+                        "tipsW=${tips.measuredWidth}/${tips.layoutParams.width} " +
+                        "parent=${parent?.javaClass?.simpleName}:${(parent as? View)?.width}"
+                if (line != lastMeasureLog) {
+                    lastMeasureLog = line
+                    HandwritingLog.d("tips", line)
+                }
+            }
+
             init {
                 orientation = VERTICAL
                 add(preedit, lParams(wrapContent, wrapContent))

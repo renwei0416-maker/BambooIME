@@ -774,9 +774,13 @@ class InputView(
             // 父宽度会退化成编码行的宽度（短编码就只有一百多像素），提示块是 matchParent，
             // 第二轮测量就被夹成那么宽，长一点的外语释义只能在窄条里疯狂折行。
             preedit.ui.root,
+            // ConstraintLayout 里 matchParent 等于「由两侧约束决定」：只给 start 不给 end 时，
+            // 它会退回按内容收缩（日志里 rootW 一直等于编码行宽度就是这么来的）。
+            // 两头都钉住才是真正的整行。
             lParams(matchParent, wrapContent) {
                 above(keyboardView)
                 startOfParent()
+                endOfParent()
             },
         )
 
