@@ -13,6 +13,7 @@ import android.graphics.Path
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffColorFilter
 import android.graphics.Typeface
+import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.os.Handler
@@ -22,6 +23,7 @@ import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewOutlineProvider
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.PopupWindow
@@ -97,6 +99,8 @@ class HardwareStatusBar(
             elevation = 0f
             // 输入法窗口很小时，默认的裁剪会把浮层可移动范围限制住
             isClippingEnabled = false
+            // 顶掉主题 popupWindowStyle 给的浅色 windowBackground（深色胶囊外的白边就是它）
+            setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
         }
 
     private val ticker =
@@ -251,6 +255,9 @@ class HardwareStatusBar(
                 setColor(itemBg)
                 cornerRadius = s(10).toFloat()
             }
+        // 圆角真正裁掉，避免窗口方形背景从四角漏出来
+        row.clipToOutline = true
+        row.outlineProvider = ViewOutlineProvider.BACKGROUND
 
         val collapsed = HardwareKeyboardPrefs.statusBarCollapsed
         val items = mutableListOf<Node>()

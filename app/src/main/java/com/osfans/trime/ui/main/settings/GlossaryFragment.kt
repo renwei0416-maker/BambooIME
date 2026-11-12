@@ -277,14 +277,6 @@ class GlossaryFragment : PaddingPreferenceFragment() {
                         "词库来源：CC-CEDICT",
                         "CC BY-SA 4.0，由 MDBG 发布；本项目的 .bge 是它的改编版本，同样以 CC BY-SA 4.0 提供",
                     )
-                    addRow(
-                        "为什么不全内置进 APK",
-                        "全量释义约 8 MB，放进 APK 会让每次安装都拖长；装不装、装哪几门语言交给用户决定",
-                    )
-                    addRow(
-                        "没命中的候选不显示任何东西",
-                        "长句、人名、生僻词查不到就保持干净，不会出现占位符",
-                    )
                 }
             }
     }

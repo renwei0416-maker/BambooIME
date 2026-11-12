@@ -120,14 +120,6 @@ class MainFragment : PaddingPreferenceFragment() {
                 addPreference("外接键盘", "接硬件键盘时的浮动候选条（个数、横排/竖排）与状态条", R.drawable.ic_baseline_keyboard_24) {
                     findNavController().navigateWithAnim(NavigationRoute.HardwareKeyboard)
                 }
-                addPreference(
-                    "按键动作调用",
-                    "全部动作名（token）的总表、写法和注意事项，供自定义键位参照",
-                    R.drawable.ic_baseline_list_alt_24,
-                ) {
-                    findNavController().navigateWithAnim(NavigationRoute.BambooTokens)
-                }
-
                 addPreference("文曲星", "诗词提示：候选/剪贴板/光标前文本命中名句、唐诗宋词时在编码后给出摘要", R.drawable.ic_baseline_book_24) {
                     findNavController().navigateWithAnim(NavigationRoute.Wenquxing)
                 }
@@ -136,6 +128,13 @@ class MainFragment : PaddingPreferenceFragment() {
                 }
                 addPreference("外语学习", "让你边打字边学习外语", R.drawable.ic_baseline_language_24) {
                     findNavController().navigateWithAnim(NavigationRoute.Glossary)
+                }
+                addPreference(
+                    "按键动作调用说明",
+                    "全部动作名（token）的总表、写法和注意事项，供自定义键位参照",
+                    R.drawable.ic_baseline_list_alt_24,
+                ) {
+                    findNavController().navigateWithAnim(NavigationRoute.BambooTokens)
                 }
             }
             addCategory("") {

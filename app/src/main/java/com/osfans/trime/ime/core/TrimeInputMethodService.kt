@@ -331,6 +331,12 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
                                         BambooActions.onBackspaceReplayed()
                                     }
                                     // recognized keyCode
+                                    // 空格是「模拟按键」插进编辑框的，不经过 commitText，账本在这里补记一次
+                                    if (keyCode == KeyEvent.KEYCODE_SPACE &&
+                                        !it.modifiers.ctrl && !it.modifiers.alt && !it.modifiers.meta
+                                    ) {
+                                        runCatching { BambooActions.onCommitted(" ") }
+                                    }
                                     sendDownUpKeyEvent(
                                         keyCode,
                                         it.modifiers.metaState or meta(
