@@ -24,6 +24,7 @@ import com.osfans.trime.R
 import com.osfans.trime.actions.bamboo.BambooActions
 import com.osfans.trime.actions.bamboo.BambooPrefs
 import com.osfans.trime.actions.wenquxing.WenquxingPrefs
+import com.osfans.trime.ime.core.TrimeInputMethodService
 import com.osfans.trime.actions.wenquxing.WenquxingStore
 import com.osfans.trime.ui.common.BambooClick
 import com.osfans.trime.ui.common.BambooSwitch
@@ -132,6 +133,17 @@ class WenquxingFragment : PaddingPreferenceFragment() {
                         unit = " %",
                         resetters = resetters,
                     ) { WenquxingPrefs.tipsAlpha = it }
+
+                    addSwitchSetting(
+                        title = "显示命中项字数",
+                        summary = "在每条末尾显示「·N字」：点这一条会提交多少字",
+                        default = true,
+                        current = WenquxingPrefs.showCharCount,
+                        resetters = resetters,
+                    ) {
+                        WenquxingPrefs.showCharCount = it
+                        TrimeInputMethodService.current?.refreshCandidatesPreedit()
+                    }
                 }
 
                 addBambooCategory("上屏", "命中之后用哪两个键把正文打出来") {

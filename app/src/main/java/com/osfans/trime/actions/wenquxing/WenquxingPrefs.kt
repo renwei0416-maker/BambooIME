@@ -65,6 +65,11 @@ object WenquxingPrefs {
         get() = p().getInt("tips_alpha", 90).coerceIn(0, 100)
         set(value) = p().edit().putInt("tips_alpha", value.coerceIn(0, 100)).apply()
 
+    /** 行尾「·N字」：这一条点下去会提交多少字。 */
+    var showCharCount: Boolean
+        get() = p().getBoolean("show_char_count", true)
+        set(value) = p().edit().putBoolean("show_char_count", value).apply()
+
     /** 第一档上屏键（rime key 名，脚本默认 comma）。 */
     var keyFirst: String
         get() = p().getString("key_first", "comma") ?: "comma"

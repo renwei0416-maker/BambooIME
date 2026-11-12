@@ -197,6 +197,16 @@ class GlossaryFragment : PaddingPreferenceFragment() {
                     ) {
                         GlossaryPrefs.tipsAlpha = it
                     }
+                    addSwitch(
+                        "显示命中项字数",
+                        "在每条末尾显示「·N字」：点这一条会提交多少字",
+                        default = true,
+                        current = GlossaryPrefs.showCharCount,
+                        resetters = resetters,
+                    ) {
+                        GlossaryPrefs.showCharCount = it
+                        TrimeInputMethodService.current?.refreshCandidatesPreedit()
+                    }
                     addSeek(
                         "未命中行不透明度",
                         "词库里没有的词只显示中文（斜体），这里是那行中文的浓度；调低更不抢眼",

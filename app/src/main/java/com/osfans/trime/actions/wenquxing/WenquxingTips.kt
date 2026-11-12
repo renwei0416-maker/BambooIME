@@ -10,6 +10,7 @@ import android.view.KeyEvent
 
 import com.osfans.trime.actions.bamboo.BambooActions
 import com.osfans.trime.actions.handwriting.HandwritingLog
+import com.osfans.trime.actions.tips.TipEntry
 
 object WenquxingTips {
 
@@ -18,6 +19,9 @@ object WenquxingTips {
 
     /** 一次最多收集多少条命中，够统计「共 N 组」用即可。 */
     private const val COLLECT_LIMIT = 99
+
+    /** 一次最多给多少条（视口高度只决定显示几行，内容能滑到更多）。 */
+    private const val MAX_ENTRIES = 60
 
     /** 当前可上屏的正文（顺序与显示的摘要一致）。 */
     @Volatile
@@ -135,37 +139,28 @@ object WenquxingTips {
     }
 
     /**
-     * 文曲星块：一条一行，显示位置打头（①是当前第一行，轮换后重排）；没有内容返回 null。
-     * 与 [render] 共用同一份顺序和字数设置，只是不再拼成一整行。
+     * 文曲星块的全部条目：一条一行，显示位置打头（①是当前第一行，轮换后重排）。
+     *
+     * **不按「显示条数」截断**——那个设置现在只决定视口高度，多出来的靠上下滑动看，
+     * 所以这里把命中的全部给出来（安全上限 [MAX_ENTRIES]）。「共 N 组」并到最后一条后面。
      */
-    fun blockLines(): List<String>? {
-        if (tips.isEmpty()) return null
+    fun entries(): List<TipEntry> {
+        if (tips.isEmpty()) return emptyList()
         ensureOrder()
         val len = WenquxingPrefs.displayLen
-        val cap = minOf(total, WenquxingPrefs.maxDisplay)
-        val out = ArrayList<String>(cap)
+        val cap = minOf(total, MAX_ENTRIES)
+        val out = ArrayList<TipEntry>(cap)
         for (i in 0 until cap) {
-            out.add(circled(i + 1) + "〔" + brief(tips[order[i]], len) + "〕")
+            val full = tips.getOrNull(order.getOrNull(i) ?: break) ?: continue
+            val shown = circled(i + 1) + "〔" + brief(full, len) + "〕"
+            val suffix = if (total > 1 && i == cap - 1) "共${total}组" else ""
+            out.add(TipEntry(text = shown + suffix, detail = full, payload = full))
         }
         return out
     }
 
     /** 真实命中组数，用于在块末尾跟「共 N 组」。 */
     fun hitCount(): Int = total
-
-    /**
-     * 上屏用：当前显示第 [no] 行（1 起）那一条的正文。
-     *
-     * 圈号就是显示位置，句号轮换会改顺序，所以这里必须经过 [order] ——
-     * 用户看到第几行，数字键按几就上屏那一行。超出当前显示条数就当没有这一条。
-     */
-    fun entryAt(no: Int): String? {
-        if (tips.isEmpty()) return null
-        ensureOrder()
-        val cap = minOf(total, WenquxingPrefs.maxDisplay)
-        if (no < 1 || no > cap) return null
-        return tips.getOrNull(order.getOrNull(no - 1) ?: return null)
-    }
 
     private fun ensureOrder() {
         if (order.size != total) order = MutableList(total) { it }

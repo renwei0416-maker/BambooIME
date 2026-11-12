@@ -11,10 +11,34 @@ import com.osfans.trime.actions.wenquxing.WenquxingPrefs
 import com.osfans.trime.actions.wenquxing.WenquxingTips
 
 /**
+ * 提示块里的一条。
+ *
+ * 三个字段刻意分开，因为它们的用途不同：
+ * - [text]：列表里显示的那一行（可能被各自的「显示字数」截断，文曲星还带圈号）
+ * - [detail]：点开 `▾` 之后显示的完整正文（不截断）
+ * - [payload]：点这一条要上屏的内容
+ *
+ * [chars] 是 [payload] 的长度，用来在行尾显示「·N字」。
+ */
+data class TipEntry(
+    val text: String,
+    val detail: String,
+    val payload: String,
+    val highlighted: Boolean = false,
+    val unmatched: Boolean = false,
+    val english: String? = null,
+) {
+    val chars: Int get() = payload.length
+
+    /** 展开后是否有更多内容可看（没有就不画展开图标）。 */
+    val expandable: Boolean get() = detail.length > text.length
+}
+
+/**
  * 编码区下面那一块提示「现在显示的是谁」。
  *
- * 显示层（`PreeditUi.pick()`）和上屏 token 都问这里，免得两处各判一次、结论打架：
- * 屏幕上显示的是哪一块，token 就上屏哪一块的第 N 条。
+ * 显示层（`PreeditUi.pick()`）和上屏 token / 点击上屏都问这里，免得几处各判一次、结论打架：
+ * 屏幕上显示的是哪一块，就取哪一块的第 N 条。
  *
  * 让位规则见 [GlossaryTips.CONFLICT_AUTO] 等三个值。
  */
@@ -48,48 +72,48 @@ object TipBlocks {
     private fun decide(): Int {
         val glossaryOn = GlossaryTips.shouldShow()
         val wenquxingEnabled = WenquxingPrefs.enabled
-        val wenquxingLines = if (wenquxingEnabled) WenquxingTips.blockLines() else null
+        val wenquxingEntries = if (wenquxingEnabled) WenquxingTips.entries() else null
         val conflict = GlossaryPrefs.conflict
         return when {
-            !glossaryOn -> if (wenquxingLines.isNullOrEmpty()) NONE else WENQUXING
+            !glossaryOn -> if (wenquxingEntries.isNullOrEmpty()) NONE else WENQUXING
             conflict == GlossaryTips.CONFLICT_GLOSSARY -> GLOSSARY
             conflict == GlossaryTips.CONFLICT_OFF -> if (wenquxingEnabled) WENQUXING else GLOSSARY
-            else -> if (wenquxingLines.isNullOrEmpty()) GLOSSARY else WENQUXING
+            else -> if (wenquxingEntries.isNullOrEmpty()) GLOSSARY else WENQUXING
         }
     }
 
+    /** 当前块的全部条目（顺序 = 屏幕上的显示顺序）。 */
+    fun entries(): List<TipEntry> =
+        try {
+            when (current()) {
+                GLOSSARY -> GlossaryTips.entries()
+                WENQUXING -> WenquxingTips.entries()
+                else -> emptyList()
+            }
+        } catch (t: Throwable) {
+            emptyList()
+        }
+
     /**
-     * 第 [no] 条（1 起，指屏幕上从上往下第几条）该上屏的文本。
+     * 第 [no] 条（1 起，指列表里从上往下第几条）该上屏的文本。
      *
-     * 外语学习取第 N 个候选的英文，文曲星取当前第 N 行（圈号就是位置）的正文；没有这一条就是 null。
+     * 注意「条数」现在只是视口高度，块里可能不止这么多条，所以 N 指列表序号、不是可见行号。
      */
     fun textAt(no: Int): String? =
         try {
-            if (no < 1) {
-                null
-            } else {
-                when (current()) {
-                    GLOSSARY -> GlossaryTips.tipAt(no)
-                    WENQUXING -> WenquxingTips.entryAt(no)
-                    else -> null
-                }
-            }
+            if (no < 1) null else entries().getOrNull(no - 1)?.payload?.takeIf { it.isNotEmpty() }
         } catch (t: Throwable) {
             null
         }
 
     /**
      * 「当前那一条」的文本：外语学习取高亮候选那条，文曲星取当前第一行。
-     *
-     * 文曲星没有「高亮」的概念，屏幕上排第一的就是句号轮换到的那条，所以取第 1 行。
      */
     fun highlightedEnglish(): String? =
         try {
-            when (current()) {
-                GLOSSARY -> GlossaryTips.highlightedTip()
-                WENQUXING -> WenquxingTips.entryAt(1)
-                else -> null
-            }
+            val list = entries()
+            val line = list.firstOrNull { it.highlighted } ?: list.firstOrNull()
+            line?.payload?.takeIf { it.isNotEmpty() }
         } catch (t: Throwable) {
             null
         }

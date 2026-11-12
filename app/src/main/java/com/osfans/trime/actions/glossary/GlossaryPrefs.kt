@@ -101,6 +101,11 @@ object GlossaryPrefs {
         get() = p().getInt("tips_alpha", 90).coerceIn(0, 100)
         set(v) = p().edit().putInt("tips_alpha", v.coerceIn(0, 100)).apply()
 
+    /** 行尾「·N字」：这一条点下去会提交多少字。 */
+    var showCharCount: Boolean
+        get() = p().getBoolean("show_char_count", true)
+        set(v) = p().edit().putBoolean("show_char_count", v).apply()
+
     /** 查不到英文的那些行，中文用多少不透明度（0–100），默认 80。 */
     var unmatchedAlpha: Int
         get() = p().getInt("unmatched_alpha", 80).coerceIn(0, 100)
@@ -147,6 +152,7 @@ object GlossaryPrefs {
             .putInt("max_chars", 40)
             .putInt("tips_text_scale", 90)
             .putInt("tips_alpha", 90)
+            .putBoolean("show_char_count", true)
             .putInt("unmatched_alpha", 80)
             .putInt("unmatched_text_scale", 100)
             .putBoolean("show_pos", true)
