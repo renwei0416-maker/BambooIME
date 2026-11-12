@@ -23,6 +23,7 @@ import android.widget.TextView
 import androidx.core.text.buildSpannedString
 import com.osfans.trime.actions.glossary.GlossaryPrefs
 import com.osfans.trime.actions.glossary.GlossaryTips
+import com.osfans.trime.actions.handwriting.HandwritingLog
 import com.osfans.trime.actions.tips.TipBlocks
 import com.osfans.trime.actions.tips.TipEntry
 import com.osfans.trime.actions.wenquxing.WenquxingPrefs
@@ -137,6 +138,7 @@ open class PreeditUi(
 
     /** 展开前的滚动位置，收起时还原。 */
     private var scrollBeforeExpand: Int = 0
+    private var heightBeforeExpand: Int = 0
 
     private val gestureDetector =
         GestureDetector(
@@ -179,7 +181,6 @@ open class PreeditUi(
                 add(preedit, lParams(wrapContent, wrapContent))
                 add(tips, lParams(matchParent, wrapContent))
                 // 上游把整块挂成 wrapContent 宽，提示块得自己钉到可用宽度，否则展开时只有内容那么宽
-                addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> syncTipsWidth() }
             }
         }
 
@@ -207,23 +208,6 @@ open class PreeditUi(
         preedit.alpha = alpha.coerceIn(0f, 1f)
     }
 
-    /**
-     * 提示块横向占满输入法宽度。
-     *
-     * 上游 [com.osfans.trime.ime.core.InputView] 把这一整块按 `wrapContent` 挂进 ConstraintLayout，
-     * 所以子 View 的 `matchParent` 撑不出宽度；这里用 `minimumWidth` 把可用宽度钉住，
-     * 编码行（上游）的宽度不受影响。
-     */
-    private fun syncTipsWidth() {
-        // 不能只信 root.parent 的宽度：它可能是刚挂上去、还没量完，也可能不是 ConstraintLayout
-        // 本身。屏宽是稳的上界，父容器窄的话测量时会被 AT_MOST 夹回来，不会溢出。
-        val screen = ctx.resources.displayMetrics.widthPixels
-        val parent = (root.parent as? View)?.width ?: 0
-        val target = maxOf(screen, parent)
-        if (target > 0 && tips.minimumWidth != target) {
-            tips.minimumWidth = target
-        }
-    }
 
     /** 这一份该不该由自己画提示块：候选窗显示着就让候选窗画，否则键盘画。 */
     private fun tipsShownHere(): Boolean =
@@ -266,7 +250,19 @@ open class PreeditUi(
             }
         tips.visibility = View.VISIBLE
         visible = true
-        tips.post { syncTipsWidth() }
+        tips.maxLines =
+            if (expandedIndex >= 0) {
+                Int.MAX_VALUE
+            } else {
+                (if (picked.wenquxing) WenquxingPrefs.maxDisplay else GlossaryPrefs.tipsMax).coerceIn(1, 6)
+            }
+        tips.post {
+            HandwritingLog.d(
+                "tips",
+                "block w=${tips.width} h=${tips.height} entries=${blockEntries.size} " +
+                    "expanded=$expandedIndex maxLines=${tips.maxLines} scroll=${tips.scrollY}",
+            )
+        }
         if (expandedIndex >= 0) {
             tips.scrollTo(0, 0)
         } else {
@@ -485,18 +481,42 @@ open class PreeditUi(
         return ans
     }
 
+    /**
+     * 展开某一条：**只在这一次动作里**把块锁到屏幕宽、并锁住展开前的高度。
+     * 正常态一个字节都不碰宽度（宽度由内容决定），否则首次布局量到的小值会被钉死。
+     */
     private fun expand(index: Int) {
         scrollBeforeExpand = tips.scrollY
+        heightBeforeExpand = tips.height
         expandedIndex = index
         lastKey = ""
+        val screen = ctx.resources.displayMetrics.widthPixels
+        val params = tips.layoutParams as LinearLayout.LayoutParams
+        params.width = screen
+        params.height = if (heightBeforeExpand > 0) heightBeforeExpand else LinearLayout.LayoutParams.WRAP_CONTENT
+        tips.layoutParams = params
         refreshTips()
+        HandwritingLog.d(
+            "tips",
+            "expand idx=$index screen=$screen tipsW=${tips.width} h=${tips.height} " +
+                "beforeH=$heightBeforeExpand maxLines=${tips.maxLines}",
+        )
     }
 
     private fun collapse() {
         expandedIndex = -1
         lastKey = ""
+        val params = tips.layoutParams as LinearLayout.LayoutParams
+        params.width = LinearLayout.LayoutParams.MATCH_PARENT
+        params.height = LinearLayout.LayoutParams.WRAP_CONTENT
+        tips.layoutParams = params
         refreshTips()
         tips.post { tips.scrollTo(0, scrollBeforeExpand) }
+        HandwritingLog.d(
+            "tips",
+            "collapse w=${tips.width} h=${tips.height} lpW=${tips.layoutParams.width} " +
+                "lpH=${tips.layoutParams.height} maxLines=${tips.maxLines}",
+        )
     }
 
     /** 上屏：与 `BambooTip` 系列 token 同一条路——先清组合，再提交。 */
