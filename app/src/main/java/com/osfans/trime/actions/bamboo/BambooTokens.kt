@@ -49,11 +49,25 @@ object BambooTokens {
     /** 单引号补全：提交真正的左单引号 `‘`，其余同 [QUOTE]。 */
     const val QUOTE_SINGLE = "BambooQuoteSingle"
 
+    /**
+     * 上屏提示块「当前高亮那一条」的内容：外语学习给高亮候选的英文。
+     * 没有内容时吞掉这个键、什么都不做，避免误上屏。
+     */
+    const val TIP = "BambooTip"
+
+    /**
+     * 上屏提示块「第 N 条」（N = 屏幕上从上往下第几条，1–6）。
+     *
+     * 显示哪一块就取哪一块：外语学习取第 N 个候选的英文，文曲星取圈号 N 的正文；
+     * 那一块没有第 N 条就吞键不动。通常绑在数字键下滑。
+     */
+    val TIP_SLOTS: List<String> = (1..6).map { "BambooTip$it" }
+
     val fixed: List<String> =
         listOf(
             REVERT, CLEAR, DELETE_LINE, DELETE_WORD, AI_SEND, AI_CLIP, AI_OFF, SETTINGS,
-            QUOTE, QUOTE_SINGLE,
-        )
+            QUOTE, QUOTE_SINGLE, TIP,
+        ) + TIP_SLOTS
 
     /** 设置页「动作名一览」用的说明表；与 [fixed] 同源，不会漏项。 */
     private val docMap: Map<String, String> =
@@ -68,7 +82,8 @@ object BambooTokens {
             SETTINGS to "打开「回退与AI」设置页",
             QUOTE to "提交左双引号“（开启「符号补全」时自动补右半边并居中）",
             QUOTE_SINGLE to "提交左单引号‘（同上）",
-        )
+            TIP to "上屏当前高亮那一条的英文（外语学习；没有则不上屏）",
+        ) + TIP_SLOTS.mapIndexed { i, n -> n to "上屏提示块第 ${i + 1} 条（外语学习取英文，文曲星取圈号 ${i + 1}；没有则不上屏）" }
 
     /** 名字 → 说明，与 [fixed] 同源。 */
     fun docRows(): List<Pair<String, String>> = fixed.map { it to (docMap[it] ?: "") }

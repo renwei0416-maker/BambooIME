@@ -23,8 +23,7 @@ import android.os.Build
  *   - 其余按单词、标点各成一块；
  * - 其它字符（中文标点、emoji 等）一个字符一块。
  *
- * 与旧实现（`NativeTokenizer` 用 `BreakIterator` 且丢掉空白）的区别：
- * 空白是块、不丢信息、链接电话不被切碎。
+ * 设计目标：空白也是块、不丢信息、链接电话不被切碎，切完拼回去必须等于原文。
  */
 object PieceTokenizer {
     /** 链接、邮箱、路径常见的连接符：串里有这些就整块不拆。 */

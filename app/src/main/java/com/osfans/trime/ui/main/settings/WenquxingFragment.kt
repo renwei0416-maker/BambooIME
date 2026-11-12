@@ -108,6 +108,30 @@ class WenquxingFragment : PaddingPreferenceFragment() {
                         unit = " 字",
                         resetters = resetters,
                     ) { WenquxingPrefs.displayLen = it }
+
+                    addSliderSetting(
+                        title = "字号",
+                        summary = "提示块的字号，相对编码行的百分比",
+                        min = 50,
+                        max = 150,
+                        step = 5,
+                        default = 90,
+                        current = WenquxingPrefs.tipsTextScale,
+                        unit = " %",
+                        resetters = resetters,
+                    ) { WenquxingPrefs.tipsTextScale = it }
+
+                    addSliderSetting(
+                        title = "背景不透明度",
+                        summary = "印在底下那层背景的浓度，默认 90%",
+                        min = 0,
+                        max = 100,
+                        step = 5,
+                        default = 90,
+                        current = WenquxingPrefs.tipsAlpha,
+                        unit = " %",
+                        resetters = resetters,
+                    ) { WenquxingPrefs.tipsAlpha = it }
                 }
 
                 addBambooCategory("上屏", "命中之后用哪两个键把正文打出来") {

@@ -49,7 +49,10 @@ class PreeditDelegate : InputBroadcastReceiver {
             },
             onMoveCursor = { pos -> rime.launchOnReady { it.moveCursorPos(pos) } },
         ).apply {
-            root.alpha = theme.preedit.alpha
+            // 透明度只压在编码行那个 TextView 上：root 现在是「编码行 + 提示块」的纵向容器，
+            // 压在 root 上会连带把提示块一起变半透明 —— 主题的 preedit.alpha 是乘性的，
+            // 用户把提示块不透明度拉到 100% 也永远到不了全不透明。
+            applyPreeditAlpha(theme.preedit.alpha)
             root.visibility = View.INVISIBLE
         }
 
@@ -57,24 +60,10 @@ class PreeditDelegate : InputBroadcastReceiver {
 
     private var lastComposition = CompositionProto()
 
-    /** 外部改了编码行要显示的提示后，按最近一次组合重绘。 */
-    fun refresh(text: String? = null) {
-        com.osfans.trime.actions.handwriting.HandwritingLog.d(
-            "wenquxing",
-            "delegate refresh override=" + (text?.length ?: -1) +
-                " lastLen=" + lastComposition.length +
-                " lastPrev=" + (lastComposition.preedit?.length ?: -1),
-        )
-        if (text.isNullOrEmpty()) {
-            onCompositionUpdate(lastComposition)
-            return
-        }
-        // 只有提示的一行：直接画，不记进 lastComposition，也不走 composition 的拼接
-        ui.showTipLine(text)
-        ui.root.visibility = if (ui.visible) View.VISIBLE else View.INVISIBLE
-        touchEventReceiverWindow.show()
+    /** 外部改了提示内容后，让编码区重算一次（提示块自己从模块里取内容）。 */
+    fun refresh() {
+        onCompositionUpdate(lastComposition)
     }
-
     override fun onCompositionUpdate(data: CompositionProto) {
         lastComposition = data
         ui.update(data)

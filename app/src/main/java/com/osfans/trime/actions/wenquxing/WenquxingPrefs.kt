@@ -55,6 +55,16 @@ object WenquxingPrefs {
         get() = p().getInt("max_display", 3).coerceIn(1, 5)
         set(value) = p().edit().putInt("max_display", value.coerceIn(1, 5)).apply()
 
+    /** 提示块的字号，相对编码行的百分比（50–150）。 */
+    var tipsTextScale: Int
+        get() = p().getInt("tips_text_scale", 90).coerceIn(50, 150)
+        set(value) = p().edit().putInt("tips_text_scale", value.coerceIn(50, 150)).apply()
+
+    /** 提示块背景的不透明度（0–100），默认 85。 */
+    var tipsAlpha: Int
+        get() = p().getInt("tips_alpha", 90).coerceIn(0, 100)
+        set(value) = p().edit().putInt("tips_alpha", value.coerceIn(0, 100)).apply()
+
     /** 第一档上屏键（rime key 名，脚本默认 comma）。 */
     var keyFirst: String
         get() = p().getString("key_first", "comma") ?: "comma"

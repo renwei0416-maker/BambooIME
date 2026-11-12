@@ -10,6 +10,8 @@ import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
 import android.widget.Toast
 import androidx.lifecycle.lifecycleScope
+import com.osfans.trime.actions.glossary.GlossaryDecorator
+import com.osfans.trime.actions.tips.TipBlocks
 import com.osfans.trime.actions.handwriting.HandwritingLog
 import com.osfans.trime.actions.wenquxing.WenquxingPrefs
 import com.osfans.trime.actions.wenquxing.WenquxingTips
@@ -309,6 +311,33 @@ object BambooActions {
                 // 补全没开（或「引号也配对」关了）：把原键还给引擎，引号交替照旧
                 api.simulateKeySequence(if (isDouble) "\"" else "'")
             }
+            return true
+        }
+        // 候选英文的 token 属于「输入增强」，同样不受「回退与AI」总开关影响。
+        // 查不到英文时返回 true（吞键），否则用户按数字键下滑会莫名打出一个数字。
+        val tipSlot = when (token) {
+            BambooTokens.TIP -> 0
+            else -> BambooTokens.TIP_SLOTS.indexOf(token).takeIf { it >= 0 }?.plus(1) ?: -1
+        }
+        if (tipSlot >= 0) {
+            // 屏幕上显示哪一块就取哪一块：外语学习取第 N 个候选的英文，文曲星取圈号 N 的正文。
+            val text =
+                if (tipSlot == 0) {
+                    TipBlocks.highlightedEnglish()
+                } else {
+                    TipBlocks.textAt(tipSlot)
+                }
+            if (text.isNullOrEmpty()) {
+                // 落盘日志：主题绑了 token 但这一块没有第 N 条时会走到这里，排查时要看得见
+                HandwritingLog.d("tips", "token=$token block=${TipBlocks.current()} 没有第 $tipSlot 条，吞键")
+                return true
+            }
+            // 只上屏内容，不要把中文候选一起提交：
+            // commitComposition() 会「提交当前组句」= 先把第一候选上屏，再追加我们这句，
+            // 结果是「中文候选 + 英文」两个都进编辑框。这里改成丢弃组句、只提交内容。
+            api.clearComposition()
+            service.commitText(text)
+            HandwritingLog.d("tips", "token=$token block=${TipBlocks.current()} -> $text")
             return true
         }
         if (!BambooPrefs.enabled) return false
@@ -621,14 +650,11 @@ object BambooActions {
                     }
                     // 锚点必须与显示层比对的值同源（PreeditUi 传的是 composition.preedit）
                     val preedit = runCatching { api.compositionCached.preedit }.getOrNull().orEmpty()
-                    val noComposition = runCatching {
-                        api.compositionCached.length == 0
-                    }.getOrDefault(false)
-                    val count = WenquxingTips.show(query, preedit, ownLine = noComposition)
+                    val count = WenquxingTips.show(query, preedit)
                     toast(if (count > 0) "共匹配 $count 条" else "没有对应条目")
                     // 引擎状态没变，靠 emitResponse 那条路刷不动编码行，直接让候选视图重绘。
                     // 没有编码行时（剪贴板查询、进模式时清过组合）用提示本身合成一行显示。
-                    service.refreshCandidatesPreedit(WenquxingTips.ownLineText())
+                    service.refreshCandidatesPreedit()
                     return@launch
                 }
                 val text: String

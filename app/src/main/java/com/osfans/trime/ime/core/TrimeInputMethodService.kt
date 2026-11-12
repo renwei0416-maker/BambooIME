@@ -121,26 +121,13 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
         get() = inputView
     private var candidatesView: CandidatesView? = null
 
-    /** 文曲星查完提示后调用：把两处编码行都按当前组合重绘一次。 */
-    fun refreshCandidatesPreedit(preeditOverride: String? = null) {
-        if (preeditOverride != null) {
-            // 只有提示的一行只画一处：谁在屏幕上就画谁，否则两块都会显示
-            val target = candidatesView?.takeIf { it.visibility == android.view.View.VISIBLE }
-            if (target != null) {
-                runCatching { target.refreshPreedit(preeditOverride) }
-                    .onFailure { android.util.Log.w("wenquxing", "refresh candidates preedit failed", it) }
-                return
-            }
-            runCatching { currentInputView?.refreshPreedit(preeditOverride) }
-                .onFailure { android.util.Log.w("wenquxing", "refresh input preedit failed", it) }
-            return
-        }
-        runCatching { currentInputView?.refreshPreedit(null) }
+    /** 让屏幕上那两份编码区都重算一次（提示块自己按当前状态决定画不画）。 */
+    fun refreshCandidatesPreedit() {
+        runCatching { currentInputView?.refreshPreedit() }
             .onFailure { android.util.Log.w("wenquxing", "refresh input preedit failed", it) }
-        runCatching { candidatesView?.refreshPreedit(null) }
+        runCatching { candidatesView?.refreshPreedit() }
             .onFailure { android.util.Log.w("wenquxing", "refresh candidates preedit failed", it) }
     }
-
     /** 外接键盘的浮动状态条，只在硬件键盘连接时存在。 */
     private var hardwareStatusBar: HardwareStatusBar? = null
     private val navBarManager = NavigationBarManager()
@@ -1091,7 +1078,7 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
                             commitText(tipsKey.text)
                         }
                         WenquxingTips.KeyResult.Rotated -> {
-                            refreshCandidatesPreedit(WenquxingTips.ownLineText())
+                            refreshCandidatesPreedit()
                         }
                         WenquxingTips.KeyResult.None -> {
                             postKeyJob { processKey(shortcutKey, shortcutModifiers, isVirtual = false) }

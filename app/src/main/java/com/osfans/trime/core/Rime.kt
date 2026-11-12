@@ -6,6 +6,7 @@
 package com.osfans.trime.core
 
 import com.osfans.trime.BuildConfig
+import com.osfans.trime.actions.glossary.GlossaryDecorator
 import com.osfans.trime.data.base.DataManager
 import com.osfans.trime.data.opencc.OpenCCDictManager
 import com.osfans.trime.data.packaging.PackageStateManager
@@ -698,9 +699,17 @@ class Rime :
             params: Array<Any>,
         ) {
             val message = RimeMessage.nativeCreate(type, params)
-            Timber.d("Handling $message")
-            rimeMessageHandlers.forEach { it.invoke(message) }
-            messageFlow_.tryEmit(message)
+            // 候选英文：在消息进 UI 之前把释义填进 comment（没有命中时原样返回同一对象）。
+            // 外面再兜一层：词库模块就算类初始化失败，也不能让整条消息通道炸掉。
+            val decorated =
+                runCatching { GlossaryDecorator.decorate(message) }
+                    .getOrElse {
+                        Timber.e(it, "glossary: decorate call failed")
+                        message
+                    }
+            Timber.d("Handling $decorated")
+            rimeMessageHandlers.forEach { it.invoke(decorated) }
+            messageFlow_.tryEmit(decorated)
         }
 
         @JvmStatic

@@ -18,6 +18,7 @@ import androidx.core.graphics.component1
 import androidx.core.graphics.component2
 import androidx.core.graphics.component3
 import androidx.core.graphics.component4
+import com.osfans.trime.actions.tips.TipBlocks
 import com.osfans.trime.core.CompositionProto
 import com.osfans.trime.core.MenuProto
 import com.osfans.trime.core.RimeMessage
@@ -100,6 +101,9 @@ class CandidatesView(
             theme,
             setupPreeditView = { setPaddingDp(3, 1, 3, 1) },
             onMoveCursor = { pos -> rime.launchOnReady { it.moveCursorPos(pos) } },
+            // 提示块在候选窗也要画：接外接键盘时只有这个窗口在，键盘那份用得着的那一块可能压根没显示过。
+            // 两个窗口同时存在时靠 TipBlocks.candidatesWindowShown 二选一，不会重复。
+            tipsOwner = PreeditUi.OWNER_CANDIDATES,
         )
 
     private val candidatesUi =
@@ -136,23 +140,10 @@ class CandidatesView(
         }
     }
 
-    /** 外部（文曲星）改了编码行要显示的提示后，按当前组合重绘一次，不经过引擎。 */
-    fun refreshPreedit(text: String? = null) {
-        if (!text.isNullOrEmpty()) {
-            preeditUi.update(CompositionProto(length = text.length, preedit = text))
-            preeditUi.root.visibility = if (preeditUi.visible) VISIBLE else GONE
-            return
-        }
-        com.osfans.trime.actions.handwriting.HandwritingLog.d(
-            "wenquxing",
-            "refreshPreedit len=" + composition.length +
-                " preeditLen=" + (composition.preedit?.length ?: -1) +
-                " tipLen=" + com.osfans.trime.actions.wenquxing.WenquxingTips.suffix().length,
-        )
+    fun refreshPreedit() {
         preeditUi.update(composition)
         preeditUi.root.visibility = if (preeditUi.visible) VISIBLE else GONE
     }
-
     private fun evaluateVisibility(): Boolean = !composition.preedit.isNullOrEmpty() ||
         menu.candidates.isNotEmpty()
 
@@ -184,6 +175,23 @@ class CandidatesView(
             visibility = INVISIBLE
             touchEventReceiverWindow.dismiss()
         }
+        syncTipsOwner()
+    }
+
+    /**
+     * 把「候选窗在不在显示」告诉 [TipBlocks]，让键盘那份提示块让开或接回来。
+     *
+     * 只有状态真的变了才刷一次，避免每条候选消息都重绘；
+     * 刷新走服务里的统一入口，键盘与候选窗两份一起重算。
+     */
+    private fun syncTipsOwner() {
+        val shown = visibility == VISIBLE
+        if (TipBlocks.candidatesWindowShown == shown) return
+        TipBlocks.candidatesWindowShown = shown
+        runCatching { service.refreshCandidatesPreedit() }
+            .onFailure {
+                com.osfans.trime.actions.handwriting.HandwritingLog.d("tips", "sync owner refresh failed: $it")
+            }
     }
 
     private fun updatePosition() {
@@ -364,6 +372,11 @@ class CandidatesView(
         viewTreeObserver.removeOnPreDrawListener(preDrawListener)
         viewTreeObserver.removeOnGlobalLayoutListener(layoutListener)
         touchEventReceiverWindow.dismiss()
+        // 候选窗没了，提示块交还给键盘那一份
+        if (TipBlocks.candidatesWindowShown) {
+            TipBlocks.candidatesWindowShown = false
+            runCatching { service.refreshCandidatesPreedit() }
+        }
         super.onDetachedFromWindow()
     }
 

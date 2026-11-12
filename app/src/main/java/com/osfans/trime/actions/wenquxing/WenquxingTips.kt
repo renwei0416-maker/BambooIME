@@ -29,12 +29,6 @@ object WenquxingTips {
     /** 本轮命中的总条数，与「显示条数」无关。 */
     private var total = 0
 
-    /** 这次提示是不是「没有编码行、自己占一行」显示的；轮换时要按同样方式重画。 */
-    private var tipOnly = false
-
-    @Volatile
-    private var shown: CharSequence = ""
-
     /** 实时模式下上一次查的文本，避免同一个候选反复查。 */
     private var lastQuery: String? = null
 
@@ -58,19 +52,12 @@ object WenquxingTips {
         if (shownPreedit.isNotEmpty()) clear()
     }
 
-    /** 给 PreeditUi 用：要追加到编码后面的提示文本。 */
-    fun suffix(): CharSequence = shown
-
-    /** 自己占一行时返回这一行要显示的内容，否则 null（表示追加到编码后面）。 */
-    fun ownLineText(): String? =
-        if (tipOnly && shown.isNotEmpty()) shown.toString() else null
-
     /**
      * 查一次并准备好摘要。
      *
      * @param text 由调用方决定：正在拼写时是首选候选，否则是刚上屏的那句 / 光标前整句。
      */
-    fun show(text: String, preedit: String? = null, ownLine: Boolean = false): Int {
+    fun show(text: String, preedit: String? = null): Int {
         if (!WenquxingPrefs.enabled) return 0
         val keys = keysOf(text)
         val texts = ArrayList<String>()
@@ -89,14 +76,12 @@ object WenquxingTips {
         // 正文最长的排第一（同长度保持原顺序）：整首比摘录更完整，优先给出。
         tips = texts.sortedByDescending { it.length }
         total = tips.size
-        tipOnly = ownLine
         order = MutableList(total) { it }
         lastQuery = text.trim()
         shownPreedit = preedit.orEmpty()
         adoptUntil = SystemClock.uptimeMillis() + ADOPT_WINDOW_MS
         blankUntil = adoptUntil
-        shown = render()
-        HandwritingLog.d("wenquxing", "shown=\"$shown\" n=$total")
+        HandwritingLog.d("wenquxing", "hit n=$total")
         return total
     }
 
@@ -150,27 +135,43 @@ object WenquxingTips {
     }
 
     /**
-     * 按当前顺序渲染提示：「显示条数」只限制括号个数，「共 N 组」用真实命中数。
-     * 圈号是「条目编号」（tips 里的下标 + 1），轮换只换位置、不改编号。
+     * 文曲星块：一条一行，显示位置打头（①是当前第一行，轮换后重排）；没有内容返回 null。
+     * 与 [render] 共用同一份顺序和字数设置，只是不再拼成一整行。
      */
-    private fun render(): CharSequence {
-        if (tips.isEmpty()) return ""
+    fun blockLines(): List<String>? {
+        if (tips.isEmpty()) return null
         ensureOrder()
         val len = WenquxingPrefs.displayLen
         val cap = minOf(total, WenquxingPrefs.maxDisplay)
-        return buildString {
-            for (i in 0 until cap) {
-                append(circled(order[i] + 1)).append("〔").append(brief(tips[order[i]], len)).append("〕")
-            }
-            if (total > 1) append("共").append(total).append("组")
+        val out = ArrayList<String>(cap)
+        for (i in 0 until cap) {
+            out.add(circled(i + 1) + "〔" + brief(tips[order[i]], len) + "〕")
         }
+        return out
+    }
+
+    /** 真实命中组数，用于在块末尾跟「共 N 组」。 */
+    fun hitCount(): Int = total
+
+    /**
+     * 上屏用：当前显示第 [no] 行（1 起）那一条的正文。
+     *
+     * 圈号就是显示位置，句号轮换会改顺序，所以这里必须经过 [order] ——
+     * 用户看到第几行，数字键按几就上屏那一行。超出当前显示条数就当没有这一条。
+     */
+    fun entryAt(no: Int): String? {
+        if (tips.isEmpty()) return null
+        ensureOrder()
+        val cap = minOf(total, WenquxingPrefs.maxDisplay)
+        if (no < 1 || no > cap) return null
+        return tips.getOrNull(order.getOrNull(no - 1) ?: return null)
     }
 
     private fun ensureOrder() {
         if (order.size != total) order = MutableList(total) { it }
     }
 
-    /** 圈号 1..20，超出用普通数字。编号跟着条目走，只用于显示，上屏走 tips 原文。 */
+    /** 圈号 1..20，超出用普通数字。编号 = 显示位置（第几条），轮换后跟着重排。 */
     private fun circled(n: Int): String =
         if (n in 1..20) (0x2460 + n - 1).toChar().toString() else n.toString()
 
@@ -228,11 +229,10 @@ object WenquxingTips {
         if (order.size != total || total < 3) return
         val head = order.removeAt(0)
         order.add(head)
-        shown = render()
         // 轮换后马上会有一次重绘，那一次不算「编码变了」
         adoptUntil = SystemClock.uptimeMillis() + ADOPT_WINDOW_MS
         blankUntil = adoptUntil
-        HandwritingLog.d("wenquxing", "rotate order=$order shown=\"$shown\"")
+        HandwritingLog.d("wenquxing", "rotate order=$order")
     }
 
     private fun codeOf(name: String): Int = when (name.lowercase()) {
@@ -248,8 +248,6 @@ object WenquxingTips {
         tips = emptyList()
         order = mutableListOf()
         total = 0
-        tipOnly = false
-        shown = ""
         lastQuery = null
         shownPreedit = ""
     }
