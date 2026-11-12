@@ -38,9 +38,15 @@ object GlossaryStore {
         synchronized(lock) {
             if (loaded) return
             packs.clear()
+            val want = GlossaryPrefs.langCodeOf(GlossaryPrefs.lang)
             installedFiles().forEach { f ->
                 val p = GlossaryPack.open(f)
-                if (p != null) packs.add(p) else Log.w(TAG, "skip broken pack: ${f.name}")
+                when {
+                    p == null -> Log.w(TAG, "skip broken pack: ${f.name}")
+                    // 一次只学一门语言：别的语言的包先不打开（换语言时 reload）
+                    p.lang != want -> Log.i(TAG, "skip ${f.name} (lang=${p.lang})")
+                    else -> packs.add(p)
+                }
             }
             loaded = true
             Log.i(TAG, "loaded ${packs.size} pack(s), entries=${packs.sumOf { it.entryCount }}")

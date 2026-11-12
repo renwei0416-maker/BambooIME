@@ -65,9 +65,39 @@ object GlossaryFormatter {
         var text = sense.text
         if (!GlossaryPrefs.showCl) text = CL_RE.replace(text, "")
         text = SPACES.replace(text.trim(), " ")
-        sb.append(text)
+        sb.append(withFurigana(text))
         return truncate(sb.toString(), maxChars)
     }
+
+    /**
+     * 日语释义存成「訳|かな」，例如 `開発する|かいはつする`。
+     *
+     * 渲染成 `開発(かいはつ)する`：先把两边的公共假名尾巴（这里是 `する`）剥出来，
+     * 剩下的汉字部分加括号读音，尾巴原样接回。剥不动就退化成 `訳(かな)`。
+     */
+    private fun withFurigana(raw: String): String {
+        val bar = raw.indexOf('|')
+        if (bar <= 0 || bar == raw.length - 1) return raw
+        val word = raw.substring(0, bar).trim()
+        val reading = raw.substring(bar + 1).trim()
+        if (word.isEmpty() || reading.isEmpty()) return raw.substring(0, bar).trim()
+        var k = 0
+        while (k < word.length && k < reading.length) {
+            val a = word[word.length - 1 - k]
+            val b = reading[reading.length - 1 - k]
+            if (a != b || !isKana(a)) break
+            k++
+        }
+        val head = word.dropLast(k)
+        val kana = reading.dropLast(k)
+        // 整词都是假名（ありがとう|ありがとう）：正文本身就是读音，不用再标一遍
+        if (head.isEmpty()) return word
+        if (kana.isEmpty()) return "$word($reading)"
+        return "$head($kana)${word.takeLast(k)}"
+    }
+
+    private fun isKana(c: Char): Boolean =
+        c in '\u3041'..'\u3096' || c in '\u30A1'..'\u30FA' || c == '\u30FC' || c == '\u30FB'
 
     private fun labelOf(sense: GlossaryPack.Sense): String? {
         for (id in intArrayOf(sense.label1, sense.label2)) {

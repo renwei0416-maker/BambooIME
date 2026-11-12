@@ -65,6 +65,26 @@ class GlossaryFragment : PaddingPreferenceFragment() {
             preferenceManager.createPreferenceScreen(requireContext()).apply {
                 addRestoreAll(resetters)
 
+                addCategory("语言", "一次只学一门语言；换语言后要再装一门语言的词库包") {
+                    addChoice(
+                        title = "学习语言",
+                        subtitle = if (GlossaryPrefs.lang == GlossaryPrefs.LANG_JA) {
+                            "日语：候选下显示日文译词（带假名读音）"
+                        } else {
+                            "英语：候选下显示英文释义"
+                        },
+                        entries = arrayOf("英语", "日语"),
+                        currentIndex = if (GlossaryPrefs.lang == GlossaryPrefs.LANG_JA) 1 else 0,
+                        defaultIndex = 0,
+                        resetters = resetters,
+                    ) { idx ->
+                        GlossaryPrefs.lang = if (idx == 1) GlossaryPrefs.LANG_JA else GlossaryPrefs.LANG_EN
+                        GlossaryPrefs.downloadUrl = ""
+                        GlossaryStore.reload()
+                        rebuildScreen()
+                    }
+                }
+
                 addCategory("显示", "编码行下面按候选顺序列出「中文 + 英文」，一行一个") {
                     addSwitch(
                         "边打字边显示英文",

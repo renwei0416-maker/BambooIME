@@ -19,6 +19,23 @@ object GlossaryPrefs {
     private const val FILE = "bamboo_glossary"
 
     /** 默认下载地址（发布资产；用户可在设置里改成任意镜像）。 */
+    /** 学习语言：.bge 头部里的 lang 字段（'en' / 'ja'）。 */
+    const val LANG_EN = "en"
+    const val LANG_JA = "ja"
+
+    /** 对应 .bge 头部的 lang 编码（大端字符值）。 */
+    fun langCodeOf(lang: String): Int = when (lang) {
+        LANG_JA -> 0x00006A61
+        else -> 0x00006E65
+    }
+
+    const val DEFAULT_DOWNLOAD_URL_JA =
+        "https://github.com/renwei0416-maker/BambooIME/releases/download/glossary-ja-v1/glossary-ja-v1.bge"
+
+    /** 当前语言对应的默认下载地址。 */
+    fun defaultDownloadUrlFor(lang: String): String =
+        if (lang == LANG_JA) DEFAULT_DOWNLOAD_URL_JA else DEFAULT_DOWNLOAD_URL
+
     const val DEFAULT_DOWNLOAD_URL =
         "https://github.com/renwei0416-maker/BambooIME/releases/download/glossary-en-v1/glossary-en-cedict-1.0.bge"
 
@@ -34,6 +51,11 @@ object GlossaryPrefs {
             .also { sp = it }
 
     /** 总开关：候选后面要不要显示英文。 */
+    /** 一次只学一门语言；只加载 lang 匹配的词库包。 */
+    var lang: String
+        get() = p().getString("lang", LANG_EN) ?: LANG_EN
+        set(v) = p().edit().putString("lang", if (v == LANG_JA) LANG_JA else LANG_EN).apply()
+
     var enabled: Boolean
         get() = p().getBoolean("enabled", false)
         set(v) = p().edit().putBoolean("enabled", v).apply()
@@ -100,12 +122,14 @@ object GlossaryPrefs {
 
     /** 下载地址。 */
     var downloadUrl: String
-        get() = p().getString("download_url", DEFAULT_DOWNLOAD_URL) ?: DEFAULT_DOWNLOAD_URL
-        set(v) = p().edit().putString("download_url", v.ifBlank { DEFAULT_DOWNLOAD_URL }).apply()
+        get() = p().getString("download_url", defaultDownloadUrlFor(lang))
+            ?: defaultDownloadUrlFor(lang)
+        set(v) = p().edit().putString("download_url", v.ifBlank { defaultDownloadUrlFor(lang) }).apply()
 
     fun resetToDefault() {
         p().edit()
             .putBoolean("enabled", false)
+            .putString("lang", LANG_EN)
             .putInt("tips_max", 4)
             .putInt("conflict", GlossaryTips.CONFLICT_AUTO)
             .putInt("sense_count", 2)
