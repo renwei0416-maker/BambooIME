@@ -259,7 +259,7 @@ open class PreeditUi(
         tips.post {
             HandwritingLog.d(
                 "tips",
-                "block w=${tips.width} h=${tips.height} entries=${blockEntries.size} " +
+                "block w=${tips.width} rootW=${root.width} h=${tips.height} entries=${blockEntries.size} " +
                     "expanded=$expandedIndex maxLines=${tips.maxLines} scroll=${tips.scrollY}",
             )
         }
@@ -492,14 +492,14 @@ open class PreeditUi(
         lastKey = ""
         val screen = ctx.resources.displayMetrics.widthPixels
         val params = tips.layoutParams as LinearLayout.LayoutParams
-        params.width = screen
+        params.width = LinearLayout.LayoutParams.MATCH_PARENT
         params.height = if (heightBeforeExpand > 0) heightBeforeExpand else LinearLayout.LayoutParams.WRAP_CONTENT
         tips.layoutParams = params
         refreshTips()
         HandwritingLog.d(
             "tips",
-            "expand idx=$index screen=$screen tipsW=${tips.width} h=${tips.height} " +
-                "beforeH=$heightBeforeExpand maxLines=${tips.maxLines}",
+            "expand idx=$index screen=$screen tipsW=${tips.width} rootW=${root.width} " +
+                "h=${tips.height} beforeH=$heightBeforeExpand maxLines=${tips.maxLines}",
         )
     }
 

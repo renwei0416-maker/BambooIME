@@ -770,8 +770,11 @@ class InputView(
 
         preedit.ui.root.id = View.generateViewId()
         add(
+            // 宽度交给整行：root 里躺着「编码行 + 提示块」两个子 View，若这里是 wrapContent，
+            // 父宽度会退化成编码行的宽度（短编码就只有一百多像素），提示块是 matchParent，
+            // 第二轮测量就被夹成那么宽，长一点的外语释义只能在窄条里疯狂折行。
             preedit.ui.root,
-            lParams(wrapContent, wrapContent) {
+            lParams(matchParent, wrapContent) {
                 above(keyboardView)
                 startOfParent()
             },
