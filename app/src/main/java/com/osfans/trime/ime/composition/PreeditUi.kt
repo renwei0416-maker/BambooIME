@@ -1433,11 +1433,9 @@ open class PreeditUi(
                         )
                 }
             if (!expandable) return bodyView
-            val paint = textPaint()
-            paint.textSize = bodyTextSize() * EXPAND_ARROW_SCALE
-            val arrowW = paint.measureText(EXPAND_HINT_ARROW).toInt()
-            // 三角在上一条最后一行右侧：与「2 个字宽」的留白槽居中对齐
-            val gap = ((side - arrowW) / 2).coerceAtLeast(0)
+            // 三角自己就占满右侧那个「2 个字宽」的槽，在槽内居中。
+            // 不用 Paint 去估算字形宽度再算 margin —— 字形的 ink 宽度常大于 advance 宽度，
+            // 算小了就会被容器裁掉右半边（就是「右边距不够、左边空太多」）。
             val arrow =
                 TextView(ctx).apply {
                     text = EXPAND_HINT_ARROW
@@ -1447,16 +1445,16 @@ open class PreeditUi(
                     setLineSpacing(0f, 1.0f)
                     includeFontPadding = false
                     setPadding(0, 0, 0, 0)
+                    gravity = Gravity.CENTER
                     isClickable = false
                     isFocusable = false
                     layoutParams =
                         FrameLayout.LayoutParams(
-                            ViewGroup.LayoutParams.WRAP_CONTENT,
+                            side,
                             ViewGroup.LayoutParams.WRAP_CONTENT,
                             Gravity.END or Gravity.BOTTOM,
                         ).apply {
-                            marginEnd = gap
-                            bottomMargin = ctx.dp(5)
+                            bottomMargin = ctx.dp(4)
                         }
                 }
             return FrameLayout(ctx).apply {
