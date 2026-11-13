@@ -434,7 +434,7 @@ open class PreeditUi(
 
         private fun styleHint(sb: SpannableStringBuilder, start: Int, end: Int) {
             sb.setSpan(ForegroundColorSpan(tipColor), start, end, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
-            sb.setSpan(RelativeSizeSpan(COUNT_SCALE), start, end, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
+            sb.setSpan(RelativeSizeSpan(EXPAND_ICON_SCALE), start, end, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
         }
 
         /** 量一段文字在正文尺寸下的像素宽度（悬挂缩进要用）。 */
@@ -1247,7 +1247,7 @@ open class PreeditUi(
 
         private fun styleHint(sb: SpannableStringBuilder, start: Int, end: Int) {
             sb.setSpan(ForegroundColorSpan(tipColor), start, end, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
-            sb.setSpan(RelativeSizeSpan(COUNT_SCALE), start, end, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
+            sb.setSpan(RelativeSizeSpan(EXPAND_ICON_SCALE), start, end, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
         }
 
         /** 量一段文字在正文尺寸下的像素宽度（悬挂缩进要用）。 */
@@ -1561,7 +1561,7 @@ open class PreeditUi(
                     // 收起：按钮矩形命中，或落在展开态顶部那一行 —— 任一即可。
                     // 不看按压时长，也不要求手指完全不动（此前就是被这两条筛掉的）。
                     if (expandedIndex >= 0 &&
-                        (hitCollapseButton(ev.rawX, ev.rawY) || onTopLine(ev.rawY))
+                        hitCollapseButton(ev.rawX, ev.rawY)
                     ) {
                         HandwritingLog.d(
                             "tips",
@@ -1640,19 +1640,6 @@ open class PreeditUi(
             return super.dispatchTouchEvent(ev)
         }
 
-        /** 返回「条目下标」（已扣掉 badge 行）；不在任何条目上返回 -1。 */
-        /**
-         * 用**屏幕绝对 y** 命中：把每条 TextView 的屏幕矩形拿出来直接比。
-         * 这样不管事件来自哪个坐标空间（可能是 TouchEventReceiverWindow 转发的、
-         * 带偏移的 ev.y），结果都一样。
-         */
-        /** 「收起」按钮的屏幕矩形命中（含 12dp 外扩）。 */
-        /** 展开态顶部那一行（收起条所在高度）也算收起。 */
-        private fun onTopLine(rawY: Float): Boolean {
-            val loc = IntArray(2)
-            getLocationOnScreen(loc)
-            return rawY - loc[1] <= ctx.dp(COLLAPSE_H_DP + 10)
-        }
         private fun hitCollapseButton(rawX: Float, rawY: Float): Boolean {
             if (collapseButton.visibility != View.VISIBLE) return false
             val loc = IntArray(2)
@@ -1908,6 +1895,8 @@ open class PreeditUi(
         private const val EN_SCALE = 0.82f
         private const val MARK_SCALE = 1.1f
         private const val COUNT_SCALE = 0.78f
+        /** 展开小图标的相对字号（比正文大一点，才看得清是实心三角）。 */
+        private const val EXPAND_ICON_SCALE = 1.30f
         private const val BADGE_SCALE = 0.88f
         /** 展开态高度占屏高的比例：文曲星 28%、外语学习 18%。 */
         private const val EXPAND_RATIO_WQ = 0.28f
@@ -1926,7 +1915,7 @@ open class PreeditUi(
         /** 排版测宽时只取前这么多字符。 */
         private const val MEASURE_CHAR_CAP = 600
         private const val EXPAND_HINT = "\u25B8"
-        private const val EXPAND_HINT_WQ = "[...\u5C55\u5F00]"
+        private const val EXPAND_HINT_WQ = "\u25BC" // ▼ 实心朝下小三角
         private const val COLLAPSE_LABEL = "\u6536\u8D77"
         private const val COLLAPSE_TEXT_SP = 12f
         private const val DIVIDER_ALPHA = 36
