@@ -205,26 +205,18 @@ open class PreeditUi(
     /**
      * 同步「提示块是否占用触摸区」。
      *
-     * 不能只在可见性变化时刷新：块会随展开/收起、命中条数变高变矮，
-     * 新长出来的那部分（通常是「收起」按钮那一带）如果不在触摸区里，点了会穿透给下面的 App。
-     * 这里用「可见矩形签名」判断，真的变了才通知输入法重算 insets。
+     * 只在**可见性变化**时通知输入法；块的尺寸变化不通知 —— 否则 updateInputViewShown()
+     * 会让窗口重算一轮，途中 refreshTips() 再把块判成「刚变可见」，
+     * 于是刚展开的条目会被自己收起来（日志实证：tap → 展开 → 3.6s 后自动缩回）。
+     * 尺寸变化不需要通知，是因为 InputView.getInputTouchRegion() 里已经把
+     * 整个窗口上半区并进触摸区（rect.top = 0），高度怎么变都盖得住。
      */
     private fun syncTouchable() {
         val any = wqTips.visibility == View.VISIBLE || glTips.visibility == View.VISIBLE
+        if (any == tipsTouchable) return
         tipsTouchable = any
-        val sig =
-            if (!any) {
-                0
-            } else {
-                wqTips.height * 31 + wqTips.top * 7 +
-                    glTips.height * 131 + glTips.top * 17 + 1
-            }
-        if (sig == lastTouchSig) return
-        lastTouchSig = sig
         runCatching { TrimeInputMethodService.current?.updateInputViewShown() }
     }
-
-    private var lastTouchSig = 0
 
     /** 相对亮度（WCAG），只看 RGB。 */
     private fun luminance(color: Int): Double {

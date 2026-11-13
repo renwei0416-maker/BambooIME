@@ -50,6 +50,7 @@ import com.osfans.trime.ime.broadcast.EnterKeyDisplayDelegate
 import com.osfans.trime.ime.broadcast.InputBroadcaster
 import com.osfans.trime.ime.candidates.popup.PopupCandidatesMode
 import com.osfans.trime.ime.composition.PreeditDelegate
+import com.osfans.trime.ime.composition.PreeditUi
 import com.osfans.trime.ime.composition.SyncInputBox
 import com.osfans.trime.ime.composition.SyncInputTextFormatter
 import com.osfans.trime.ime.composition.TargetTextSnapshot
@@ -1574,6 +1575,12 @@ class InputView(
             val preeditRect = Rect()
             preedit.ui.root.getHitRect(preeditRect)
             rect.union(preeditRect)
+        }
+        // 提示块（文曲星 / 外语学习）浮在键盘上方、会随展开/收起变高变矮。
+        // 它可见时直接把窗口上半区整体并进来（top 归零），
+        // 这样高度变化不用重新通知系统算 insets，也不会出现「新长出来那截点不到」。
+        if (PreeditUi.tipsTouchable) {
+            rect.top = 0
         }
         if (ocrCardHost.visibility == View.VISIBLE) {
             val cardRect = Rect()
