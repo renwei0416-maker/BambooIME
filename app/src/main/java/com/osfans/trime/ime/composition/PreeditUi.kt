@@ -29,6 +29,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import androidx.core.text.buildSpannedString
 import com.osfans.trime.actions.glossary.GlossaryPrefs
+import com.osfans.trime.BuildConfig
 import com.osfans.trime.actions.glossary.GlossaryTips
 import com.osfans.trime.actions.handwriting.HandwritingLog
 import com.osfans.trime.actions.tips.TipBlocks
@@ -190,6 +191,14 @@ open class PreeditUi(
      * 文曲星有命中 → 只有它；否则 → 外语学习（它自己没命中就隐藏）。
      */
     fun refreshTips() {
+        if (!buildLogged) {
+            buildLogged = true
+            HandwritingLog.d(
+                "tips",
+                "build=" + BuildConfig.BUILD_VERSION_NAME + " vc=" + BuildConfig.VERSION_CODE +
+                    " (tips54: glossary scroller=UNSPECIFIED)",
+            )
+        }
         val here = tipsShownHere()
         val wqHit =
             runCatching { WenquxingPrefs.enabled && WenquxingTips.hitCount() > 0 }.getOrDefault(false)
@@ -1933,6 +1942,7 @@ open class PreeditUi(
         private const val COLLAPSE_TEXT_SP = 12f
         private const val DIVIDER_ALPHA = 36
         private const val GAP_SLACK_DP = 10
+        private var buildLogged = false
         private const val TAP_SLOP_DP = 12
         private const val COLLAPSE_W_DP = 60
         private const val COLLAPSE_H_DP = 26
