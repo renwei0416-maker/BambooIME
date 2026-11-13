@@ -1561,6 +1561,28 @@ class InputView(
         outRegion.set(rect)
     }
 
+    /**
+     * 虚拟键盘下「键盘 + 编码行 + 提示块」的合并触摸区。
+     *
+     * 提示块浮在键盘上方，落在窗口可见区之外；不并进来，手指按在那儿会被
+     * 系统判成点到了下面的 App（表现为滑动变成滑编辑区）。
+     */
+    fun getInputTouchRegion(outRegion: Region) {
+        val rect = Rect()
+        keyboardView.getHitRect(rect)
+        if (preedit.ui.root.visibility == View.VISIBLE) {
+            val preeditRect = Rect()
+            preedit.ui.root.getHitRect(preeditRect)
+            rect.union(preeditRect)
+        }
+        if (ocrCardHost.visibility == View.VISIBLE) {
+            val cardRect = Rect()
+            ocrCardHost.getHitRect(cardRect)
+            rect.union(cardRect)
+        }
+        outRegion.set(rect)
+    }
+
     fun getFloatingKeyboardRegion(outRegion: Region) {
         if (!isEffectiveFloating) return
         val rect = Rect()

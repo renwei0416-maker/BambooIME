@@ -63,6 +63,7 @@ import com.osfans.trime.data.theme.ColorManager
 import com.osfans.trime.data.theme.Theme
 import com.osfans.trime.data.theme.ThemeManager
 import com.osfans.trime.ime.composition.CandidatesView
+import com.osfans.trime.ime.composition.PreeditUi
 import com.osfans.trime.ime.composition.TargetTextSnapshot
 import com.osfans.trime.ime.hardware.HardwareStatusBar
 import com.osfans.trime.ime.keyboard.InputFeedbackManager
@@ -627,9 +628,11 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
             }
             // 拍照识字的确认卡片浮在键盘上方（窗口可见区之外），默认触摸区不覆盖它，
             // 触摸会穿透到下面的 App；卡片激活时改成「键盘 ∪ 卡片」的区域。
-            if (OcrCard.isActive) {
+            // 提示块也浮在键盘上方，同样要并进触摸区，
+            // 否则按在提示块上的拖动会穿透给下面的 App（表现为在滑编辑区）。
+            if (OcrCard.isActive || PreeditUi.tipsTouchable) {
                 outInsets.touchableInsets = Insets.TOUCHABLE_INSETS_REGION
-                inputView?.getOcrCardTouchRegion(outInsets.touchableRegion)
+                inputView?.getInputTouchRegion(outInsets.touchableRegion)
             }
         } else {
             val n = decorView.findViewById<View>(android.R.id.navigationBarBackground)?.height ?: 0

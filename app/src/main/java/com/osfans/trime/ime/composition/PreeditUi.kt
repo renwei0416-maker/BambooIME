@@ -5,6 +5,7 @@
 
 package com.osfans.trime.ime.composition
 
+import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -21,10 +22,12 @@ import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewOutlineProvider
+import android.view.animation.DecelerateInterpolator
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.text.buildSpannedString
 import com.osfans.trime.actions.glossary.GlossaryPrefs
+import com.osfans.trime.actions.handwriting.HandwritingLog
 import com.osfans.trime.actions.glossary.GlossaryTips
 import com.osfans.trime.actions.tips.TipBlocks
 import com.osfans.trime.actions.tips.TipEntry
@@ -265,6 +268,7 @@ open class PreeditUi(
                         // 只记「用户自己滑过」，滚动本身交给 ScrollingMovementMethod
                         // （它带惯性甩动，手感才对）。返回 false 表示不消费事件。
                         manualScrollAt = SystemClock.uptimeMillis()
+                        if (distanceY > 0.5f) snapDir = 1 else if (distanceY < -0.5f) snapDir = -1
                         return false
                     }
                 },
@@ -284,11 +288,13 @@ open class PreeditUi(
             setOnTouchListener(
                 object : View.OnTouchListener {
                     override fun onTouch(v: View, event: MotionEvent): Boolean {
-                        // 全部接管：点击走 gestureDetector，滑动在 onScroll 里自己 scrollBy
-                        if (event.actionMasked == MotionEvent.ACTION_UP ||
+                        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+                            // 手指一落下就取消上一次吸附，否则会被硬拽回去
+                            cancelSnap()
+                        } else if (event.actionMasked == MotionEvent.ACTION_UP ||
                             event.actionMasked == MotionEvent.ACTION_CANCEL
                         ) {
-                            scheduleSnap()
+                            scheduleSnap(snapDir)
                         }
                         gestureDetector.onTouchEvent(event)
                         return false
@@ -473,6 +479,24 @@ open class PreeditUi(
                         setSpan(ForegroundColorSpan(tipColor), cntStart, length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
                         setSpan(RelativeSizeSpan(COUNT_SCALE), cntStart, length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
                     }
+                    // 可展开提示：只是提示，点整行都能触发
+                    if (line.expandable) {
+                        append("  ")
+                        val hintStart = length
+                        append(if (wenquxing) "[\u5c55\u5f00]" else "\u25B8")
+                        setSpan(
+                            ForegroundColorSpan(tipColor),
+                            hintStart,
+                            length,
+                            Spanned.SPAN_INCLUSIVE_EXCLUSIVE,
+                        )
+                        setSpan(
+                            RelativeSizeSpan(COUNT_SCALE),
+                            hintStart,
+                            length,
+                            Spanned.SPAN_INCLUSIVE_EXCLUSIVE,
+                        )
+                    }
                     entryBlockEnd[index] = length
                 }
             }
@@ -517,8 +541,33 @@ open class PreeditUi(
         /** 松手后把视口对齐到某一条的行首（按条目翻页，不自由停在半行）。 */
         private var snapToken: Runnable? = null
 
-        private fun scheduleSnap() {
+        /** 松手方向：+1 = 手指往上（看后面的条目），-1 = 往下。 */
+        private var snapDir = 0
+        private var snapAnimator: ValueAnimator? = null
+
+        private fun cancelSnap() {
             snapToken?.let { removeCallbacks(it) }
+            snapToken = null
+            snapAnimator?.cancel()
+            snapAnimator = null
+        }
+
+        /** 带动画滚到目标位置（菜单那种一格一格走的观感）。 */
+        private fun animateTo(target: Int) {
+            snapAnimator?.cancel()
+            val from = scrollY
+            if (from == target) return
+            val anim = ValueAnimator.ofInt(from, target)
+            anim.duration = 180L
+            anim.interpolator = DecelerateInterpolator()
+            anim.addUpdateListener { scrollTo(0, it.animatedValue as Int) }
+            snapAnimator = anim
+            anim.start()
+        }
+
+        private fun scheduleSnap(dir: Int) {
+            cancelSnap()
+            snapDir = dir
             val token =
                 object : Runnable {
                     private var last = -1
@@ -526,7 +575,9 @@ open class PreeditUi(
 
                     override fun run() {
                         val y = scrollY
-                        if (y == last) stable++ else {
+                        if (y == last) {
+                            stable++
+                        } else {
                             stable = 0
                             last = y
                         }
@@ -538,30 +589,39 @@ open class PreeditUi(
                     }
                 }
             snapToken = token
-            postDelayed(token, 60)
+            postDelayed(token, 80)
         }
 
-        /** 找到离当前滚动位置最近的「条目行首」，滚过去。 */
+        /** 按松手方向翻到上一条/下一条的行首，带滚动动画（像滑动菜单那样一格一格走）。 */
         private fun snapToEntry() {
             val lay = layout ?: return
             if (entryStart.isEmpty()) return
+            val tops =
+                entryStart.indices.map { i ->
+                    lay.getLineTop(lay.getLineForOffset(entryStart[i]))
+                }
             val y = scrollY
-            if (y <= 0) {
-                if (y != 0) scrollTo(0, 0)
+            if (y <= 0 && snapDir <= 0) {
+                if (y != 0) animateTo(0)
                 return
             }
-            var best = 0
-            var bestDelta = Int.MAX_VALUE
-            for (i in entryStart.indices) {
-                val line = lay.getLineForOffset(entryStart[i])
-                val top = lay.getLineTop(line)
-                val d = kotlin.math.abs(top - y)
-                if (d < bestDelta) {
-                    bestDelta = d
-                    best = top
+            // 当前视口顶部已经落在哪一条上
+            val current = tops.indexOfLast { it <= y + 1 }.coerceAtLeast(0)
+            var targetIndex = current
+            if (snapDir > 0) {
+                // 手指往上：如果已经滑过当前条目一半，就翻到下一条
+                val next = (current + 1).coerceAtMost(tops.lastIndex)
+                if (next != current && y - tops[current] >= (tops[next] - tops[current]) / 2) {
+                    targetIndex = next
                 }
+            } else if (snapDir < 0) {
+                val up = (current - 1).coerceAtLeast(0)
+                val backTop = if (y > tops[current]) tops[current] else tops[up]
+                targetIndex = if (y > tops[current]) current else up
+                if (backTop < 0) targetIndex = 0
             }
-            if (best != y) scrollTo(0, best)
+            val target = tops[targetIndex]
+            if (target != y) animateTo(target)
         }
 
         /**
@@ -589,11 +649,15 @@ open class PreeditUi(
                 return
             }
 
-            val index = entryIndexOf(offset)
-            if (index < 0) return
-            // 落在行首缩进（三角/全角空格）上不算点中这一条
-            if (offset < entryStart[index]) return
-            val item = entries.getOrNull(index) ?: return
+            // 按「视觉行 → 条目行区间」定位，比字符偏移稳（行首缩进、折行都不影响）
+            val index = entryIndexForLine(line)
+            val item = entries.getOrNull(index)
+            HandwritingLog.d(
+                "tips",
+                "tap line=$line offset=$offset vx=${vx.toInt()} vy=$vy -> idx=$index " +
+                    "expandable=${item?.expandable} entries=${entries.size}",
+            )
+            if (item == null) return
             if (item.expandable) {
                 expand(index)
                 return
@@ -606,6 +670,19 @@ open class PreeditUi(
         /** 文曲星：按「展开」文字按钮的实际横向范围 ± BUTTON_SLACK_DP 算热区。 */
 
         /** 二分查找「这个字符偏移属于第几条」。 */
+        /** 某个视觉行属于第几条（不在任何条目上时返回 -1）。 */
+        private fun entryIndexForLine(line: Int): Int {
+            val lay = layout ?: return -1
+            for (i in entryStart.indices) {
+                if (i >= entryBlockEnd.size) break
+                val end = entryBlockEnd[i].coerceAtLeast(entryStart[i] + 1) - 1
+                val first = lay.getLineForOffset(entryStart[i])
+                val last = lay.getLineForOffset(end)
+                if (line in first..last) return i
+            }
+            return -1
+        }
+
         private fun entryIndexOf(offset: Int): Int {
             if (entryStart.isEmpty()) return -1
             var lo = 0
@@ -720,6 +797,15 @@ open class PreeditUi(
 
         /** 悬浮候选窗那一份。 */
         const val OWNER_CANDIDATES = 1
+
+        /** 提示块当前是否占着屏幕（供输入法窗口把这块并进触摸区）。 */
+        @Volatile
+        var tipsTouchable: Boolean = false
+            private set
+
+        fun noteTipsVisible(visible: Boolean) {
+            tipsTouchable = visible
+        }
 
         private const val MIN_SCALE = 0.4f
         private const val MAX_SCALE = 2f
