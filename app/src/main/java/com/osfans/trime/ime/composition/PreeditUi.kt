@@ -492,14 +492,19 @@ open class PreeditUi(
                     if (item.expandable) {
                         append("  ")
                         val hintStart = length
-                        append(if (wenquxing) EXPAND_HINT_WQ else EXPAND_HINT)
+                        append(EXPAND_HINT_WQ)
                         setSpan(ForegroundColorSpan(tipColor), hintStart, length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
                         setSpan(RelativeSizeSpan(COUNT_SCALE), hintStart, length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
                     }
                 }
             return entryView(text, bodyTextSize()).apply {
+                setPadding(paddingLeft, ctx.dp(3), paddingRight, ctx.dp(3))
                 setOnClickListener {
-                    HandwritingLog.d("tips", "tap idx=$index expandable=${item.expandable} entries=${entries.size}")
+                    HandwritingLog.d(
+                        "tips",
+                        "tap idx=$index expandable=${item.expandable} entries=${entries.size} " +
+                            "text=${item.text.take(12)}",
+                    )
                     if (item.expandable) expand(index) else commitPayload(item.payload)
                 }
             }
@@ -567,6 +572,22 @@ open class PreeditUi(
         ) {
             val w = MeasureSpec.getSize(widthMeasureSpec)
             val wSpec = MeasureSpec.makeMeasureSpec(w, MeasureSpec.EXACTLY)
+            if (expandedIndex >= 0) {
+                // expanded height is a fixed ratio: no need to measure content at all.
+                val ratio = if (wenquxing) EXPAND_RATIO_WQ else EXPAND_RATIO_GL
+                val h = (ctx.resources.displayMetrics.heightPixels * ratio).toInt().coerceAtLeast(1)
+                if (h != lastMeasured) {
+                    lastMeasured = h
+                    HandwritingLog.d("tips", "measure ${if (wenquxing) "wq" else "gl"} expanded h=$h")
+                }
+                scroller.measure(wSpec, MeasureSpec.makeMeasureSpec(h, MeasureSpec.EXACTLY))
+                collapseButton.measure(
+                    MeasureSpec.makeMeasureSpec(ctx.dp(COLLAPSE_W_DP), MeasureSpec.EXACTLY),
+                    MeasureSpec.makeMeasureSpec(ctx.dp(COLLAPSE_H_DP), MeasureSpec.EXACTLY),
+                )
+                setMeasuredDimension(w, h)
+                return
+            }
             column.measure(wSpec, MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED))
             val padV = scroller.paddingTop + scroller.paddingBottom
             val contentH = column.measuredHeight + padV
