@@ -1408,11 +1408,8 @@ open class PreeditUi(
             return p.measureText("\u4E00").coerceAtLeast(1f)
         }
 
-        /** 正文左右各留出的像素（2 个字宽，且不小于主题的横向内边距）。 */
-        private fun sidePadPx(): Int {
-            val two = (charWidthPx() * ROW_SIDE_CHARS).toInt()
-            return maxOf(ctx.dp(theme.preedit.horizontalPadding), two)
-        }
+        /** 行首/行尾留白：保持主题的横向内边距不变（行首 ▶ 的位置跟以前一样）。 */
+        private fun sidePadPx(): Int = ctx.dp(theme.preedit.horizontalPadding)
 
         /**
          * 一条列表项 = 正文 + **固定位置**的展开三角。
@@ -1423,8 +1420,9 @@ open class PreeditUi(
          */
         private fun entryRow(body: CharSequence, expandable: Boolean): View {
             val charW = charWidthPx()
-            // 行首留 2 个字宽（用户要求）；行尾也留 2 个字宽。
-            val side = maxOf(ctx.dp(theme.preedit.horizontalPadding), (charW * ROW_SIDE_CHARS).toInt())
+            // 行首行尾的留白保持原样（主题的横向内边距）——
+            // 行首那个 ▶ 不能被我们挪位。
+            val side = sidePadPx()
             // 三角有自己的固定列：宽度固定、在列里居中。它不参与正文排版，
             // 所以所有条的三角天然落在同一个 x 上（竖直成一列），也不会被裁。
             val box = (charW * ARROW_BOX_CHARS).toInt().coerceAtLeast(ctx.dp(10))
@@ -1976,8 +1974,6 @@ open class PreeditUi(
         private const val MARK_SCALE = 1.1f
         /** 外语学习行尾展开三角：比行首 ▶ 再小一档，避免视觉上压过正文。 */
         private const val EXPAND_ARROW_SCALE = 0.80f
-        /** 外语学习每条正文左右各留几个字宽（用户要求 2 个）。 */
-        private const val ROW_SIDE_CHARS = 2f
         /** 行尾三角所在的固定列宽（字宽倍数）。 */
         private const val ARROW_BOX_CHARS = 1.6f
         private const val COUNT_SCALE = 0.78f
