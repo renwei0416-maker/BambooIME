@@ -1007,16 +1007,28 @@ open class PreeditUi(
          */
         private fun applyHeight(px: Int) {
             val lp = layoutParams ?: return
-            if (px > 0) {
-                if (lp.height == px) return
-                lp.height = px
-            } else {
-                if (lp.height == ViewGroup.LayoutParams.WRAP_CONTENT) return
-                lp.height = ViewGroup.LayoutParams.WRAP_CONTENT
-            }
+            val target = if (px > 0) px else ViewGroup.LayoutParams.WRAP_CONTENT
+            if (lp.height == target) return
+            lp.height = target
             layoutParams = lp
             requestLayout()
             (parent as? View)?.requestLayout()
+            // 输入法窗口里父容器不一定会重排（触摸派发期间尤其如此），
+            // 这里直接按已知高度自测自排，保证「点了展开立刻变高」，不依赖 ViewRoot 那次遍历。
+            if (px > 0 && width > 0) {
+                measure(
+                    MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY),
+                    MeasureSpec.makeMeasureSpec(px, MeasureSpec.EXACTLY),
+                )
+                layout(left, top, right, top + px)
+            } else if (px <= 0 && width > 0) {
+                measure(
+                    MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY),
+                    MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED),
+                )
+                layout(left, top, right, top + measuredHeight)
+                parent?.requestLayout()
+            }
             invalidate()
         }
 
