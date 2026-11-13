@@ -1083,29 +1083,8 @@ open class PreeditUi(
                 orientation = LinearLayout.VERTICAL
             }
 
-        // 注意：ScrollView 默认会按 AT_MOST(视口高) 去量子 View，
-        // 内容一旦比视口高就会被「夹」成正好一屏 → 看着填满了，但一点都滑不动。
-        // 这里覆写一处，强制用 UNSPECIFIED 量内容高度（内容多高就多高，由滚动条负责滚动）。
         private val scroller =
-            object : ScrollView(ctx) {
-                override fun measureChildWithMargins(
-                    child: View,
-                    parentWidthMeasureSpec: Int,
-                    widthUsed: Int,
-                    parentHeightMeasureSpec: Int,
-                    heightUsed: Int,
-                ) {
-                    val lp = child.layoutParams
-                    val wSpec =
-                        getChildMeasureSpec(
-                            parentWidthMeasureSpec,
-                            paddingLeft + paddingRight + widthUsed,
-                            lp.width,
-                        )
-                    val hSpec = MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED)
-                    child.measure(wSpec, hSpec)
-                }
-            }.apply {
+            ScrollView(ctx).apply {
                 isVerticalScrollBarEnabled = true
                 isHorizontalScrollBarEnabled = false
                 overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
@@ -1579,15 +1558,20 @@ open class PreeditUi(
                 }
 
                 MotionEvent.ACTION_UP -> {
-                    val quick = System.currentTimeMillis() - downAt < 600L
-                    // 先判「收起」按钮：按它自己的屏幕矩形算（含 12dp 外扩）。
-                    // 不再依赖 600ms 的 quick 判定 —— 瞄准按钮时手按久一点很常见，
-                    // 之前那条 quick 限制正是「点了收起没反应」的原因之一。
-                    if (expandedIndex >= 0 && !moved && hitCollapseButton(ev.rawX, ev.rawY)) {
-                        HandwritingLog.d("tips", "tap collapseBtn rawX=" + ev.rawX.toInt() + " rawY=" + ev.rawY.toInt())
+                    // 收起：按钮矩形命中，或落在展开态顶部那一行 —— 任一即可。
+                    // 不看按压时长，也不要求手指完全不动（此前就是被这两条筛掉的）。
+                    if (expandedIndex >= 0 &&
+                        (hitCollapseButton(ev.rawX, ev.rawY) || onTopLine(ev.rawY))
+                    ) {
+                        HandwritingLog.d(
+                            "tips",
+                            "tap collapseBtn rawX=" + ev.rawX.toInt() +
+                                " rawY=" + ev.rawY.toInt() + " moved=" + moved,
+                        )
                         collapse()
                         return true
                     }
+                    val quick = System.currentTimeMillis() - downAt < 600L
                     if (!moved && quick) {
                         val me = IntArray(2)
                         getLocationOnScreen(me)
@@ -1663,6 +1647,12 @@ open class PreeditUi(
          * 带偏移的 ev.y），结果都一样。
          */
         /** 「收起」按钮的屏幕矩形命中（含 12dp 外扩）。 */
+        /** 展开态顶部那一行（收起条所在高度）也算收起。 */
+        private fun onTopLine(rawY: Float): Boolean {
+            val loc = IntArray(2)
+            getLocationOnScreen(loc)
+            return rawY - loc[1] <= ctx.dp(COLLAPSE_H_DP + 10)
+        }
         private fun hitCollapseButton(rawX: Float, rawY: Float): Boolean {
             if (collapseButton.visibility != View.VISIBLE) return false
             val loc = IntArray(2)
@@ -1788,81 +1778,50 @@ open class PreeditUi(
         ) {
             val w = MeasureSpec.getSize(widthMeasureSpec)
             val wSpec = MeasureSpec.makeMeasureSpec(w, MeasureSpec.EXACTLY)
-            if (expandedIndex >= 0) {
-                // expanded height is a fixed ratio: no need to measure content at all.
-                val h = expandHeightPx()
-                if (h != lastMeasured) {
-                    lastMeasured = h
-                    HandwritingLog.d("tips", "measure ${if (wenquxing) "wq" else "gl"} expanded h=$h")
-                }
-                // 先把正文按内容高度量出来，再把高度写进 column 的 layoutParams。
-                // 这样 ScrollView 拿到的子 View 是「固定高度且比视口高」，滚动范围才不为 0。
-                val cw = MeasureSpec.makeMeasureSpec(
-                    (MeasureSpec.getSize(wSpec) - paddingLeft - paddingRight).coerceAtLeast(1),
-                    MeasureSpec.EXACTLY,
-                )
-                column.measure(cw, MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED))
-                val contentH = column.measuredHeight.coerceAtLeast(1)
-                val clp = column.layoutParams
-                if (clp != null && clp.height != contentH) {
-                    clp.height = contentH
-                    column.layoutParams = clp
-                }
-                HandwritingLog.d("tips", "gl expanded content=$contentH viewport=$h")
-                scroller.measure(wSpec, MeasureSpec.makeMeasureSpec(h, MeasureSpec.EXACTLY))
-                collapseButton.measure(
-                    MeasureSpec.makeMeasureSpec(ctx.dp(COLLAPSE_W_DP), MeasureSpec.EXACTLY),
-                    MeasureSpec.makeMeasureSpec(ctx.dp(COLLAPSE_H_DP), MeasureSpec.EXACTLY),
-                )
-                setMeasuredDimension(w, h)
-                return
-            }
+            // 1) 先按「高度不限」量一遍：正文到底多高
             column.measure(wSpec, MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED))
+            val contentH = column.measuredHeight.coerceAtLeast(1)
+            // 2) 把内容高度写成固定值。ScrollView 再量这个子 View 时拿到的是
+            //    EXACTLY(内容高)，不会被它自己的 AT_MOST(视口高) 夹成一屏 ——
+            //    这正是「看着填满、却滑不动」的根因。
+            val clp = column.layoutParams
+            if (clp != null && clp.height != contentH) {
+                clp.height = contentH
+                column.layoutParams = clp
+            }
             val padV = scroller.paddingTop + scroller.paddingBottom
-            val contentH = column.measuredHeight + padV
-            val want =
+            // 3) 容器高度：展开态 = 屏高比例；列表态 = min(内容高, 前 N 条)
+            val h =
                 if (expandedIndex >= 0) {
-                    // 展开态用**固定**高度（占屏高比例），不再按行数、也不被内容高度压小。
-                    // 两个模块比例不同：文曲星条目长，给 28%；外语学习只有一行英文，18% 就够。
-                    val ratio = if (wenquxing) EXPAND_RATIO_WQ else EXPAND_RATIO_GL
-                    (ctx.resources.displayMetrics.heightPixels * ratio).toInt()
+                    expandHeightPx()
                 } else {
-                    val r = rows().coerceIn(1, MAX_ROWS)
-                    // 子 View 里混着三种东西：角标、条目（带 tag）、分隔线（不带 tag）。
-                    // 只有**带 tag 的**才算一条；角标和分隔线照样占高度、但不计条数。
-                    // （之前「取前 r 个子 View」会把分隔线也算成一条，导致设 3 条只显示 1.5 条。）
                     var sum = 0
                     var count = 0
                     var i = 0
-                    while (i < column.childCount && count < r) {
+                    val limit = rows().coerceIn(1, MAX_ROWS)
+                    while (i < column.childCount && count < limit) {
                         val ch = column.getChildAt(i)
                         val m = ch.layoutParams as? ViewGroup.MarginLayoutParams
                         sum += ch.measuredHeight + (m?.topMargin ?: 0) + (m?.bottomMargin ?: 0)
                         if (ch.tag is Int) count++
                         i++
                     }
-                    if (count == 0) contentH else sum + padV
-                }
-            // 内容不够高就自适应，别留空白
-            val h =
-                if (expandedIndex < 0 && contentH in 1 until want) {
-                    contentH
-                } else {
-                    want.coerceAtLeast(1)
-                }
-            if (h != lastMeasured) {
-                lastMeasured = h
-                HandwritingLog.d(
-                    "tips",
-                    "measure ${if (wenquxing) "wq" else "gl"} rows=$want content=$contentH final=$h",
-                )
-            }
+                    val want = if (count == 0) contentH + padV else sum + padV
+                    if (contentH + padV <= want) contentH + padV else want
+                }.coerceAtLeast(1)
             scroller.measure(wSpec, MeasureSpec.makeMeasureSpec(h, MeasureSpec.EXACTLY))
             collapseButton.measure(
                 MeasureSpec.makeMeasureSpec(ctx.dp(COLLAPSE_W_DP), MeasureSpec.EXACTLY),
                 MeasureSpec.makeMeasureSpec(ctx.dp(COLLAPSE_H_DP), MeasureSpec.EXACTLY),
             )
             setMeasuredDimension(w, h)
+            if (h != lastMeasured) {
+                lastMeasured = h
+                HandwritingLog.d(
+                    "tips",
+                    "measure gl content=" + contentH + " final=" + h + " expanded=" + expandedIndex,
+                )
+            }
         }
 
         private fun expand(index: Int) {
@@ -1874,7 +1833,7 @@ open class PreeditUi(
             scrollBeforeExpand = scroller.scrollY
             expandedIndex = index
             render()
-            applyHeight(expandHeightPx())
+            applyHeight()
             HandwritingLog.d(
                 "tips",
                 "expand ${if (wenquxing) "wq" else "gl"} idx=" + index +
@@ -1890,34 +1849,19 @@ open class PreeditUi(
         }
 
         /**
-         * 直接改 layoutParams.height 并让父容器重排。
-         *
-         * 只靠 requestLayout() 在输入法窗口里不可靠：onMeasure 会走展开分支把高度算对，
-         * 但父 LinearLayout 不一定重新遍历——表现就是「点了展开没反应、也不能滑」。
+         * 高度完全由 onMeasure 决定（展开态固定屏高比例、列表态前 N 条）。
+         * 这里只负责「立刻重排」，不等父容器下一趟。
          */
-        private fun applyHeight(px: Int) {
-            val lp = layoutParams ?: return
-            val target = if (px > 0) px else ViewGroup.LayoutParams.WRAP_CONTENT
-            if (lp.height == target) return
-            lp.height = target
-            layoutParams = lp
+        private fun applyHeight() {
+            forceLayout()
             requestLayout()
             (parent as? View)?.requestLayout()
-            // 输入法窗口里父容器不一定会重排（触摸派发期间尤其如此），
-            // 这里直接按已知高度自测自排，保证「点了展开立刻变高」，不依赖 ViewRoot 那次遍历。
-            if (px > 0 && width > 0) {
-                measure(
-                    MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY),
-                    MeasureSpec.makeMeasureSpec(px, MeasureSpec.EXACTLY),
-                )
-                layout(left, top, right, top + px)
-            } else if (px <= 0 && width > 0) {
+            if (width > 0) {
                 measure(
                     MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY),
                     MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED),
                 )
                 layout(left, top, right, top + measuredHeight)
-                parent?.requestLayout()
             }
             invalidate()
         }
@@ -1927,7 +1871,7 @@ open class PreeditUi(
             collapseButton.visibility = View.GONE
             render()
             // 收起后把高度交还给内容（WRAP_CONTENT）并强制父容器重排
-            applyHeight(-1)
+            applyHeight()
             HandwritingLog.d("tips", "collapse ${if (wenquxing) "wq" else "gl"}")
             post { scroller.scrollTo(0, scrollBeforeExpand) }
         }
