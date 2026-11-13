@@ -21,8 +21,6 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
-import android.graphics.Rect
-import android.view.TouchDelegate
 import androidx.core.text.buildSpannedString
 import com.osfans.trime.actions.glossary.GlossaryPrefs
 import com.osfans.trime.actions.glossary.GlossaryTips
@@ -374,6 +372,13 @@ open class PreeditUi(
             var id = 7
             list.forEach { id = id * 31 + it.text.hashCode() * 17 + it.chars * 7 + it.detail.length * 13 }
             val changed = id != snapshot || visibility != View.VISIBLE
+            if (changed) {
+                HandwritingLog.d(
+                    "tips",
+                    "refresh ${if (wenquxing) "wq" else "gl"} changed vis=$visibility " +
+                        "expanded=$expandedIndex entries=${list.size}",
+                )
+            }
             snapshot = id
             entries = list
             if (changed) {
@@ -550,23 +555,6 @@ open class PreeditUi(
             // 高度已经在 onMeasure 里定好，这里不再改 layoutParams（布局阶段改参数会被推迟，
             // 表现就是「有时全显示 / 有时显示 N 条又滑不动」）。
             this@PreeditUi.syncTouchable()
-            installCollapseTouchDelegate()
-        }
-
-        /**
-         * 「收起」按钮视觉不变，只把**可点矩形**四周各放宽一圈。
-         *
-         * 60×26dp 的胶囊用指尖本来就难点中，TouchDelegate 让父容器把放大后的矩形也交给它。
-         */
-        private fun installCollapseTouchDelegate() {
-            if (expandedIndex < 0 || collapseButton.visibility != View.VISIBLE) {
-                if (touchDelegate != null) touchDelegate = null
-                return
-            }
-            val rc = Rect()
-            collapseButton.getHitRect(rc)
-            rc.inset(-ctx.dp(18), -ctx.dp(11))
-            touchDelegate = TouchDelegate(rc, collapseButton)
         }
 
         /**
@@ -683,7 +671,7 @@ open class PreeditUi(
         private const val BADGE_SCALE = 0.88f
         /** 展开态高度占屏高的比例：文曲星 28%、外语学习 18%。 */
         private const val EXPAND_RATIO_WQ = 0.28f
-        private const val EXPAND_RATIO_GL = 0.18f
+        private const val EXPAND_RATIO_GL = 0.14f
         private const val MAX_ROWS = 6
         private const val MAX_EXPAND_ROWS = 8
         private const val BUTTON_BG_ALPHA = 40
