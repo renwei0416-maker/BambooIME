@@ -252,7 +252,7 @@ open class PreeditUi(
                 object : GestureDetector.SimpleOnGestureListener() {
                     override fun onDown(e: MotionEvent): Boolean = true
 
-                    override fun onSingleTapUp(e: MotionEvent): Boolean {
+                    override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
                         handleTap(e.x.toInt(), e.y.toInt())
                         return true
                     }
@@ -282,15 +282,19 @@ open class PreeditUi(
             isVerticalScrollBarEnabled = true
             isHorizontalScrollBarEnabled = false
             visibility = View.GONE
-            setOnTouchListener(
-                object : View.OnTouchListener {
-                    override fun onTouch(v: View, event: MotionEvent): Boolean {
-                        // 普通上下滑动：滚动与惯性交给 ScrollingMovementMethod，这里只管点击
-                        gestureDetector.onTouchEvent(event)
-                        return false
-                    }
-                },
-            )
+        }
+
+        /**
+         * 触摸只做两件事：事件喂给 GestureDetector 识别点击，其余交回 TextView
+         * （滚动与惯性由 ScrollingMovementMethod 处理）。
+         *
+         * 以前用 setOnTouchListener 返回 false，事件在「监听器 → TextView.onTouchEvent」
+         * 之间来回走两遍，滑动时好时坏就是从这里来的。
+         */
+        override fun onTouchEvent(event: MotionEvent): Boolean {
+            gestureDetector.onTouchEvent(event)
+            val handled = super.onTouchEvent(event)
+            return handled || event.actionMasked == MotionEvent.ACTION_DOWN
         }
 
         /** 禁止一切横向滚动（文本比视口宽时也不许左右拖）。 */
@@ -559,10 +563,11 @@ open class PreeditUi(
             val item = entries.getOrNull(index)
             HandwritingLog.d(
                 "tips",
-                "tap line=$line offset=$offset vx=${vx.toInt()} vy=$vy -> idx=$index " +
-                    "expandable=${item?.expandable} entries=${entries.size}",
+                "tap line=$line offset=$offset scroll=$scrollY -> idx=$index " +
+                    "expandable=${item?.expandable} payloadLen=${item?.payload?.length} entries=${entries.size}",
             )
             if (item == null) return
+            // 点哪一条就作用于哪一条：滚动之后按当前视觉位置算（vy 里已经含 scrollY）
             if (item.expandable) {
                 expand(index)
                 return

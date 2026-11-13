@@ -174,7 +174,7 @@ object WenquxingTips {
                     text = shown,
                     detail = full,
                     payload = full,
-                    expandable = full.length > len,
+                    expandable = true, // 每条都给入口：点条目即展开，展开态点内容才上屏
                 ),
             )
         }

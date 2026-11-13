@@ -94,7 +94,7 @@ object GlossaryTips {
                     unmatched = english == null,
                     english = english,
                     // 显示的英文已经完整 = 没有更多内容可看，不给展开入口
-                    expandable = detail.length > english.orEmpty().length,
+                    expandable = true, // 每条都给入口：点条目即展开，展开态点内容才上屏
                 ),
             )
         }
