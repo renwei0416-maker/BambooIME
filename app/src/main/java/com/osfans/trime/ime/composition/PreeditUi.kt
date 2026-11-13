@@ -5,7 +5,6 @@
 
 package com.osfans.trime.ime.composition
 
-import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -22,7 +21,6 @@ import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewOutlineProvider
-import android.view.animation.DecelerateInterpolator
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.text.buildSpannedString
@@ -268,7 +266,6 @@ open class PreeditUi(
                         // 只记「用户自己滑过」，滚动本身交给 ScrollingMovementMethod
                         // （它带惯性甩动，手感才对）。返回 false 表示不消费事件。
                         manualScrollAt = SystemClock.uptimeMillis()
-                        if (distanceY > 0.5f) snapDir = 1 else if (distanceY < -0.5f) snapDir = -1
                         return false
                     }
                 },
@@ -288,14 +285,7 @@ open class PreeditUi(
             setOnTouchListener(
                 object : View.OnTouchListener {
                     override fun onTouch(v: View, event: MotionEvent): Boolean {
-                        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
-                            // 手指一落下就取消上一次吸附，否则会被硬拽回去
-                            cancelSnap()
-                        } else if (event.actionMasked == MotionEvent.ACTION_UP ||
-                            event.actionMasked == MotionEvent.ACTION_CANCEL
-                        ) {
-                            scheduleSnap(snapDir)
-                        }
+                        // 普通上下滑动：滚动与惯性交给 ScrollingMovementMethod，这里只管点击
                         gestureDetector.onTouchEvent(event)
                         return false
                     }
@@ -538,91 +528,6 @@ open class PreeditUi(
         }
 
         /** 点到了什么：先看展开入口热区，再按字符偏移落到某一条。 */
-        /** 松手后把视口对齐到某一条的行首（按条目翻页，不自由停在半行）。 */
-        private var snapToken: Runnable? = null
-
-        /** 松手方向：+1 = 手指往上（看后面的条目），-1 = 往下。 */
-        private var snapDir = 0
-        private var snapAnimator: ValueAnimator? = null
-
-        private fun cancelSnap() {
-            snapToken?.let { removeCallbacks(it) }
-            snapToken = null
-            snapAnimator?.cancel()
-            snapAnimator = null
-        }
-
-        /** 带动画滚到目标位置（菜单那种一格一格走的观感）。 */
-        private fun animateTo(target: Int) {
-            snapAnimator?.cancel()
-            val from = scrollY
-            if (from == target) return
-            val anim = ValueAnimator.ofInt(from, target)
-            anim.duration = 180L
-            anim.interpolator = DecelerateInterpolator()
-            anim.addUpdateListener { scrollTo(0, it.animatedValue as Int) }
-            snapAnimator = anim
-            anim.start()
-        }
-
-        private fun scheduleSnap(dir: Int) {
-            cancelSnap()
-            snapDir = dir
-            val token =
-                object : Runnable {
-                    private var last = -1
-                    private var stable = 0
-
-                    override fun run() {
-                        val y = scrollY
-                        if (y == last) {
-                            stable++
-                        } else {
-                            stable = 0
-                            last = y
-                        }
-                        if (stable >= 2) {
-                            snapToEntry()
-                        } else {
-                            postDelayed(this, 40)
-                        }
-                    }
-                }
-            snapToken = token
-            postDelayed(token, 80)
-        }
-
-        /** 按松手方向翻到上一条/下一条的行首，带滚动动画（像滑动菜单那样一格一格走）。 */
-        private fun snapToEntry() {
-            val lay = layout ?: return
-            if (entryStart.isEmpty()) return
-            val tops =
-                entryStart.indices.map { i ->
-                    lay.getLineTop(lay.getLineForOffset(entryStart[i]))
-                }
-            val y = scrollY
-            if (y <= 0 && snapDir <= 0) {
-                if (y != 0) animateTo(0)
-                return
-            }
-            // 当前视口顶部已经落在哪一条上
-            val current = tops.indexOfLast { it <= y + 1 }.coerceAtLeast(0)
-            var targetIndex = current
-            if (snapDir > 0) {
-                // 手指往上：如果已经滑过当前条目一半，就翻到下一条
-                val next = (current + 1).coerceAtMost(tops.lastIndex)
-                if (next != current && y - tops[current] >= (tops[next] - tops[current]) / 2) {
-                    targetIndex = next
-                }
-            } else if (snapDir < 0) {
-                val up = (current - 1).coerceAtLeast(0)
-                val backTop = if (y > tops[current]) tops[current] else tops[up]
-                targetIndex = if (y > tops[current]) current else up
-                if (backTop < 0) targetIndex = 0
-            }
-            val target = tops[targetIndex]
-            if (target != y) animateTo(target)
-        }
 
         /**
          * 点到了什么。
