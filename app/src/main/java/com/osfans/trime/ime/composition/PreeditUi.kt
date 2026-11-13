@@ -914,8 +914,7 @@ open class PreeditUi(
             val wSpec = MeasureSpec.makeMeasureSpec(w, MeasureSpec.EXACTLY)
             if (expandedIndex >= 0) {
                 // expanded height is a fixed ratio: no need to measure content at all.
-                val ratio = if (wenquxing) EXPAND_RATIO_WQ else EXPAND_RATIO_GL
-                val h = (ctx.resources.displayMetrics.heightPixels * ratio).toInt().coerceAtLeast(1)
+                val h = expandHeightPx()
                 if (h != lastMeasured) {
                     lastMeasured = h
                     HandwritingLog.d("tips", "measure ${if (wenquxing) "wq" else "gl"} expanded h=$h")
@@ -985,16 +984,49 @@ open class PreeditUi(
             scrollBeforeExpand = scroller.scrollY
             expandedIndex = index
             render()
-            requestLayout()
+            applyHeight(expandHeightPx())
+            HandwritingLog.d(
+                "tips",
+                "expand ${if (wenquxing) "wq" else "gl"} idx=" + index +
+                    " h=" + expandHeightPx(),
+            )
             post { scroller.scrollTo(0, 0) }
+        }
+
+        /** 展开态固定高度：占屏高比例（文曲星 28%、外语学习 14%）。 */
+        private fun expandHeightPx(): Int {
+            val ratio = if (wenquxing) EXPAND_RATIO_WQ else EXPAND_RATIO_GL
+            return (resources.displayMetrics.heightPixels * ratio).toInt().coerceAtLeast(1)
+        }
+
+        /**
+         * 直接改 layoutParams.height 并让父容器重排。
+         *
+         * 只靠 requestLayout() 在输入法窗口里不可靠：onMeasure 会走展开分支把高度算对，
+         * 但父 LinearLayout 不一定重新遍历——表现就是「点了展开没反应、也不能滑」。
+         */
+        private fun applyHeight(px: Int) {
+            val lp = layoutParams ?: return
+            if (px > 0) {
+                if (lp.height == px) return
+                lp.height = px
+            } else {
+                if (lp.height == ViewGroup.LayoutParams.WRAP_CONTENT) return
+                lp.height = ViewGroup.LayoutParams.WRAP_CONTENT
+            }
+            layoutParams = lp
+            requestLayout()
+            (parent as? View)?.requestLayout()
+            invalidate()
         }
 
         private fun collapse() {
             expandedIndex = -1
             collapseButton.visibility = View.GONE
             render()
-            // 收起后必须重新测量一次，否则会沿用展开态的高度（表现：变得很矮、内容被裁）
-            requestLayout()
+            // 收起后把高度交还给内容（WRAP_CONTENT）并强制父容器重排
+            applyHeight(-1)
+            HandwritingLog.d("tips", "collapse ${if (wenquxing) "wq" else "gl"}")
             post { scroller.scrollTo(0, scrollBeforeExpand) }
         }
 
