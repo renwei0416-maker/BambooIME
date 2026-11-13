@@ -99,16 +99,16 @@ class WenquxingFragment : PaddingPreferenceFragment() {
                     ) { WenquxingPrefs.maxDisplay = it }
 
                     addSliderSetting(
-                        title = "每条最多几行",
-                        summary = "按实际宽度排版：宽就多显示，放不下才截断并出现「[...展开]」",
-                        min = 1,
-                        max = 3,
+                        title = "条目显示字数",
+                        summary = "每条最多取多少个字；太长会把列撑开",
+                        min = 4,
+                        max = 100,
                         step = 1,
-                        default = 2,
-                        current = WenquxingPrefs.maxLines,
-                        unit = " 行",
+                        default = 40,
+                        current = WenquxingPrefs.displayLen,
+                        unit = " 字",
                         resetters = resetters,
-                    ) { WenquxingPrefs.maxLines = it }
+                    ) { WenquxingPrefs.displayLen = it }
 
                     addSliderSetting(
                         title = "字号",

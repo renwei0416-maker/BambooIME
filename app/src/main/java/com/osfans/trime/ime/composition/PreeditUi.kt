@@ -340,9 +340,7 @@ open class PreeditUi(
 
         /** 每条最多显示几行（两个模块各自设置）。 */
         private fun maxLines(): Int =
-            runCatching {
-                if (wenquxing) WenquxingPrefs.maxLines else GlossaryPrefs.maxLines
-            }.getOrDefault(2).coerceIn(1, MAX_ENTRY_LINES)
+            runCatching { GlossaryPrefs.maxLines }.getOrDefault(2).coerceIn(1, MAX_ENTRY_LINES)
 
         /** 条目可用宽度（px）：块宽 - 内边距 - 条目自身左右 padding。 */
         private fun entryAvailWidth(): Int {
@@ -500,7 +498,9 @@ open class PreeditUi(
                     expandedIndex = -1
                 } else {
                     scroller.setPadding(0, ctx.dp(COLLAPSE_H_DP + 8), 0, 0)
-                    column.addView(makeDetail(item))
+                    // 展开态也要带 tag：dispatchTouchEvent 的 childIndexAtScreen 只认带 tag 的子 View，
+                    // 不带的话点正文拿不到 index → activate 不执行 → 「展开后点内容不上屏」。
+                    column.addView(makeDetail(item).apply { tag = expandedIndex })
                     collapseButton.visibility = View.VISIBLE
                     return
                 }
@@ -577,6 +577,13 @@ open class PreeditUi(
                             Spanned.SPAN_INCLUSIVE_EXCLUSIVE,
                         )
                     }
+                    if (wenquxing && item.expandable) {
+                        append("  ")
+                        val hintStart = length
+                        append(EXPAND_HINT_WQ)
+                        setSpan(ForegroundColorSpan(tipColor), hintStart, length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
+                        setSpan(RelativeSizeSpan(COUNT_SCALE), hintStart, length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
+                    }
                     if (showChars() && wenquxing && item.chars > 0) {
                         append("  ")
                         val cntStart = length
@@ -587,8 +594,15 @@ open class PreeditUi(
                 }
             // 真实排版后再决定要不要截断（宽度富裕就多显示，窄就少显示），
             // 截断过才给 [...展开] 入口 —— 这样不会再出现「有入口没内容 / 有内容没入口」。
-            val fitted = fitLines(text, entryAvailWidth(), maxLines())
-            entryExpandable[index] = fitted.second
+            // 文曲星：用户要求按「条目显示字数」控制，展开入口也按字数判定，不再按行数二次裁；
+            // 外语学习：按「宽度 + 最多行数」真实排版后再裁。
+            val fitted =
+                if (wenquxing) {
+                    text to false
+                } else {
+                    fitLines(text, entryAvailWidth(), maxLines())
+                }
+            entryExpandable[index] = if (wenquxing) item.expandable else fitted.second
             val shown = fitted.first
             return entryView(shown, bodyTextSize()).apply {
                 tag = index
