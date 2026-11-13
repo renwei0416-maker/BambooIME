@@ -1195,7 +1195,7 @@ open class PreeditUi(
                 measuredWidth.takeIf { it > 0 }
                     ?: runCatching { ctx.resources.displayMetrics.widthPixels }.getOrDefault(1080)
             val used = paddingLeft + paddingRight + column.paddingLeft + column.paddingRight +
-                sidePadPx() * 2 + arrowBoxPx()
+                sidePadPx() * 2 + arrowBoxPx() + arrowEndExtraPx()
             return (w - used).coerceAtLeast(120)
         }
 
@@ -1421,6 +1421,9 @@ open class PreeditUi(
         private fun arrowBoxPx(): Int =
             (charWidthPx() * ARROW_BOX_CHARS).toInt().coerceAtLeast(ctx.dp(10))
 
+        /** 行尾额外留白（px）。 */
+        private fun arrowEndExtraPx(): Int = (charWidthPx() * ARROW_END_EXTRA_CHARS).toInt()
+
         /**
          * 一条列表项 = 正文 + **固定位置**的展开三角。
          *
@@ -1469,7 +1472,7 @@ open class PreeditUi(
             return LinearLayout(ctx).apply {
                 isClickable = true
                 gravity = Gravity.CENTER_VERTICAL
-                setPadding(side, 0, side, 0)
+                setPadding(side, 0, side + arrowEndExtraPx(), 0)
                 addView(bodyView)
                 addView(tail)
             }
@@ -1980,7 +1983,16 @@ open class PreeditUi(
         /** 外语学习行尾展开三角：比行首 ▶ 再小一档，避免视觉上压过正文。 */
         private const val EXPAND_ARROW_SCALE = 0.80f
         /** 行尾三角所在的固定列宽（字宽倍数）。 */
-        private const val ARROW_BOX_CHARS = 1.6f
+        private const val ARROW_BOX_CHARS = 1.15f
+
+        /**
+         * 行尾额外留白（单位：字宽）。
+         *
+         * 三角在它自己的列里居中，所以列窄一点 = 左间距小一点；
+         * 再在行尾多留一点空白 = 右间距大一点。两者合起来就是
+         * 三角整体往右挪一小步。
+         */
+        private const val ARROW_END_EXTRA_CHARS = 0.35f
         private const val COUNT_SCALE = 0.78f
         /** 展开小图标的相对字号（比正文大一点，才看得清是实心三角）。 */
         private const val BADGE_SCALE = 0.88f
