@@ -15,6 +15,7 @@ import android.text.style.RelativeSizeSpan
 import android.text.style.StyleSpan
 import android.view.Gravity
 import android.view.View
+import android.view.MotionEvent
 import android.view.ViewGroup
 import android.view.ViewOutlineProvider
 import android.widget.FrameLayout
@@ -285,6 +286,7 @@ open class PreeditUi(
 
         /** 上一次测出的高度，只用来避免日志刷屏。 */
         private var lastMeasured = -1
+        private var lastBounds = ""
 
         init {
             visibility = View.GONE
@@ -499,6 +501,18 @@ open class PreeditUi(
                 }
             return entryView(text, bodyTextSize()).apply {
                 setPadding(paddingLeft, ctx.dp(3), paddingRight, ctx.dp(3))
+                setOnTouchListener { v, e ->
+                    if (e.actionMasked == MotionEvent.ACTION_UP) {
+                        runCatching {
+                            HandwritingLog.d(
+                                "tips",
+                                "click y=" + e.y.toInt() + " h=" + v.height + " child#" + index +
+                                    " top=" + v.top + " bottom=" + v.bottom + " scrollY=" + scroller.scrollY,
+                            )
+                        }
+                    }
+                    false
+                }
                 setOnClickListener {
                     HandwritingLog.d(
                         "tips",
@@ -559,6 +573,19 @@ open class PreeditUi(
             super.onLayout(changed, left, top, right, bottom)
             // 高度已经在 onMeasure 里定好，这里不再改 layoutParams（布局阶段改参数会被推迟，
             // 表现就是「有时全显示 / 有时显示 N 条又滑不动」）。
+            runCatching {
+                val sb = StringBuilder()
+                for (ci in 0 until column.childCount) {
+                    val cv = column.getChildAt(ci)
+                    sb.append(" #").append(ci).append(':').append(cv.top).append("..").append(cv.bottom)
+                }
+                val line = (if (wenquxing) "wq" else "gl") + " h=" + height +
+                    " scrollY=" + scroller.scrollY + " expanded=" + expandedIndex + sb
+                if (line != lastBounds) {
+                    lastBounds = line
+                    HandwritingLog.d("tips", "bounds " + line)
+                }
+            }
             this@PreeditUi.syncTouchable()
         }
 
