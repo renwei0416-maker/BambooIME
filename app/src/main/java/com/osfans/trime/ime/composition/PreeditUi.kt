@@ -8,23 +8,17 @@ package com.osfans.trime.ime.composition
 import android.content.Context
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
-import android.text.Layout
-import android.text.Spannable
 import android.text.Spanned
-import android.text.method.ScrollingMovementMethod
-import android.text.style.AlignmentSpan
-import android.text.style.BackgroundColorSpan
-import android.text.style.LeadingMarginSpan
 import android.text.style.ForegroundColorSpan
+import android.text.style.LeadingMarginSpan
 import android.text.style.RelativeSizeSpan
 import android.text.style.StyleSpan
-import android.view.GestureDetector
 import android.view.Gravity
-import android.view.MotionEvent
 import android.view.View
 import android.view.ViewOutlineProvider
 import android.widget.FrameLayout
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import androidx.core.text.buildSpannedString
 import com.osfans.trime.actions.glossary.GlossaryPrefs
@@ -47,7 +41,6 @@ import splitties.views.dsl.core.matchParent
 import splitties.views.dsl.core.view
 import splitties.views.dsl.core.wrapContent
 import splitties.views.horizontalPadding
-import kotlin.math.abs
 
 /**
  * 编码区。
@@ -59,23 +52,22 @@ import kotlin.math.abs
  * - [wqTips] 文曲星（诗词 / 名句）
  * - [glTips] 外语学习（候选 + 英文 / 日文）
  *
- * 它们外观一样，但状态、内容、设置项各管各的，互不影响。
+ * ## 提示区为什么是「ScrollView + 每条一个 View」
+ *
+ * 和符号面板同构：滚动交给 `ScrollView`（原生惯性），点击交给每一行自己的
+ * `OnClickListener`。**不在一段文本里用手算坐标做命中判定**——那条路试过十几版，
+ * 折行、滚动、展开交错时必然出错（点不动、点到隔壁、滑一半卡住）。
  *
  * ## 唯一的一条显示规则
  *
  * 文曲星这一句有命中时，**只显示文曲星那一块**，外语学习强制隐藏；
  * 文曲星没命中时才轮到外语学习（它自己没命中就不显示）。
- * 规则只写在 [refreshTips] 一处。
  *
- * ## 每块的状态机（就这四个变量，没有别的）
+ * ## 每块的状态
  *
- * - `snapshot`：这一批候选的内容指纹。**指纹一变，展开态与滚动位置全部作废**，
- *   回到未展开、滚到顶部——这就是「候选变了就丢弃当前显示」。
- * - `expandedIndex`：展开的是第几条，`-1` 表示列表态。只对当前 `snapshot` 有效。
- * - `viewportRows`：视口高度按「显示几条」算，内容永远是全部条目。
- * - 滚动位置由 View 自己持有（原生 `ScrollingMovementMethod`）。
- *
- * 高度只在 **`onLayout` 之后**量（`applyViewportHeight`），不再赌 `post` 时序。
+ * - `snapshot`：这一批候选的内容指纹，**一变就丢弃展开态与滚动位置**。
+ * - `expandedIndex`：展开的是第几条，`-1` 表示列表态。
+ * - 高度：列表态 = 前「显示几条」条之和（超出才能滚）；展开态 = 展开行数与屏高 40% 取小。
  */
 open class PreeditUi(
     final override val ctx: Context,
@@ -87,7 +79,7 @@ open class PreeditUi(
     private val textColor = ColorManager.getColor("text_color")
     private val highlightTextColor = ColorManager.getColor("hilited_text_color")
 
-    /** 提示块里英文部分用的颜色：主题里的注释色，取不到就退回高亮色。 */
+    /** 提示块里英文 / 次要信息用的颜色：主题注释色，取不到退回高亮色。 */
     private val tipColor =
         runCatching { ColorManager.getColorOr("comment_text_color", highlightTextColor) }
             .getOrDefault(highlightTextColor)
@@ -112,33 +104,6 @@ open class PreeditUi(
     private val wqTips = TipsView(wenquxing = true)
     private val glTips = TipsView(wenquxing = false)
 
-    /** 提示块外面再包一层：右上角那个「收起」浮在上面，不随内容滚动。 */
-    private val wqFrame = tipsFrame(wqTips)
-    private val glFrame = tipsFrame(glTips)
-
-    private fun tipsFrame(tips: TipsView): FrameLayout =
-        FrameLayout(ctx).apply {
-            visibility = View.GONE
-            addView(
-                tips,
-                FrameLayout.LayoutParams(
-                    FrameLayout.LayoutParams.MATCH_PARENT,
-                    FrameLayout.LayoutParams.WRAP_CONTENT,
-                ),
-            )
-            addView(
-                tips.collapseButton,
-                FrameLayout.LayoutParams(
-                    ctx.dp(COLLAPSE_W_DP),
-                    ctx.dp(COLLAPSE_H_DP),
-                    Gravity.TOP or Gravity.END,
-                ).apply {
-                    topMargin = ctx.dp(4)
-                    rightMargin = ctx.dp(8)
-                },
-            )
-        }
-
     /** 编码字号缩放，只有接外接键盘时由设置调整；两块提示跟着一起缩。 */
     var textScale: Float = 1f
         set(value) {
@@ -149,7 +114,7 @@ open class PreeditUi(
 
     override val root =
         object : LinearLayout(ctx) {
-            override fun onInterceptTouchEvent(ev: MotionEvent?): Boolean = false
+            override fun onInterceptTouchEvent(ev: android.view.MotionEvent?): Boolean = false
 
             override fun onMeasure(
                 widthMeasureSpec: Int,
@@ -169,13 +134,16 @@ open class PreeditUi(
             init {
                 orientation = VERTICAL
                 add(preedit, lParams(wrapContent, wrapContent))
-                add(wqFrame, lParams(matchParent, wrapContent))
-                add(glFrame, lParams(matchParent, wrapContent))
+                add(wqTips, lParams(matchParent, wrapContent))
+                add(glTips, lParams(matchParent, wrapContent))
             }
         }
 
     /** 把颜色按 [percent]（0–100）改成半透明。 */
-    private fun withAlpha(color: Int, percent: Int): Int {
+    private fun withAlpha(
+        color: Int,
+        percent: Int,
+    ): Int {
         val a = ((color ushr 24) and 0xFF) * percent.coerceIn(0, 100) / 100
         return (color and 0x00FFFFFF) or (a shl 24)
     }
@@ -260,32 +228,36 @@ open class PreeditUi(
     }
 
     /**
-     * 一块提示区：列表态一条一行，点某一条 = 展开或上屏；展开态整块换成那一好的全文。
+     * 一块提示区：`ScrollView` 里每条一个可点的 [TextView]，右上角浮一个「收起」。
      *
-     * 所有交互都在这个类里闭环，外部只有 [refresh]。
+     * 滚动 = 原生 `ScrollView`；点击 = 每行自己的 `OnClickListener`；
+     * **没有任何坐标换算**，所以「点不动 / 点到隔壁 / 滑一半卡住」从机制上不存在。
      */
     private inner class TipsView(
         private val wenquxing: Boolean,
-    ) : TextView(ctx) {
-        private val gestureDetector =
-            GestureDetector(
-                ctx,
-                object : GestureDetector.SimpleOnGestureListener() {
-                    override fun onDown(e: MotionEvent): Boolean = true
+    ) : FrameLayout(ctx) {
+        private val column =
+            LinearLayout(ctx).apply {
+                orientation = LinearLayout.VERTICAL
+            }
 
-                    override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
-                        handleTap(e.x.toInt(), e.y.toInt())
-                        return true
-                    }
-                },
-            )
+        private val scroller =
+            ScrollView(ctx).apply {
+                isVerticalScrollBarEnabled = true
+                isHorizontalScrollBarEnabled = false
+                overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+                addView(
+                    column,
+                    LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT),
+                )
+            }
 
-        /** 固定在右上角的「收起」，只在展开态显示；它不参与滚动。 */
+        /** 固定在右上角的「收起」：不参与滚动，只在展开态出现。 */
         val collapseButton: TextView =
             TextView(ctx).apply {
                 text = COLLAPSE_LABEL
-                textSize = theme.preedit.foreground.fontSize * textScale * (scalePct() / 100f) * COLLAPSE_SCALE
-                setTextColor(tipColor)
+                textSize = COLLAPSE_TEXT_SP
+                setTextColor(textColor)
                 gravity = Gravity.CENTER
                 visibility = View.GONE
                 background =
@@ -297,29 +269,25 @@ open class PreeditUi(
             }
 
         private var entries: List<TipEntry> = emptyList()
-        private var entryStart = IntArray(0)
-        private var entryBlockEnd = IntArray(0)
-
-        /** 每条在排版坐标里的像素上下界（含 padding），点击判定只认它。 */
-        private var entryTop = IntArray(0)
-        private var entryBottom = IntArray(0)
         private var snapshot = 0
         private var expandedIndex = -1
-        private var viewportRows = 3
         private var scrollBeforeExpand = 0
 
         init {
-            setTextColor(textColor)
-            typeface = FontManager.getTypeface()
-            movementMethod = ScrollingMovementMethod()
-            isVerticalScrollBarEnabled = true
-            isHorizontalScrollBarEnabled = false
-            maxLines = Int.MAX_VALUE
             visibility = View.GONE
-            horizontalPadding = ctx.dp(theme.preedit.horizontalPadding)
             clipToOutline = true
-            setLineSpacing(0f, 1.18f)
             outlineProvider = ViewOutlineProvider.BACKGROUND
+            addView(
+                scroller,
+                LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT),
+            )
+            addView(
+                collapseButton,
+                LayoutParams(ctx.dp(COLLAPSE_W_DP), ctx.dp(COLLAPSE_H_DP), Gravity.TOP or Gravity.END).apply {
+                    topMargin = ctx.dp(4)
+                    rightMargin = ctx.dp(8)
+                },
+            )
         }
 
         private fun scalePct(): Int =
@@ -347,8 +315,22 @@ open class PreeditUi(
                 if (wenquxing) WenquxingPrefs.expandRows else GlossaryPrefs.expandRows
             }.getOrDefault(5)
 
+        private fun bodyTextSize(): Float =
+            theme.preedit.foreground.fontSize * textScale * (scalePct() / 100f)
+
+        /** 量一段文字在正文尺寸下的像素宽度（悬挂缩进要用）。 */
+        private val measurePaint =
+            android.graphics.Paint().apply {
+                isAntiAlias = true
+            }
+
+        private fun measureWidth(text: CharSequence): Int {
+            measurePaint.textSize = bodyTextSize()
+            measurePaint.typeface = FontManager.getTypeface()
+            return measurePaint.measureText(text.toString()).toInt().coerceAtLeast(1)
+        }
+
         private fun applyStyle() {
-            textSize = theme.preedit.foreground.fontSize * textScale * (scalePct() / 100f)
             val base = ColorManager.getColor("text_back_color")
             val baseAlpha = (base ushr 24) and 0xFF
             val blended = baseAlpha * alphaPct().coerceIn(0, 100) / 100
@@ -361,22 +343,13 @@ open class PreeditUi(
                     // 上左、上右、下右、下左：只有右下角圆，跟编码行拼成一张卡片
                     cornerRadii = floatArrayOf(0f, 0f, 0f, 0f, radius, radius, 0f, 0f)
                 }
+            horizontalPadding = ctx.dp(theme.preedit.horizontalPadding)
         }
 
-        /**
-         * 主入口。`active == true` 时按最新候选重画；否则隐藏并清状态。
-         *
-         * 候选内容一变（[snapshot] 不同），展开态与滚动位置**一律作废**。
-         */
+        /** 主入口：`active == true` 时按最新候选重画，否则隐藏并清状态。 */
         fun refresh(active: Boolean) {
             if (!active) {
-                applyVisibility(View.GONE)
-                entries = emptyList()
-                entryStart = IntArray(0)
-                entryBlockEnd = IntArray(0)
-                expandedIndex = -1
-                snapshot = 0
-                scrollTo(0, 0)
+                reset()
                 return
             }
             val list =
@@ -384,17 +357,10 @@ open class PreeditUi(
                     if (wenquxing) WenquxingTips.entries() else GlossaryTips.entries()
                 }.getOrNull().orEmpty()
             if (list.isEmpty()) {
-                applyVisibility(View.GONE)
-                entries = emptyList()
-                entryStart = IntArray(0)
-                entryBlockEnd = IntArray(0)
-                expandedIndex = -1
-                snapshot = 0
-                scrollTo(0, 0)
+                reset()
                 return
             }
             applyStyle()
-            viewportRows = rows()
             var id = 7
             list.forEach { id = id * 31 + it.text.hashCode() * 17 + it.chars * 7 + it.detail.length * 13 }
             val changed = id != snapshot || visibility != View.VISIBLE
@@ -403,28 +369,164 @@ open class PreeditUi(
             if (changed) {
                 // 候选变了：丢弃展开态、回到顶部，全部重画
                 expandedIndex = -1
+                collapseButton.visibility = View.GONE
+                scroller.setPadding(0, 0, 0, 0)
                 render()
-                scrollTo(0, 0)
+                scroller.scrollTo(0, 0)
             }
             applyVisibility(View.VISIBLE)
         }
 
-        /** 按当前 `expandedIndex` 重建文本；高度交给 [onLayout] 或 [expand]。 */
-        private fun render() {
-            text =
-                if (expandedIndex >= 0) {
-                    buildExpanded(entries, expandedIndex)
-                } else {
-                    buildBlock(entries)
+        private fun reset() {
+            applyVisibility(View.GONE)
+            entries = emptyList()
+            expandedIndex = -1
+            snapshot = 0
+            collapseButton.visibility = View.GONE
+            column.removeAllViews()
+            layoutParams =
+                (layoutParams as? LayoutParams ?: LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)).apply {
+                    height = LayoutParams.WRAP_CONTENT
                 }
-            val lp = layoutParams as? FrameLayout.LayoutParams
-            if (lp != null) {
-                if (lp.width != FrameLayout.LayoutParams.MATCH_PARENT) lp.width = FrameLayout.LayoutParams.MATCH_PARENT
-                if (lp.height != FrameLayout.LayoutParams.WRAP_CONTENT) lp.height = FrameLayout.LayoutParams.WRAP_CONTENT
-                layoutParams = lp
-            }
-            requestLayout()
         }
+
+        private fun applyVisibility(v: Int) {
+            if (visibility != v) visibility = v
+        }
+
+        /** 列表态重画：每条一个 View；展开态：只放一条全文。 */
+        private fun render() {
+            column.removeAllViews()
+            if (expandedIndex >= 0) {
+                val item = entries.getOrNull(expandedIndex)
+                if (item == null) {
+                    expandedIndex = -1
+                } else {
+                    scroller.setPadding(0, ctx.dp(COLLAPSE_H_DP + 8), 0, 0)
+                    column.addView(makeDetail(item))
+                    collapseButton.visibility = View.VISIBLE
+                    return
+                }
+            }
+            scroller.setPadding(0, 0, 0, 0)
+            collapseButton.visibility = View.GONE
+            val badge = if (wenquxing) runCatching { WenquxingTips.badgeText() }.getOrNull() else null
+            if (!badge.isNullOrEmpty()) column.addView(makeBadge(badge))
+            val markAt = entries.indexOfFirst { it.highlighted }.takeIf { it >= 0 } ?: 0
+            entries.forEachIndexed { index, item ->
+                column.addView(makeEntry(index, item, index == markAt))
+            }
+            // 高度重算（列表态 = 前 N 条之和）
+            post { applyViewportHeight() }
+        }
+
+        /** 一条列表项：`▶ 中文  释义  ·N字  [...]展开`，整行可点。 */
+        private fun makeEntry(
+            index: Int,
+            item: TipEntry,
+            isMark: Boolean,
+        ): TextView {
+            val en = item.english.orEmpty()
+            val unmatchedAlpha = runCatching { GlossaryPrefs.unmatchedAlpha }.getOrDefault(80)
+            val unmatchedScale = runCatching { GlossaryPrefs.unmatchedTextScale }.getOrDefault(100)
+            val text =
+                buildSpannedString {
+                    val markStart = length
+                    append(if (isMark) MARK else INDENT)
+                    if (isMark) {
+                        setSpan(ForegroundColorSpan(markColor), markStart, length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
+                        setSpan(StyleSpan(Typeface.BOLD), markStart, length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
+                        setSpan(RelativeSizeSpan(MARK_SCALE), markStart, length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
+                    }
+                    val prefixEnd = length
+                    val cnStart = length
+                    append(item.text)
+                    val cnEnd = length
+                    if (item.highlighted) {
+                        setSpan(StyleSpan(Typeface.BOLD), cnStart, cnEnd, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
+                    }
+                    if (item.unmatched) {
+                        setSpan(StyleSpan(Typeface.ITALIC), cnStart, cnEnd, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
+                        setSpan(RelativeSizeSpan(unmatchedScale / 100f), cnStart, cnEnd, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
+                        setSpan(ForegroundColorSpan(withAlpha(textColor, unmatchedAlpha)), cnStart, cnEnd, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
+                    } else if (en.isNotEmpty()) {
+                        append("  ")
+                        val enStart = length
+                        append(en)
+                        setSpan(ForegroundColorSpan(tipColor), enStart, length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
+                        setSpan(RelativeSizeSpan(EN_SCALE), enStart, length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
+                        if (!wenquxing) {
+                            // 外语学习：换行后缩进到释义起点（悬挂缩进），与第一条文案对齐
+                            val indent = measureWidth(substring(0, prefixEnd))
+                            setSpan(
+                                LeadingMarginSpan.Standard(0, indent),
+                                0,
+                                length,
+                                Spanned.SPAN_INCLUSIVE_EXCLUSIVE,
+                            )
+                        }
+                    }
+                    if (showChars() && wenquxing && item.chars > 0) {
+                        append("  ")
+                        val cntStart = length
+                        append("·${item.chars}字")
+                        setSpan(ForegroundColorSpan(tipColor), cntStart, length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
+                        setSpan(RelativeSizeSpan(COUNT_SCALE), cntStart, length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
+                    }
+                    if (item.expandable) {
+                        append("  ")
+                        val hintStart = length
+                        append(if (wenquxing) EXPAND_HINT_WQ else EXPAND_HINT)
+                        setSpan(ForegroundColorSpan(tipColor), hintStart, length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
+                        setSpan(RelativeSizeSpan(COUNT_SCALE), hintStart, length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
+                    }
+                }
+            return entryView(text, bodyTextSize()).apply {
+                setOnClickListener {
+                    HandwritingLog.d("tips", "tap idx=$index expandable=${item.expandable} entries=${entries.size}")
+                    if (item.expandable) expand(index) else commitPayload(item.payload)
+                }
+            }
+        }
+
+        /** 展开态：该条全文，占满整个区域、可上下滑。 */
+        private fun makeDetail(item: TipEntry): TextView =
+            entryView(
+                buildSpannedString { append(item.detail) },
+                bodyTextSize(),
+            ).apply {
+                setOnClickListener { commitPayload(item.payload) }
+            }
+
+        private fun makeBadge(badge: String): TextView =
+            entryView(
+                buildSpannedString {
+                    append(badge)
+                    setSpan(ForegroundColorSpan(tipColor), 0, length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
+                    setSpan(RelativeSizeSpan(BADGE_SCALE), 0, length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
+                },
+                bodyTextSize(),
+            ).apply { isClickable = false }
+
+        private fun entryView(
+            text: CharSequence,
+            size: Float,
+        ): TextView =
+            TextView(ctx).apply {
+                this.text = text
+                textSize = size
+                typeface = FontManager.getTypeface()
+                setTextColor(textColor)
+                setLineSpacing(0f, 1.18f)
+                setPadding(
+                    ctx.dp(theme.preedit.horizontalPadding),
+                    ctx.dp(2),
+                    ctx.dp(theme.preedit.horizontalPadding),
+                    ctx.dp(2),
+                )
+                isClickable = true
+                isFocusable = false
+            }
 
         override fun onLayout(
             changed: Boolean,
@@ -434,251 +536,68 @@ open class PreeditUi(
             bottom: Int,
         ) {
             super.onLayout(changed, left, top, right, bottom)
-            recordEntryBounds()
-            if (expandedIndex < 0) applyViewportHeight()
-            collapseButton.visibility = if (expandedIndex >= 0) View.VISIBLE else View.GONE
+            applyViewportHeight()
             this@PreeditUi.syncTouchable()
         }
 
         /**
-         * 只有一个滚动处理者：把事件直接交给 [movementMethod]（原生滚动 + 惯性），
-         * 点击另走 [gestureDetector]。不再经过 `super.onTouchEvent`，避免同一串事件被处理两遍
-         * 导致「拖不动 / 拖到一半断掉」。
-         */
-        override fun onTouchEvent(event: MotionEvent): Boolean {
-            val buffer = text as? Spannable
-            val scrolled =
-                if (buffer != null) {
-                    movementMethod?.onTouchEvent(this, buffer, event) ?: false
-                } else {
-                    false
-                }
-            gestureDetector.onTouchEvent(event)
-            return scrolled || event.actionMasked == MotionEvent.ACTION_DOWN
-        }
-
-        /** 记下每条在排版里的像素上下界；滚动时 layout 坐标不变，所以只需在布局后记一次。 */
-        private fun recordEntryBounds() {
-            val lay = layout ?: return
-            val n = entries.size
-            entryTop = IntArray(n)
-            entryBottom = IntArray(n)
-            for (i in 0 until n) {
-                val start = entryStart.getOrNull(i) ?: continue
-                val end = entryBlockEnd.getOrNull(i) ?: continue
-                if (end <= start) continue
-                val first = lay.getLineForOffset(start)
-                val last = lay.getLineForOffset(end - 1)
-                if (first < 0 || last < 0) continue
-                entryTop[i] = totalPaddingTop + lay.getLineTop(first)
-                entryBottom[i] = totalPaddingTop + lay.getLineBottom(last)
-            }
-        }
-
-        /** 点在哪一条：只认像素区间，y 已经加上 scrollY，所以滚到哪都准。 */
-        private fun entryIndexAtY(y: Int): Int {
-            for (i in entries.indices) {
-                if (y >= entryTop.getOrNull(i) ?: continue && y < entryBottom.getOrNull(i) ?: continue) return i
-            }
-            return -1
-        }
-
-        private fun applyVisibility(v: Int) {
-            if (visibility != v) visibility = v
-            val f = parent as? View ?: return
-            if (f.visibility != v) f.visibility = v
-        }
-
-        override fun canScrollHorizontally(direction: Int): Boolean = false
-
-        /**
-         * 视口高度 = 前「显示几条」条的高度（**不含「共N组」那一行**，
-         * 它只是标题，永远可见）。条目不足一屏就自适应，不留空白。
+         * 高度：列表态 = 前「显示几条」条之和（条目不足就自适应）；
+         * 展开态 = 「展开行数」与屏高 40% 取小。
          */
         private fun applyViewportHeight() {
-            val lay = layout ?: return
-            val lp = layoutParams as? FrameLayout.LayoutParams ?: return
-            val r = viewportRows.coerceIn(1, MAX_ROWS)
-            if (entries.size <= r) return
-            val endChar = entryBlockEnd.getOrNull(r - 1) ?: return
-            if (endChar <= 0) return
-            val line = lay.getLineForOffset(endChar - 1)
-            if (line < 0) return
-            val want = totalPaddingTop + lay.getLineBottom(line) + totalPaddingBottom
+            val lp = layoutParams as? LayoutParams ?: return
+            val want: Int =
+                if (expandedIndex >= 0) {
+                    val lh = bodyTextSize() * 1.18f
+                    val minH = expandRows().coerceIn(1, MAX_EXPAND_ROWS) * lh
+                    (minH.toInt() + ctx.dp(COLLAPSE_H_DP + 8)).coerceAtMost(
+                        (ctx.resources.displayMetrics.heightPixels * EXPAND_MAX_RATIO).toInt(),
+                    )
+                } else {
+                    val r = rows().coerceIn(1, MAX_ROWS)
+                    var sum = 0
+                    var count = 0
+                    // 第一行可能是「共N组」角标，不算进条数
+                    val start = if (column.childCount > entries.size) 1 else 0
+                    var i = start
+                    while (i < column.childCount && count < r) {
+                        sum += column.getChildAt(i).height
+                        count++
+                        i++
+                    }
+                    if (count == 0) return
+                    sum
+                }
             if (want <= 0) return
-            if (lp.height != FrameLayout.LayoutParams.WRAP_CONTENT && abs(lp.height - want) <= ctx.dp(1)) return
-            lp.height = want
-            layoutParams = lp
-        }
-
-        /** 列表视图：一条一行，行尾「·N字」；可展开的条目行尾带提示。 */
-        private fun buildBlock(list: List<TipEntry>): CharSequence {
-            // 三角跟在高亮那一条前面（文曲星的高亮就是轮换到当前的第一条）
-            val markAt = list.indexOfFirst { it.highlighted }.takeIf { it >= 0 } ?: 0
-            val unmatchedAlpha = runCatching { GlossaryPrefs.unmatchedAlpha }.getOrDefault(80)
-            val unmatchedScale = runCatching { GlossaryPrefs.unmatchedTextScale }.getOrDefault(100)
-            val showCount = showChars()
-            val n = list.size
-            entryStart = IntArray(n)
-            entryBlockEnd = IntArray(n)
-            val badge = if (wenquxing) runCatching { WenquxingTips.badgeText() }.getOrNull() else null
-            return buildSpannedString {
-                if (!badge.isNullOrEmpty()) {
-                    val badgeStart = length
-                    append(badge)
-                    setSpan(ForegroundColorSpan(tipColor), badgeStart, length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
-                    setSpan(RelativeSizeSpan(BADGE_SCALE), badgeStart, length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
-                    append('\n')
-                }
-                list.forEachIndexed { index, line ->
-                    if (index > 0) append('\n')
-                    val markStart = length
-                    append(if (index == markAt) MARK else INDENT)
-                    if (index == markAt) {
-                        listOf(
-                            ForegroundColorSpan(markColor),
-                            StyleSpan(Typeface.BOLD),
-                            RelativeSizeSpan(MARK_SCALE),
-                        ).forEach { setSpan(it, markStart, markStart + 1, Spanned.SPAN_INCLUSIVE_EXCLUSIVE) }
-                    }
-                    entryStart[index] = length
-                    val cnStart = length
-                    append(line.text)
-                    val cnEnd = length
-                    if (line.highlighted) {
-                        setSpan(StyleSpan(Typeface.BOLD), cnStart, cnEnd, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
-                    }
-                    val en = line.english
-                    if (line.unmatched) {
-                        setSpan(StyleSpan(Typeface.ITALIC), cnStart, cnEnd, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
-                        setSpan(
-                            RelativeSizeSpan(unmatchedScale / 100f),
-                            cnStart,
-                            cnEnd,
-                            Spanned.SPAN_INCLUSIVE_EXCLUSIVE,
-                        )
-                        setSpan(
-                            ForegroundColorSpan(withAlpha(textColor, unmatchedAlpha)),
-                            cnStart,
-                            cnEnd,
-                            Spanned.SPAN_INCLUSIVE_EXCLUSIVE,
-                        )
-                    } else if (!en.isNullOrEmpty()) {
-                        append("  ")
-                        val enStart = length
-                        append(en)
-                        setSpan(ForegroundColorSpan(tipColor), enStart, length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
-                        setSpan(RelativeSizeSpan(EN_SCALE), enStart, length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
-                    }
-                    if (showCount && wenquxing && line.chars > 0) {
-                        append("  ")
-                        val cntStart = length
-                        append("·${line.chars}字")
-                        setSpan(ForegroundColorSpan(tipColor), cntStart, length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
-                        setSpan(RelativeSizeSpan(COUNT_SCALE), cntStart, length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
-                    }
-                    if (line.expandable) {
-                        append("  ")
-                        val hintStart = length
-                        append(if (wenquxing) EXPAND_HINT_WQ else EXPAND_HINT)
-                        setSpan(ForegroundColorSpan(tipColor), hintStart, length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
-                        setSpan(RelativeSizeSpan(COUNT_SCALE), hintStart, length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
-                    }
-                    entryBlockEnd[index] = length
-                    // 外语学习：换行后缩进到释义起点（悬挂缩进），跟第一条文案对齐
-                    if (!wenquxing && !line.unmatched && !en.isNullOrEmpty()) {
-                        val prefix = (if (index == markAt) MARK else INDENT) + line.text + "  "
-                        val indentPx = paint.measureText(prefix).toInt().coerceAtLeast(1)
-                        setSpan(
-                            LeadingMarginSpan.Standard(0, indentPx),
-                            markStart,
-                            length,
-                            Spanned.SPAN_INCLUSIVE_EXCLUSIVE,
-                        )
-                    }
-                }
+            if (lp.height != want) {
+                lp.height = want
+                layoutParams = lp
             }
         }
 
-        /** 展开视图：第一行右上角「收起」，后面是该条全文。 */
-        private fun buildExpanded(
-            list: List<TipEntry>,
-            index: Int,
-        ): CharSequence {
-            val item = list[index]
-            return buildSpannedString {
-                // 「收起」现在是浮在右上角的按钮，正文从顶层开始，顶部给按钮留出高度
-                setSpan(
-                    LeadingMarginSpan.Standard(0, 0),
-                    0,
-                    0,
-                    Spanned.SPAN_INCLUSIVE_EXCLUSIVE,
-                )
-                append(item.detail)
-            }
-        }
-
-        /** 点在哪儿：展开态第一行 = 收起，其余 = 上屏；列表态按条目判。 */
-        private fun handleTap(
-            x: Int,
-            y: Int,
-        ) {
-            val vy = y - totalPaddingTop + scrollY
-            if (expandedIndex >= 0) {
-                entries.getOrNull(expandedIndex)?.let { commitPayload(it.payload) }
-                return
-            }
-            val index = entryIndexAtY(vy)
-            val item = entries.getOrNull(index)
-            HandwritingLog.d(
-                "tips",
-                "tap y=$y vy=$vy -> idx=$index expandable=${item?.expandable} entries=${entries.size}",
-            )
-            if (item == null) return
-            if (item.expandable) expand(index) else commitPayload(item.payload)
-        }
-
-        /** 视觉行 → 条目下标（折行时同一视觉行的多个条目取第一个）。 */
-        private fun entryIndexForLine(line: Int): Int {
-            val lay = layout ?: return -1
-            for (i in entries.indices) {
-                val start = entryStart.getOrNull(i) ?: continue
-                val end = entryBlockEnd.getOrNull(i) ?: continue
-                if (end <= start) continue
-                val first = lay.getLineForOffset(start)
-                val last = lay.getLineForOffset(end - 1)
-                if (line in first..last) return i
-            }
-            return -1
-        }
-
-        /** 展开某一条：宽度锁成整块，高度夹在「展开行数」与屏高 40% 之间。 */
         private fun expand(index: Int) {
             val item = entries.getOrNull(index) ?: return
             if (!item.expandable) {
                 commitPayload(item.payload)
                 return
             }
-            scrollBeforeExpand = scrollY
+            scrollBeforeExpand = scroller.scrollY
             expandedIndex = index
-            collapseButton.visibility = View.VISIBLE
-            text = buildExpanded(entries, index)
-            val lp = layoutParams as? FrameLayout.LayoutParams ?: return
-            lp.width = FrameLayout.LayoutParams.MATCH_PARENT
-            val lh = lineHeight.takeIf { it > 0 } ?: ctx.dp(LINE_FALLBACK_DP)
-            val minH = expandRows().coerceIn(1, MAX_EXPAND_ROWS) * lh + totalPaddingTop + totalPaddingBottom
-            val maxH = (ctx.resources.displayMetrics.heightPixels * EXPAND_MAX_RATIO).toInt()
-            lp.height = height.coerceAtLeast(minH).coerceAtMost(maxH)
-            layoutParams = lp
-            scrollTo(0, 0)
+            render()
+            post {
+                applyViewportHeight()
+                scroller.scrollTo(0, 0)
+            }
         }
 
-        /** 收起：回到列表态，滚回展开前的位置。 */
         private fun collapse() {
             expandedIndex = -1
             collapseButton.visibility = View.GONE
             render()
-            post { scrollTo(0, scrollBeforeExpand) }
+            post {
+                applyViewportHeight()
+                scroller.scrollTo(0, scrollBeforeExpand)
+            }
         }
 
         /** 上屏：与 `BambooTip` 系列 token 同一条路——先清组合，再提交。 */
@@ -714,11 +633,10 @@ open class PreeditUi(
         private const val MARK_SCALE = 1.1f
         private const val COUNT_SCALE = 0.78f
         private const val BADGE_SCALE = 0.88f
-        private const val LINE_FALLBACK_DP = 22
         private const val EXPAND_MAX_RATIO = 0.4f
         private const val MAX_ROWS = 6
         private const val MAX_EXPAND_ROWS = 8
-        private const val BUTTON_BG_ALPHA = 34
+        private const val BUTTON_BG_ALPHA = 40
 
         /** 三角和提示块底色的最低对比度，低于这个就退回文字色，避免箭头看不见。 */
         private const val MIN_MARK_CONTRAST = 2.0
@@ -728,7 +646,7 @@ open class PreeditUi(
         private const val EXPAND_HINT = "\u25B8"
         private const val EXPAND_HINT_WQ = "[...\u5C55\u5F00]"
         private const val COLLAPSE_LABEL = "\u6536\u8D77"
-        private const val COLLAPSE_SCALE = 0.95f
+        private const val COLLAPSE_TEXT_SP = 12f
         private const val COLLAPSE_W_DP = 60
         private const val COLLAPSE_H_DP = 26
     }
