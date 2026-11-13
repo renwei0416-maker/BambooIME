@@ -74,7 +74,7 @@ class WenquxingFragment : PaddingPreferenceFragment() {
                         title = "使用模式",
                         summary = "常开＝不要触发码；两种触发码的共同点是都要先打触发码，区别只在「自动查」还是「按发送键才查」",
                         labels = arrayOf("常开（不需要触发码）", "触发码 · 直接显示", "触发码 · 发送查询"),
-                        default = WenquxingPrefs.MODE_TRIGGER_SEND,
+                        default = WenquxingPrefs.MODE_TRIGGER_AUTO,
                         current = WenquxingPrefs.mode,
                         resetters = resetters,
                     ) {
@@ -116,7 +116,7 @@ class WenquxingFragment : PaddingPreferenceFragment() {
                         min = 50,
                         max = 150,
                         step = 5,
-                        default = 90,
+                        default = 80,
                         current = WenquxingPrefs.tipsTextScale,
                         unit = " %",
                         resetters = resetters,

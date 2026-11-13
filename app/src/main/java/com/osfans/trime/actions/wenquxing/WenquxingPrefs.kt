@@ -42,7 +42,7 @@ object WenquxingPrefs {
      *  * [MODE_TRIGGER_SEND] 触发码 + 发送查询：进模式后按发送键才查
      */
     var mode: Int
-        get() = p().getInt("mode", MODE_TRIGGER_SEND).coerceIn(MODE_ALWAYS, MODE_TRIGGER_SEND)
+        get() = p().getInt("mode", MODE_TRIGGER_AUTO).coerceIn(MODE_ALWAYS, MODE_TRIGGER_SEND)
         set(value) = p().edit().putInt("mode", value.coerceIn(MODE_ALWAYS, MODE_TRIGGER_SEND)).apply()
 
     /** 提示里每条摘要显示多少字。 */
@@ -58,7 +58,7 @@ object WenquxingPrefs {
 
     /** 提示块的字号，相对编码行的百分比（50–150）。 */
     var tipsTextScale: Int
-        get() = p().getInt("tips_text_scale", 90).coerceIn(50, 150)
+        get() = p().getInt("tips_text_scale", 80).coerceIn(50, 150)
         set(value) = p().edit().putInt("tips_text_scale", value.coerceIn(50, 150)).apply()
 
     /** 提示块背景的不透明度（0–100），默认 85。 */

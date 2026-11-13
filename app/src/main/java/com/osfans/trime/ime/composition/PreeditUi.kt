@@ -13,6 +13,7 @@ import android.text.Spanned
 import android.text.StaticLayout
 import android.text.TextPaint
 import android.text.TextUtils
+import android.util.TypedValue
 import android.text.style.ForegroundColorSpan
 import android.text.style.LeadingMarginSpan
 import android.text.style.RelativeSizeSpan
@@ -336,6 +337,20 @@ open class PreeditUi(
         private fun bodyTextSize(): Float =
             theme.preedit.foreground.fontSize * textScale * (scalePct() / 100f)
 
+        /**
+         * 排版测量用的字号（px）。
+         *
+         * [bodyTextSize] 是 sp（直接给 TextView.textSize 用是对的），但 Paint.textSize 要 px。
+         * 之前把 sp 当 px 用，量出来的字只有实际的三分之一大，于是 StaticLayout 认为行数很少、
+         * 永远不截断——外文学习「设了 2 行却显示五六行」就是这么来的。
+         */
+        private fun textSizePx(): Float =
+            TypedValue.applyDimension(
+                TypedValue.COMPLEX_UNIT_SP,
+                bodyTextSize(),
+                resources.displayMetrics,
+            )
+
         /** 每条渲染时算出来的「是否被截断」——展开入口只看这个，不再看数据层猜的 expandable。 */
         private val entryExpandable = HashMap<Int, Boolean>()
 
@@ -360,7 +375,7 @@ open class PreeditUi(
         private fun textPaint(): TextPaint =
             TextPaint().apply {
                 isAntiAlias = true
-                textSize = bodyTextSize()
+                textSize = textSizePx()
                 typeface = FontManager.getTypeface()
                 color = textColor
             }
@@ -418,7 +433,7 @@ open class PreeditUi(
             }
 
         private fun measureWidth(text: CharSequence): Int {
-            measurePaint.textSize = bodyTextSize()
+            measurePaint.textSize = textSizePx()
             measurePaint.typeface = FontManager.getTypeface()
             return measurePaint.measureText(text.toString()).toInt().coerceAtLeast(1)
         }
@@ -446,7 +461,14 @@ open class PreeditUi(
          */
         fun refresh(active: Boolean, clear: Boolean = false) {
             if (!active) {
-                if (clear) hardReset() else reset()
+                // 「真的没有候选了」和「只是窗口暂时不可见」必须分开：
+                // 前者要连指纹一起清（否则重新打回同样的编码会命中淡出的旧指纹，
+                // 滚动位置也停在上次滑到的地方）；后者要保留，否则展开态会被自己人清掉。
+                val gone =
+                    runCatching {
+                        if (wenquxing) WenquxingTips.entries().isEmpty() else GlossaryTips.entries().isEmpty()
+                    }.getOrDefault(true)
+                if (clear || gone) hardReset() else reset()
                 return
             }
             val list =
@@ -481,8 +503,9 @@ open class PreeditUi(
                 scroller.scrollTo(0, 0)
                 dirty = false
             } else if (dirty) {
-                // 之前被 reset() 清过视图，内容没变：按原状态（含展开态）重画
+                // 之前被 reset() 清过视图，内容没变：按原状态（含展开态）重画，并回到顶部
                 render()
+                scroller.scrollTo(0, 0)
                 dirty = false
             }
             applyVisibility(View.VISIBLE)
