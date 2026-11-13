@@ -274,6 +274,9 @@ open class PreeditUi(
         private var expandedIndex = -1
         private var scrollBeforeExpand = 0
 
+        /** 上一次测出的高度，只用来避免日志刷屏。 */
+        private var lastMeasured = -1
+
         init {
             visibility = View.GONE
             clipToOutline = true
@@ -420,8 +423,6 @@ open class PreeditUi(
             entries.forEachIndexed { index, item ->
                 column.addView(makeEntry(index, item, index == markAt))
             }
-            // 高度重算（列表态 = 前 N 条之和）
-            post { applyViewportHeight() }
         }
 
         /** 一条列表项：`▶ 中文  释义  ·N字  [...]展开`，整行可点。 */
@@ -540,43 +541,58 @@ open class PreeditUi(
             bottom: Int,
         ) {
             super.onLayout(changed, left, top, right, bottom)
-            applyViewportHeight()
+            // 高度已经在 onMeasure 里定好，这里不再改 layoutParams（布局阶段改参数会被推迟，
+            // 表现就是「有时全显示 / 有时显示 N 条又滑不动」）。
             this@PreeditUi.syncTouchable()
         }
 
         /**
-         * 高度：列表态 = 前「显示几条」条之和（条目不足就自适应）；
-         * 展开态 = 「展开行数」与屏高 40% 取小。
+         * 高度只在测量阶段决定：先把内容按不限高量一遍，拿到每条的真实高度，
+         * 再按「显示几条」或「展开行数」定自己的高度。用 measuredHeight，不用 height。
          */
-        private fun applyViewportHeight() {
-            val lp = layoutParams ?: return
-            val want: Int =
+        override fun onMeasure(
+            widthMeasureSpec: Int,
+            heightMeasureSpec: Int,
+        ) {
+            val w = MeasureSpec.getSize(widthMeasureSpec)
+            val wSpec = MeasureSpec.makeMeasureSpec(w, MeasureSpec.EXACTLY)
+            column.measure(wSpec, MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED))
+            val padV = scroller.paddingTop + scroller.paddingBottom
+            val contentH = column.measuredHeight + padV
+            val want =
                 if (expandedIndex >= 0) {
-                    val lh = bodyTextSize() * 1.18f
-                    val minH = expandRows().coerceIn(1, MAX_EXPAND_ROWS) * lh
-                    (minH.toInt() + ctx.dp(COLLAPSE_H_DP + 8)).coerceAtMost(
-                        (ctx.resources.displayMetrics.heightPixels * EXPAND_MAX_RATIO).toInt(),
-                    )
+                    val lineH = (bodyTextSize() * 1.18f).toInt().coerceAtLeast(1)
+                    val minH = expandRows().coerceIn(1, MAX_EXPAND_ROWS) * lineH + ctx.dp(COLLAPSE_H_DP + 8)
+                    minH.coerceAtMost((ctx.resources.displayMetrics.heightPixels * EXPAND_MAX_RATIO).toInt())
                 } else {
                     val r = rows().coerceIn(1, MAX_ROWS)
-                    var sum = 0
-                    var count = 0
                     // 第一行可能是「共N组」角标，不算进条数
                     val start = if (column.childCount > entries.size) 1 else 0
+                    var sum = 0
+                    var count = 0
                     var i = start
                     while (i < column.childCount && count < r) {
-                        sum += column.getChildAt(i).height
+                        sum += column.getChildAt(i).measuredHeight
                         count++
                         i++
                     }
-                    if (count == 0) return
-                    sum
+                    if (count == 0) contentH else sum + padV
                 }
-            if (want <= 0) return
-            if (lp.height != want) {
-                lp.height = want
-                layoutParams = lp
+            // 内容不够高就自适应，别留空白
+            val h = if (contentH in 1 until want) contentH else want.coerceAtLeast(1)
+            if (h != lastMeasured) {
+                lastMeasured = h
+                HandwritingLog.d(
+                    "tips",
+                    "measure ${if (wenquxing) "wq" else "gl"} rows=$want content=$contentH final=$h",
+                )
             }
+            scroller.measure(wSpec, MeasureSpec.makeMeasureSpec(h, MeasureSpec.EXACTLY))
+            collapseButton.measure(
+                MeasureSpec.makeMeasureSpec(ctx.dp(COLLAPSE_W_DP), MeasureSpec.EXACTLY),
+                MeasureSpec.makeMeasureSpec(ctx.dp(COLLAPSE_H_DP), MeasureSpec.EXACTLY),
+            )
+            setMeasuredDimension(w, h)
         }
 
         private fun expand(index: Int) {
@@ -588,20 +604,17 @@ open class PreeditUi(
             scrollBeforeExpand = scroller.scrollY
             expandedIndex = index
             render()
-            post {
-                applyViewportHeight()
-                scroller.scrollTo(0, 0)
-            }
+            requestLayout()
+            post { scroller.scrollTo(0, 0) }
         }
 
         private fun collapse() {
             expandedIndex = -1
             collapseButton.visibility = View.GONE
             render()
-            post {
-                applyViewportHeight()
-                scroller.scrollTo(0, scrollBeforeExpand)
-            }
+            // 收起后必须重新测量一次，否则会沿用展开态的高度（表现：变得很矮、内容被裁）
+            requestLayout()
+            post { scroller.scrollTo(0, scrollBeforeExpand) }
         }
 
         /** 上屏：与 `BambooTip` 系列 token 同一条路——先清组合，再提交。 */
