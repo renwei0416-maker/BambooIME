@@ -233,6 +233,7 @@ open class PreeditUi(
 
         /** 上一次渲染的内容指纹，相同就不重画（否则每次按键都会把滚动位置打回顶部）。 */
         private var lastKey: String = ""
+        private var lastRotationSeq: Int = -1
 
         /** 视口条数（= 各自设置里的「显示几条」），只在列表视图用。 */
         private var viewportRows = 3
@@ -284,6 +285,11 @@ open class PreeditUi(
                 object : View.OnTouchListener {
                     override fun onTouch(v: View, event: MotionEvent): Boolean {
                         // 全部接管：点击走 gestureDetector，滑动在 onScroll 里自己 scrollBy
+                        if (event.actionMasked == MotionEvent.ACTION_UP ||
+                            event.actionMasked == MotionEvent.ACTION_CANCEL
+                        ) {
+                            scheduleSnap()
+                        }
                         gestureDetector.onTouchEvent(event)
                         return false
                     }
@@ -361,6 +367,14 @@ open class PreeditUi(
                 }
             maxLines = Int.MAX_VALUE
             visibility = View.VISIBLE
+            // 句号轮换：视口跳回第一条，否则看到的还是原来那几条
+            if (wenquxing) {
+                val seq = runCatching { WenquxingTips.rotationSeq }.getOrDefault(0)
+                if (seq != lastRotationSeq) {
+                    lastRotationSeq = seq
+                    scrollTo(0, 0)
+                }
+            }
             post { applyViewportHeight() }
             if (expandedIndex >= 0) scrollTo(0, 0) else scrollToHighlight()
         }
@@ -460,41 +474,6 @@ open class PreeditUi(
                         setSpan(RelativeSizeSpan(COUNT_SCALE), cntStart, length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
                     }
                     entryBlockEnd[index] = length
-                    // 展开入口：文曲星用「展开」文字按钮；外语学习用带空格的 ▾ 撑出热区
-                    if (line.expandable) {
-                        append("  ")
-                        iconStart[index] = length
-                        if (wenquxing) {
-                            append(" \u5c55\u5f00 ")
-                            setSpan(
-                                BackgroundColorSpan(withAlpha(textColor, BUTTON_BG_ALPHA)),
-                                iconStart[index],
-                                length,
-                                Spanned.SPAN_INCLUSIVE_EXCLUSIVE,
-                            )
-                            setSpan(
-                                ForegroundColorSpan(textColor),
-                                iconStart[index],
-                                length,
-                                Spanned.SPAN_INCLUSIVE_EXCLUSIVE,
-                            )
-                        } else {
-                            append(" \u25BE ")
-                            setSpan(
-                                RelativeSizeSpan(GLOSSARY_ICON_SCALE),
-                                iconStart[index],
-                                length,
-                                Spanned.SPAN_INCLUSIVE_EXCLUSIVE,
-                            )
-                            setSpan(
-                                ForegroundColorSpan(tipColor),
-                                iconStart[index],
-                                length,
-                                Spanned.SPAN_INCLUSIVE_EXCLUSIVE,
-                            )
-                        }
-                        iconEnd[index] = length
-                    }
                 }
             }
         }
@@ -535,6 +514,62 @@ open class PreeditUi(
         }
 
         /** 点到了什么：先看展开入口热区，再按字符偏移落到某一条。 */
+        /** 松手后把视口对齐到某一条的行首（按条目翻页，不自由停在半行）。 */
+        private var snapToken: Runnable? = null
+
+        private fun scheduleSnap() {
+            snapToken?.let { removeCallbacks(it) }
+            val token =
+                object : Runnable {
+                    private var last = -1
+                    private var stable = 0
+
+                    override fun run() {
+                        val y = scrollY
+                        if (y == last) stable++ else {
+                            stable = 0
+                            last = y
+                        }
+                        if (stable >= 2) {
+                            snapToEntry()
+                        } else {
+                            postDelayed(this, 40)
+                        }
+                    }
+                }
+            snapToken = token
+            postDelayed(token, 60)
+        }
+
+        /** 找到离当前滚动位置最近的「条目行首」，滚过去。 */
+        private fun snapToEntry() {
+            val lay = layout ?: return
+            if (entryStart.isEmpty()) return
+            val y = scrollY
+            if (y <= 0) {
+                if (y != 0) scrollTo(0, 0)
+                return
+            }
+            var best = 0
+            var bestDelta = Int.MAX_VALUE
+            for (i in entryStart.indices) {
+                val line = lay.getLineForOffset(entryStart[i])
+                val top = lay.getLineTop(line)
+                val d = kotlin.math.abs(top - y)
+                if (d < bestDelta) {
+                    bestDelta = d
+                    best = top
+                }
+            }
+            if (best != y) scrollTo(0, best)
+        }
+
+        /**
+         * 点到了什么。
+         *
+         * - 列表态：落在某一条上——这条还有更多内容就展开它，否则直接上屏；
+         * - 展开态：顶部「收起」那行收起，其余任意位置点了上屏。
+         */
         private fun handleTap(x: Int, y: Int) {
             val layout = layout ?: return
             val vx = (x - totalPaddingLeft + scrollX).toFloat()
@@ -544,7 +579,6 @@ open class PreeditUi(
             if (line < 0 || line >= layout.lineCount) return
             val offset = layout.getOffsetForHorizontal(line, vx.coerceAtLeast(0f))
 
-            // 展开态：顶端那一段（字符区间）收起，其余任意位置点了上屏
             if (expandedIndex >= 0) {
                 val collapseBottom = layout.getLineBottom(0) + ctx.dp(COLLAPSE_SLACK_DP)
                 if (vy <= collapseBottom) {
@@ -555,62 +589,21 @@ open class PreeditUi(
                 return
             }
 
-            // 展开入口热区：文曲星按「展开」按钮的实际范围，外语学习按「该条最后一行 + 行尾一段」
-            val hit = if (wenquxing) hitExpandButton(x, y, layout) else hitExpandIcon(x, y, layout)
-            if (hit >= 0) {
-                expand(hit)
-                return
-            }
-
-            // 正文：落到第几条就上屏第几条
             val index = entryIndexOf(offset)
             if (index < 0) return
-            if (offset < entryStart[index] || offset >= entryBlockEnd[index]) return
-            commitPayload(entries[index].payload)
+            // 落在行首缩进（三角/全角空格）上不算点中这一条
+            if (offset < entryStart[index]) return
+            val item = entries.getOrNull(index) ?: return
+            if (item.expandable) {
+                expand(index)
+                return
+            }
+            commitPayload(item.payload)
         }
 
         /** 外语学习：按「该条最后一行 + 行尾 GLOSSARY_ICON_TOUCH_DP」算热区。 */
-        private fun hitExpandIcon(
-            x: Int,
-            y: Int,
-            layout: android.text.Layout,
-        ): Int {
-            val vx = (x - totalPaddingLeft + scrollX).toFloat()
-            val vy = y - totalPaddingTop + scrollY
-            val slack = ctx.dp(GLOSSARY_COLLAPSE_SLACK_DP)
-            for (i in iconStart.indices) {
-                val start = iconStart.getOrNull(i) ?: -1
-                if (start < 0) continue
-                val line = layout.getLineForOffset(start)
-                if (vy < layout.getLineTop(line) - slack || vy > layout.getLineBottom(line) + slack) continue
-                if (vx >= layout.getLineRight(line) - ctx.dp(GLOSSARY_ICON_TOUCH_DP)) return i
-            }
-            return -1
-        }
 
         /** 文曲星：按「展开」文字按钮的实际横向范围 ± BUTTON_SLACK_DP 算热区。 */
-        private fun hitExpandButton(
-            x: Int,
-            y: Int,
-            layout: android.text.Layout,
-        ): Int {
-            val vx = (x - totalPaddingLeft + scrollX).toFloat()
-            val vy = y - totalPaddingTop + scrollY
-            val slack = ctx.dp(BUTTON_SLACK_DP)
-            for (i in iconStart.indices) {
-                val start = iconStart.getOrNull(i) ?: -1
-                val end = iconEnd.getOrNull(i) ?: -1
-                if (start < 0 || end <= start) continue
-                val line = layout.getLineForOffset(start)
-                val top = layout.getLineTop(line) - slack
-                val bottom = layout.getLineBottom(line) + slack
-                if (vy < top || vy > bottom) continue
-                val left = layout.getPrimaryHorizontal(start) - slack
-                val right = layout.getPrimaryHorizontal(end - 1) + slack
-                if (vx >= left && vx <= right + ctx.dp(6)) return i
-            }
-            return -1
-        }
 
         /** 二分查找「这个字符偏移属于第几条」。 */
         private fun entryIndexOf(offset: Int): Int {

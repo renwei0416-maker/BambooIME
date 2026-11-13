@@ -39,6 +39,10 @@ object WenquxingTips {
     /** 实时模式下上一次查的文本，避免同一个候选反复查。 */
     private var lastQuery: String? = null
 
+    /** 每轮换一次 +1；界面据此把视口滚回第一条。 */
+    var rotationSeq: Int = 0
+        private set
+
     /** 上一次查询时的编码，编码一变就把旧提示收掉。 */
     private var shownPreedit: String = ""
 
@@ -222,6 +226,39 @@ object WenquxingTips {
      * 键名随设置实时变化（见 [WenquxingPrefs.keyFirst] / [WenquxingPrefs.keySecond]），
      * 所以设置里改完不用重启。
      */
+    /** 键名 → 该键在键盘上实际打出的字符（虚拟键走 text 通道，拿不到 keyCode）。 */
+    private fun charOfName(name: String): Char? = when (name.lowercase()) {
+        "comma" -> ','
+        "period" -> '.'
+        "semicolon" -> ';'
+        "space" -> ' '
+        "apostrophe" -> '\''
+        else -> null
+    }
+
+    /**
+     * 虚拟键盘的逗号/句号是 `click = "."` 这种「提交文本」键，code 为 0，
+     * 所以这里按字符再认一次，逻辑与 [consumeKey] 完全一致。
+     */
+    fun consumeKeyText(text: String?): KeyResult {
+        if (tips.isEmpty()) return KeyResult.None
+        val ch = text?.takeIf { it.length == 1 }?.get(0) ?: return KeyResult.None
+        val first = charOfName(WenquxingPrefs.keyFirst)
+        val second = charOfName(WenquxingPrefs.keySecond)
+        return when (ch) {
+            first -> KeyResult.Commit(tips[order[0]])
+            second -> when {
+                total < 2 -> KeyResult.None
+                total == 2 -> KeyResult.Commit(tips[order[1]])
+                else -> {
+                    rotateLeft()
+                    KeyResult.Rotated
+                }
+            }
+            else -> KeyResult.None
+        }
+    }
+
     fun isTipsKey(keyCode: Int): Boolean {
         if (tips.isEmpty()) return false
         return keyCode == codeOf(WenquxingPrefs.keyFirst) || keyCode == codeOf(WenquxingPrefs.keySecond)
@@ -249,6 +286,7 @@ object WenquxingTips {
     private fun rotateLeft() {
         if (total < 3) return
         if (order.size != total) order = MutableList(total) { it }
+        rotationSeq++
         val head = order.removeAt(0)
         order.add(head)
         // 轮换后马上会有一次重绘，那一次不算「编码变了」

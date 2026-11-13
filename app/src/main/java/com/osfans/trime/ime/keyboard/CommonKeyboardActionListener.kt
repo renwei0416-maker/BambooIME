@@ -166,7 +166,14 @@ class CommonKeyboardActionListener {
 
             override fun onAction(action: KeyAction, key: Key?, behavior: KeyBehavior) {
                 // 文曲星：命中诗词时，逗号/句号改成上屏对应的正文
-                when (val key = WenquxingTips.consumeKey(action.code)) {
+                // 虚拟键盘的标点键是「提交文本」型（code = 0），所以要按字符再认一次
+                val tipsResult =
+                    if (action.code != 0) {
+                        WenquxingTips.consumeKey(action.code)
+                    } else {
+                        WenquxingTips.consumeKeyText(action.getText(KeyboardWindow.currentKeyboard))
+                    }
+                when (val key = tipsResult) {
                     is WenquxingTips.KeyResult.Commit -> {
                         WenquxingTips.clear()
                         service.postKeyJob { clearComposition() }
