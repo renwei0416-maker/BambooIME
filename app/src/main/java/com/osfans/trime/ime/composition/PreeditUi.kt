@@ -11,6 +11,7 @@ import android.graphics.drawable.GradientDrawable
 import android.os.SystemClock
 import android.text.Spanned
 import android.text.method.ScrollingMovementMethod
+import android.text.style.BackgroundColorSpan
 import android.text.style.ForegroundColorSpan
 import android.text.style.RelativeSizeSpan
 import android.text.style.StyleSpan
@@ -279,16 +280,14 @@ open class PreeditUi(
             if (expandedIndex >= 0) {
                 buildExpanded(picked.entries, expandedIndex, picked.wenquxing)
             } else {
-                buildBlock(picked.entries, picked.wenquxing)
+                // 「显示几条」= 条目数：只构建前 N 条，块高随之自适应
+                val rows = (if (picked.wenquxing) WenquxingPrefs.maxDisplay else GlossaryPrefs.tipsMax).coerceIn(1, 6)
+                buildBlock(picked.entries.take(rows), picked.wenquxing)
             }
         tips.visibility = View.VISIBLE
         visible = true
-        tips.maxLines =
-            if (expandedIndex >= 0) {
-                Int.MAX_VALUE
-            } else {
-                (if (picked.wenquxing) WenquxingPrefs.maxDisplay else GlossaryPrefs.tipsMax).coerceIn(1, 6)
-            }
+        // 正常态不限行：高度 = 构建出来的那几条占多少行；展开态由 expand() 锁死高度
+        tips.maxLines = Int.MAX_VALUE
         tips.post {
             HandwritingLog.d(
                 "tips",
@@ -326,7 +325,7 @@ open class PreeditUi(
             } else {
                 GlossaryPrefs.tipsMax
             }
-        tips.maxLines = rows.coerceIn(1, 6)
+        tips.maxLines = Int.MAX_VALUE
         tips.textSize = theme.preedit.foreground.fontSize * textScale * (scale / 100f)
 
         val base = ColorManager.getColor("text_back_color")
@@ -420,20 +419,20 @@ open class PreeditUi(
                     setSpan(RelativeSizeSpan(COUNT_SCALE), cntStart, length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
                 }
                 entryBlockEnd[index] = length
-                // 展开按钮：只有「展开后确实能看到更多内容」才给，文字 + 底色
+                // 展开按钮：文字 + 底色（空格也包进底色里当左右内边距）
                 if (line.detail.length > line.text.length) {
                     append("  ")
                     iconStart[index] = length
-                    append("\u5c55\u5f00")
+                    append(" \u5c55\u5f00 ")
                     iconEnd[index] = length
                     setSpan(
-                        ForegroundColorSpan(tipColor),
+                        ForegroundColorSpan(textColor),
                         iconStart[index],
                         iconEnd[index],
                         Spanned.SPAN_INCLUSIVE_EXCLUSIVE,
                     )
                     setSpan(
-                        RelativeSizeSpan(EXPAND_TEXT_SCALE),
+                        BackgroundColorSpan(withAlpha(textColor, BUTTON_BG_ALPHA)),
                         iconStart[index],
                         iconEnd[index],
                         Spanned.SPAN_INCLUSIVE_EXCLUSIVE,
@@ -507,20 +506,41 @@ open class PreeditUi(
             return
         }
 
+        // 按钮热区：按「展开」这两个字实际占的横向范围算，上下各放宽 BUTTON_SLACK_DP
+        val hitButton = hitExpandButton(x, y, layout)
+        if (hitButton >= 0) {
+            expand(hitButton)
+            return
+        }
         val index = entryIndexOf(offset)
         if (index < 0) return
-        // 图标热区：点到这一条图标所在的视觉行、且落在行尾 40dp 内，都算点图标
-        if (iconStart[index] >= 0) {
-            val iconLine = layout.getLineForOffset(iconStart[index])
-            val nearRight = vx >= layout.getLineRight(iconLine) - ctx.dp(ICON_TOUCH_DP)
-            if (line == iconLine && nearRight) {
-                expand(index)
-                return
-            }
-        }
         // 落在行首缩进、三角标记上不算点到这一条
         if (offset < entryStart[index] || offset >= entryBlockEnd[index]) return
         commitPayload(blockEntries[index].payload)
+    }
+
+    /** 点没点到某一条的「展开」按钮；命中返回条目下标。 */
+    private fun hitExpandButton(
+        x: Int,
+        y: Int,
+        layout: android.text.Layout,
+    ): Int {
+        val vx = (x - tips.totalPaddingLeft + tips.scrollX).toFloat()
+        val vy = y - tips.totalPaddingTop + tips.scrollY
+        val slack = ctx.dp(BUTTON_SLACK_DP)
+        for (i in iconStart.indices) {
+            val start = iconStart.getOrNull(i) ?: -1
+            val end = iconEnd.getOrNull(i) ?: -1
+            if (start < 0 || end <= start) continue
+            val line = layout.getLineForOffset(start)
+            val top = layout.getLineTop(line) - slack
+            val bottom = layout.getLineBottom(line) + slack
+            if (vy < top || vy > bottom) continue
+            val left = layout.getPrimaryHorizontal(start) - slack
+            val right = layout.getPrimaryHorizontal(end - 1) + slack
+            if (vx >= left && vx <= right + ctx.dp(6)) return i
+        }
+        return -1
     }
 
     /** 二分查找「这个字符偏移属于第几条」。 */
@@ -695,7 +715,8 @@ open class PreeditUi(
         private const val LINE_FALLBACK_DP = 22
         private const val EXPAND_MAX_RATIO = 0.4f
         private const val ICON_SCALE = 1.5f
-        private const val EXPAND_TEXT_SCALE = 0.86f
+        private const val BUTTON_BG_ALPHA = 34
+        private const val BUTTON_SLACK_DP = 8
         private const val BADGE_SCALE = 0.88f
 
         /** 三角和提示块底色的最低对比度，低于这个就退回文字色，避免箭头看不见。 */

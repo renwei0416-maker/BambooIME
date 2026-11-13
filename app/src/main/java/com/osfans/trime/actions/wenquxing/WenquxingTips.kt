@@ -228,7 +228,8 @@ object WenquxingTips {
 
     /** 整个顺序循环左移一位：1 2 3 4 5 -> 2 3 4 5 1，按 N 次回到原样。 */
     private fun rotateLeft() {
-        if (order.size != total || total < 3) return
+        if (total < 3) return
+        if (order.size != total) order = MutableList(total) { it }
         val head = order.removeAt(0)
         order.add(head)
         // 轮换后马上会有一次重绘，那一次不算「编码变了」
