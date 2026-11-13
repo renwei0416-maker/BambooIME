@@ -1570,6 +1570,14 @@ open class PreeditUi(
 
                 MotionEvent.ACTION_UP -> {
                     val quick = System.currentTimeMillis() - downAt < 600L
+                    // 先判「收起」按钮：按它自己的屏幕矩形算（含 12dp 外扩）。
+                    // 不再依赖 600ms 的 quick 判定 —— 瞄准按钮时手按久一点很常见，
+                    // 之前那条 quick 限制正是「点了收起没反应」的原因之一。
+                    if (expandedIndex >= 0 && !moved && hitCollapseButton(ev.rawX, ev.rawY)) {
+                        HandwritingLog.d("tips", "tap collapseBtn rawX=" + ev.rawX.toInt() + " rawY=" + ev.rawY.toInt())
+                        collapse()
+                        return true
+                    }
                     if (!moved && quick) {
                         val me = IntArray(2)
                         getLocationOnScreen(me)
@@ -1644,6 +1652,19 @@ open class PreeditUi(
          * 这样不管事件来自哪个坐标空间（可能是 TouchEventReceiverWindow 转发的、
          * 带偏移的 ev.y），结果都一样。
          */
+        /** 「收起」按钮的屏幕矩形命中（含 12dp 外扩）。 */
+        private fun hitCollapseButton(rawX: Float, rawY: Float): Boolean {
+            if (collapseButton.visibility != View.VISIBLE) return false
+            val loc = IntArray(2)
+            collapseButton.getLocationOnScreen(loc)
+            val pad = ctx.dp(12).toFloat()
+            val l = loc[0] - pad
+            val t = loc[1] - pad
+            val r = loc[0] + collapseButton.width + pad
+            val b = loc[1] + collapseButton.height + pad
+            return rawX >= l && rawX <= r && rawY >= t && rawY <= b
+        }
+
         private fun childIndexAtScreen(rawY: Float): Int {
             val loc = IntArray(2)
             for (i in 0 until column.childCount) {
