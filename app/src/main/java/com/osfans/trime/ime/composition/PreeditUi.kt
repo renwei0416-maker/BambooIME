@@ -492,6 +492,7 @@ open class PreeditUi(
 
         /** 列表态重画：每条一个 View；展开态：只放一条全文。 */
         private fun render() {
+            entryExpandable.clear()
             column.removeAllViews()
             if (expandedIndex >= 0) {
                 val item = entries.getOrNull(expandedIndex)
@@ -526,8 +527,8 @@ open class PreeditUi(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ctx.dp(1),
                 ).apply {
-                    topMargin = ctx.dp(2)
-                    bottomMargin = ctx.dp(2)
+                    topMargin = ctx.dp(1)
+                    bottomMargin = ctx.dp(1)
                 }
             }
 
@@ -591,7 +592,7 @@ open class PreeditUi(
             val shown = fitted.first
             return entryView(shown, bodyTextSize()).apply {
                 tag = index
-                setPadding(paddingLeft, ctx.dp(3), paddingRight, ctx.dp(3))
+                setPadding(paddingLeft, ctx.dp(2), paddingRight, ctx.dp(2))
                 // 条目之间留 6dp：每条一个块，视觉上分得开
                 layoutParams = LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
