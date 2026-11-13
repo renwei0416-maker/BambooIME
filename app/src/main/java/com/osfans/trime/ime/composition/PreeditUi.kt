@@ -9,17 +9,21 @@ import android.content.Context
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.text.Layout
+import android.text.Spannable
 import android.text.Spanned
 import android.text.method.ScrollingMovementMethod
 import android.text.style.AlignmentSpan
 import android.text.style.BackgroundColorSpan
+import android.text.style.LeadingMarginSpan
 import android.text.style.ForegroundColorSpan
 import android.text.style.RelativeSizeSpan
 import android.text.style.StyleSpan
 import android.view.GestureDetector
+import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewOutlineProvider
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.text.buildSpannedString
@@ -108,6 +112,33 @@ open class PreeditUi(
     private val wqTips = TipsView(wenquxing = true)
     private val glTips = TipsView(wenquxing = false)
 
+    /** 提示块外面再包一层：右上角那个「收起」浮在上面，不随内容滚动。 */
+    private val wqFrame = tipsFrame(wqTips)
+    private val glFrame = tipsFrame(glTips)
+
+    private fun tipsFrame(tips: TipsView): FrameLayout =
+        FrameLayout(ctx).apply {
+            visibility = View.GONE
+            addView(
+                tips,
+                FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.WRAP_CONTENT,
+                ),
+            )
+            addView(
+                tips.collapseButton,
+                FrameLayout.LayoutParams(
+                    ctx.dp(COLLAPSE_W_DP),
+                    ctx.dp(COLLAPSE_H_DP),
+                    Gravity.TOP or Gravity.END,
+                ).apply {
+                    topMargin = ctx.dp(4)
+                    rightMargin = ctx.dp(8)
+                },
+            )
+        }
+
     /** 编码字号缩放，只有接外接键盘时由设置调整；两块提示跟着一起缩。 */
     var textScale: Float = 1f
         set(value) {
@@ -138,8 +169,8 @@ open class PreeditUi(
             init {
                 orientation = VERTICAL
                 add(preedit, lParams(wrapContent, wrapContent))
-                add(wqTips, lParams(matchParent, wrapContent))
-                add(glTips, lParams(matchParent, wrapContent))
+                add(wqFrame, lParams(matchParent, wrapContent))
+                add(glFrame, lParams(matchParent, wrapContent))
             }
         }
 
@@ -249,9 +280,29 @@ open class PreeditUi(
                 },
             )
 
+        /** 固定在右上角的「收起」，只在展开态显示；它不参与滚动。 */
+        val collapseButton: TextView =
+            TextView(ctx).apply {
+                text = COLLAPSE_LABEL
+                textSize = theme.preedit.foreground.fontSize * textScale * (scalePct() / 100f) * COLLAPSE_SCALE
+                setTextColor(tipColor)
+                gravity = Gravity.CENTER
+                visibility = View.GONE
+                background =
+                    GradientDrawable().apply {
+                        setColor(withAlpha(textColor, BUTTON_BG_ALPHA))
+                        cornerRadius = ctx.dp(6).toFloat()
+                    }
+                setOnClickListener { collapse() }
+            }
+
         private var entries: List<TipEntry> = emptyList()
         private var entryStart = IntArray(0)
         private var entryBlockEnd = IntArray(0)
+
+        /** 每条在排版坐标里的像素上下界（含 padding），点击判定只认它。 */
+        private var entryTop = IntArray(0)
+        private var entryBottom = IntArray(0)
         private var snapshot = 0
         private var expandedIndex = -1
         private var viewportRows = 3
@@ -319,7 +370,7 @@ open class PreeditUi(
          */
         fun refresh(active: Boolean) {
             if (!active) {
-                if (visibility != View.GONE) visibility = View.GONE
+                applyVisibility(View.GONE)
                 entries = emptyList()
                 entryStart = IntArray(0)
                 entryBlockEnd = IntArray(0)
@@ -333,7 +384,7 @@ open class PreeditUi(
                     if (wenquxing) WenquxingTips.entries() else GlossaryTips.entries()
                 }.getOrNull().orEmpty()
             if (list.isEmpty()) {
-                if (visibility != View.GONE) visibility = View.GONE
+                applyVisibility(View.GONE)
                 entries = emptyList()
                 entryStart = IntArray(0)
                 entryBlockEnd = IntArray(0)
@@ -355,7 +406,7 @@ open class PreeditUi(
                 render()
                 scrollTo(0, 0)
             }
-            visibility = View.VISIBLE
+            applyVisibility(View.VISIBLE)
         }
 
         /** 按当前 `expandedIndex` 重建文本；高度交给 [onLayout] 或 [expand]。 */
@@ -383,14 +434,59 @@ open class PreeditUi(
             bottom: Int,
         ) {
             super.onLayout(changed, left, top, right, bottom)
+            recordEntryBounds()
             if (expandedIndex < 0) applyViewportHeight()
+            collapseButton.visibility = if (expandedIndex >= 0) View.VISIBLE else View.GONE
             this@PreeditUi.syncTouchable()
         }
 
+        /**
+         * 只有一个滚动处理者：把事件直接交给 [movementMethod]（原生滚动 + 惯性），
+         * 点击另走 [gestureDetector]。不再经过 `super.onTouchEvent`，避免同一串事件被处理两遍
+         * 导致「拖不动 / 拖到一半断掉」。
+         */
         override fun onTouchEvent(event: MotionEvent): Boolean {
+            val buffer = text as? Spannable
+            val scrolled =
+                if (buffer != null) {
+                    movementMethod?.onTouchEvent(this, buffer, event) ?: false
+                } else {
+                    false
+                }
             gestureDetector.onTouchEvent(event)
-            val handled = super.onTouchEvent(event)
-            return handled || event.actionMasked == MotionEvent.ACTION_DOWN
+            return scrolled || event.actionMasked == MotionEvent.ACTION_DOWN
+        }
+
+        /** 记下每条在排版里的像素上下界；滚动时 layout 坐标不变，所以只需在布局后记一次。 */
+        private fun recordEntryBounds() {
+            val lay = layout ?: return
+            val n = entries.size
+            entryTop = IntArray(n)
+            entryBottom = IntArray(n)
+            for (i in 0 until n) {
+                val start = entryStart.getOrNull(i) ?: continue
+                val end = entryBlockEnd.getOrNull(i) ?: continue
+                if (end <= start) continue
+                val first = lay.getLineForOffset(start)
+                val last = lay.getLineForOffset(end - 1)
+                if (first < 0 || last < 0) continue
+                entryTop[i] = totalPaddingTop + lay.getLineTop(first)
+                entryBottom[i] = totalPaddingTop + lay.getLineBottom(last)
+            }
+        }
+
+        /** 点在哪一条：只认像素区间，y 已经加上 scrollY，所以滚到哪都准。 */
+        private fun entryIndexAtY(y: Int): Int {
+            for (i in entries.indices) {
+                if (y >= entryTop.getOrNull(i) ?: continue && y < entryBottom.getOrNull(i) ?: continue) return i
+            }
+            return -1
+        }
+
+        private fun applyVisibility(v: Int) {
+            if (visibility != v) visibility = v
+            val f = parent as? View ?: return
+            if (f.visibility != v) f.visibility = v
         }
 
         override fun canScrollHorizontally(direction: Int): Boolean = false
@@ -484,11 +580,22 @@ open class PreeditUi(
                     if (line.expandable) {
                         append("  ")
                         val hintStart = length
-                        append(EXPAND_HINT)
+                        append(if (wenquxing) EXPAND_HINT_WQ else EXPAND_HINT)
                         setSpan(ForegroundColorSpan(tipColor), hintStart, length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
                         setSpan(RelativeSizeSpan(COUNT_SCALE), hintStart, length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
                     }
                     entryBlockEnd[index] = length
+                    // 外语学习：换行后缩进到释义起点（悬挂缩进），跟第一条文案对齐
+                    if (!wenquxing && !line.unmatched && !en.isNullOrEmpty()) {
+                        val prefix = (if (index == markAt) MARK else INDENT) + line.text + "  "
+                        val indentPx = paint.measureText(prefix).toInt().coerceAtLeast(1)
+                        setSpan(
+                            LeadingMarginSpan.Standard(0, indentPx),
+                            markStart,
+                            length,
+                            Spanned.SPAN_INCLUSIVE_EXCLUSIVE,
+                        )
+                    }
                 }
             }
         }
@@ -500,13 +607,13 @@ open class PreeditUi(
         ): CharSequence {
             val item = list[index]
             return buildSpannedString {
-                val collapseStart = length
-                append(COLLAPSE_LABEL)
-                val collapseEnd = length
-                setSpan(AlignmentSpan.Standard(Layout.Alignment.ALIGN_OPPOSITE), collapseStart, collapseEnd, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
-                setSpan(BackgroundColorSpan(withAlpha(textColor, BUTTON_BG_ALPHA)), collapseStart, collapseEnd, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
-                setSpan(ForegroundColorSpan(tipColor), collapseStart, collapseEnd, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
-                append('\n')
+                // 「收起」现在是浮在右上角的按钮，正文从顶层开始，顶部给按钮留出高度
+                setSpan(
+                    LeadingMarginSpan.Standard(0, 0),
+                    0,
+                    0,
+                    Spanned.SPAN_INCLUSIVE_EXCLUSIVE,
+                )
                 append(item.detail)
             }
         }
@@ -516,24 +623,18 @@ open class PreeditUi(
             x: Int,
             y: Int,
         ) {
-            val lay = layout ?: return
             val vy = y - totalPaddingTop + scrollY
-            val line = lay.getLineForVertical(vy.coerceAtLeast(0))
-            if (line < 0) return
             if (expandedIndex >= 0) {
-                if (line == 0) {
-                    collapse()
-                } else {
-                    entries.getOrNull(expandedIndex)?.let { commitPayload(it.payload) }
-                }
+                entries.getOrNull(expandedIndex)?.let { commitPayload(it.payload) }
                 return
             }
-            val index = entryIndexForLine(line)
-            val item = entries.getOrNull(index) ?: return
+            val index = entryIndexAtY(vy)
+            val item = entries.getOrNull(index)
             HandwritingLog.d(
                 "tips",
-                "tap line=$line y=$y vy=$vy -> idx=$index expandable=${item.expandable} entries=${entries.size}",
+                "tap y=$y vy=$vy -> idx=$index expandable=${item?.expandable} entries=${entries.size}",
             )
+            if (item == null) return
             if (item.expandable) expand(index) else commitPayload(item.payload)
         }
 
@@ -560,6 +661,7 @@ open class PreeditUi(
             }
             scrollBeforeExpand = scrollY
             expandedIndex = index
+            collapseButton.visibility = View.VISIBLE
             text = buildExpanded(entries, index)
             val lp = layoutParams as LinearLayout.LayoutParams
             lp.width = LinearLayout.LayoutParams.MATCH_PARENT
@@ -574,6 +676,7 @@ open class PreeditUi(
         /** 收起：回到列表态，滚回展开前的位置。 */
         private fun collapse() {
             expandedIndex = -1
+            collapseButton.visibility = View.GONE
             render()
             post { scrollTo(0, scrollBeforeExpand) }
         }
@@ -623,6 +726,10 @@ open class PreeditUi(
         private const val MARK = "\u25B6\u3000"
         private const val INDENT = "\u3000\u3000"
         private const val EXPAND_HINT = "\u25B8"
-        private const val COLLAPSE_LABEL = "\u25BE \u6536\u8D77"
+        private const val EXPAND_HINT_WQ = "[...\u5C55\u5F00]"
+        private const val COLLAPSE_LABEL = "\u6536\u8D77"
+        private const val COLLAPSE_SCALE = 0.95f
+        private const val COLLAPSE_W_DP = 60
+        private const val COLLAPSE_H_DP = 26
     }
 }
