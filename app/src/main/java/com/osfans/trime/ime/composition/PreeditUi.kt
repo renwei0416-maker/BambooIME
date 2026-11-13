@@ -1074,8 +1074,29 @@ open class PreeditUi(
                 orientation = LinearLayout.VERTICAL
             }
 
+        // 注意：ScrollView 默认会按 AT_MOST(视口高) 去量子 View，
+        // 内容一旦比视口高就会被「夹」成正好一屏 → 看着填满了，但一点都滑不动。
+        // 这里覆写一处，强制用 UNSPECIFIED 量内容高度（内容多高就多高，由滚动条负责滚动）。
         private val scroller =
-            ScrollView(ctx).apply {
+            object : ScrollView(ctx) {
+                override fun measureChildWithMargins(
+                    child: View,
+                    parentWidthMeasureSpec: Int,
+                    widthUsed: Int,
+                    parentHeightMeasureSpec: Int,
+                    heightUsed: Int,
+                ) {
+                    val lp = child.layoutParams
+                    val wSpec =
+                        getChildMeasureSpec(
+                            parentWidthMeasureSpec,
+                            paddingLeft + paddingRight + widthUsed,
+                            lp.width,
+                        )
+                    val hSpec = MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED)
+                    child.measure(wSpec, hSpec)
+                }
+            }.apply {
                 isVerticalScrollBarEnabled = true
                 isHorizontalScrollBarEnabled = false
                 overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
