@@ -592,9 +592,10 @@ open class PreeditUi(
             val contentH = column.measuredHeight + padV
             val want =
                 if (expandedIndex >= 0) {
-                    // 展开态用**固定**高度：屏高的 35%（不再按行数、也不被内容高度压小）。
-                    // 这个比例避开了下方键盘，字号变化也不会把块撑爆。
-                    (ctx.resources.displayMetrics.heightPixels * EXPAND_HEIGHT_RATIO).toInt()
+                    // 展开态用**固定**高度（占屏高比例），不再按行数、也不被内容高度压小。
+                    // 两个模块比例不同：文曲星条目长，给 28%；外语学习只有一行英文，18% 就够。
+                    val ratio = if (wenquxing) EXPAND_RATIO_WQ else EXPAND_RATIO_GL
+                    (ctx.resources.displayMetrics.heightPixels * ratio).toInt()
                 } else {
                     val r = rows().coerceIn(1, MAX_ROWS)
                     // 第一行可能是「共N组」角标，不算进条数
@@ -688,7 +689,9 @@ open class PreeditUi(
         private const val MARK_SCALE = 1.1f
         private const val COUNT_SCALE = 0.78f
         private const val BADGE_SCALE = 0.88f
-        private const val EXPAND_HEIGHT_RATIO = 0.35f
+        /** 展开态高度占屏高的比例：文曲星 28%、外语学习 18%。 */
+        private const val EXPAND_RATIO_WQ = 0.28f
+        private const val EXPAND_RATIO_GL = 0.18f
         private const val MAX_ROWS = 6
         private const val MAX_EXPAND_ROWS = 8
         private const val BUTTON_BG_ALPHA = 40
