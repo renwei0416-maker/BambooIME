@@ -619,6 +619,30 @@ open class PreeditUi(
                             dead.append(" #").append(ci).append(':').append(cv.top).append("..")
                                 .append(cv.bottom).append("/txt").append(textBottom)
                         }
+                        runCatching {
+                            val me = IntArray(2)
+                            getLocationOnScreen(me)
+                            val sc = IntArray(2)
+                            scroller.getLocationOnScreen(sc)
+                            val col = IntArray(2)
+                            column.getLocationOnScreen(col)
+                            val scr = StringBuilder()
+                            for (ci in 0 until column.childCount) {
+                                val cv = column.getChildAt(ci)
+                                val loc = IntArray(2)
+                                cv.getLocationOnScreen(loc)
+                                scr.append(" #").append(ci).append(':').append(loc[1])
+                                    .append("..").append(loc[1] + cv.height)
+                            }
+                            HandwritingLog.d(
+                                "tips",
+                                "tap rawY=" + ev.rawY.toInt() + " blockTop=" + me[1] +
+                                    " scrollerTop=" + sc[1] + " columnTop=" + col[1] +
+                                    " localY=" + ev.y.toInt() + " yInColumn=" + yInColumn.toInt() +
+                                    " idx=" + idx + " scrollY=" + scroller.scrollY,
+                            )
+                            HandwritingLog.d("tips", "screen$scr")
+                        }
                         HandwritingLog.d(
                             "tips",
                             "tap y=" + ev.y.toInt() + " yInColumn=" + yInColumn.toInt() +
