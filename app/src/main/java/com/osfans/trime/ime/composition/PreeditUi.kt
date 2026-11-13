@@ -9,7 +9,6 @@ import android.content.Context
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.text.Spanned
-import android.text.style.BackgroundColorSpan
 import android.text.style.ForegroundColorSpan
 import android.text.style.LeadingMarginSpan
 import android.text.style.RelativeSizeSpan
@@ -467,13 +466,6 @@ open class PreeditUi(
                         setSpan(RelativeSizeSpan(MARK_SCALE), markStart, length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
                     }
                     val prefixEnd = length
-                    // 很淡的底色块：标出「这一条从这里开始」，折行后不至于和上一条糊在一起
-                    setSpan(
-                        BackgroundColorSpan(withAlpha(tipColor, 26)),
-                        markStart,
-                        prefixEnd,
-                        Spanned.SPAN_INCLUSIVE_EXCLUSIVE,
-                    )
                     val cnStart = length
                     append(item.text)
                     val cnEnd = length
@@ -522,26 +514,6 @@ open class PreeditUi(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                 ).apply { bottomMargin = ctx.dp(6) }
-                setOnTouchListener { v, e ->
-                    if (e.actionMasked == MotionEvent.ACTION_UP) {
-                        runCatching {
-                            HandwritingLog.d(
-                                "tips",
-                                "click y=" + e.y.toInt() + " h=" + v.height + " child#" + index +
-                                    " top=" + v.top + " bottom=" + v.bottom + " scrollY=" + scroller.scrollY,
-                            )
-                        }
-                    }
-                    false
-                }
-                setOnClickListener {
-                    HandwritingLog.d(
-                        "tips",
-                        "tap idx=$index expandable=${item.expandable} entries=${entries.size} " +
-                            "text=${item.text.take(12)}",
-                    )
-                    if (item.expandable) expand(index) else commitPayload(item.payload)
-                }
             }
         }
 
@@ -550,9 +522,7 @@ open class PreeditUi(
             entryView(
                 buildSpannedString { append(item.detail) },
                 bodyTextSize(),
-            ).apply {
-                setOnClickListener { commitPayload(item.payload) }
-            }
+            )
 
         private fun makeBadge(badge: String): TextView =
             entryView(
@@ -583,6 +553,76 @@ open class PreeditUi(
                 isClickable = true
                 isFocusable = false
             }
+
+        private var downY = 0f
+        private var downAt = 0L
+        private var moved = false
+
+        /**
+         * 命中判定：把每一条当成一个普通按钮——
+         * 按下的点落在哪条 View 的 top..bottom 之间，就是哪一条。
+         * 只有「几乎没移动」才算点击，移动超过 12dp 视为滑动，交给 ScrollView。
+         */
+        override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+            when (ev.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    downY = ev.y
+                    downAt = System.currentTimeMillis()
+                    moved = false
+                }
+
+                MotionEvent.ACTION_MOVE -> {
+                    if (!moved && kotlin.math.abs(ev.y - downY) > ctx.dp(TAP_SLOP_DP)) moved = true
+                }
+
+                MotionEvent.ACTION_UP -> {
+                    val quick = System.currentTimeMillis() - downAt < 600L
+                    if (!moved && quick) {
+                        val yInColumn = ev.y - scroller.top + scroller.scrollY
+                        val idx = childIndexAt(yInColumn)
+                        HandwritingLog.d(
+                            "tips",
+                            "tap y=" + ev.y.toInt() + " yInColumn=" + yInColumn.toInt() +
+                                " idx=" + idx + " expanded=" + expandedIndex +
+                                " scrollY=" + scroller.scrollY + " children=" + column.childCount,
+                        )
+                        if (idx >= 0) {
+                            activate(idx)
+                            return true
+                        }
+                    }
+                }
+            }
+            return super.dispatchTouchEvent(ev)
+        }
+
+        /** 返回「条目下标」（已扣掉 badge 行）；不在任何条目上返回 -1。 */
+        private fun childIndexAt(yInColumn: Float): Int {
+            val badgeRows = if (column.childCount > entries.size) 1 else 0
+            for (i in 0 until column.childCount) {
+                val child = column.getChildAt(i)
+                if (yInColumn >= child.top && yInColumn < child.bottom) {
+                    val idx = i - badgeRows
+                    return if (idx in entries.indices) idx else -1
+                }
+            }
+            return -1
+        }
+
+        private fun activate(idx: Int) {
+            if (expandedIndex >= 0) {
+                // 展开态：点正文 = 上屏
+                val item = entries.getOrNull(expandedIndex) ?: return
+                commitPayload(item.payload)
+                return
+            }
+            val item = entries.getOrNull(idx) ?: return
+            HandwritingLog.d(
+                "tips",
+                "activate idx=" + idx + " expandable=" + item.expandable + " text=" + item.text.take(12),
+            )
+            if (item.expandable) expand(idx) else commitPayload(item.payload)
+        }
 
         override fun onLayout(
             changed: Boolean,
@@ -754,6 +794,7 @@ open class PreeditUi(
         private const val EXPAND_HINT_WQ = "[...\u5C55\u5F00]"
         private const val COLLAPSE_LABEL = "\u6536\u8D77"
         private const val COLLAPSE_TEXT_SP = 12f
+        private const val TAP_SLOP_DP = 12
         private const val COLLAPSE_W_DP = 60
         private const val COLLAPSE_H_DP = 26
     }
