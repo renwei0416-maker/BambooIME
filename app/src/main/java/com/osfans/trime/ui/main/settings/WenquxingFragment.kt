@@ -134,6 +134,18 @@ class WenquxingFragment : PaddingPreferenceFragment() {
                         resetters = resetters,
                     ) { WenquxingPrefs.tipsAlpha = it }
 
+                    addSliderSetting(
+                        title = "命中项展开显示的高度",
+                        summary = "点开某一条展开后，这块约占几行高；1–8 行，默认 5 行",
+                        min = 1,
+                        max = 8,
+                        step = 1,
+                        default = 5,
+                        current = WenquxingPrefs.expandRows,
+                        unit = " 行",
+                        resetters = resetters,
+                    ) { WenquxingPrefs.expandRows = it }
+
                     addSwitchSetting(
                         title = "显示命中项字数",
                         summary = "在每条末尾显示「·N字」：点这一条会提交多少字",

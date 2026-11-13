@@ -452,13 +452,32 @@ open class PreeditUi(
         iconStart = intArrayOf(0)
         iconEnd = intArrayOf(1)
         return buildSpannedString {
+            val rowStart = length
             append(ICON_COLLAPSE)
-            setSpan(ForegroundColorSpan(tipColor), 0, 1, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
-            setSpan(RelativeSizeSpan(ICON_SCALE), 0, 1, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
-            append(" 收起")
+            setSpan(ForegroundColorSpan(tipColor), rowStart, length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
+            setSpan(RelativeSizeSpan(ICON_SCALE), rowStart, length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
+            append(" \u6536\u8d77   ")
             iconEnd[0] = length
-            setSpan(ForegroundColorSpan(withAlpha(textColor, unmatchedAlpha)), 0, length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
+            setSpan(
+                ForegroundColorSpan(withAlpha(textColor, unmatchedAlpha)),
+                rowStart,
+                length,
+                Spanned.SPAN_INCLUSIVE_EXCLUSIVE,
+            )
+            setSpan(
+                android.text.style.BackgroundColorSpan(withAlpha(textColor, 18)),
+                rowStart,
+                length,
+                Spanned.SPAN_INCLUSIVE_EXCLUSIVE,
+            )
             append('\n')
+            // 段落级对齐必须把换行也包进 span 才生效
+            setSpan(
+                android.text.style.AlignmentSpan.Standard(android.text.Layout.Alignment.ALIGN_OPPOSITE),
+                rowStart,
+                length,
+                Spanned.SPAN_INCLUSIVE_EXCLUSIVE,
+            )
             append(line.detail)
         }
     }
@@ -475,8 +494,10 @@ open class PreeditUi(
         val offset = layout.getOffsetForHorizontal(line, vx.coerceAtLeast(0f))
 
         if (expandedIndex >= 0) {
-            // 展开态第一行整行都是「收起」，点正文区域则上屏这一条
-            if (line == 0) collapse() else commitPayload(blockEntries.getOrNull(expandedIndex)?.payload.orEmpty())
+            // 展开态：只有顶部「收起」那一行（上下各放宽几 dp）才算收起；
+            // 正文区域点哪儿都不动作，避免看内容时误上屏。
+            val collapseBottom = layout.getLineBottom(0) + ctx.dp(COLLAPSE_SLACK_DP)
+            if (vy <= collapseBottom) collapse()
             return
         }
 
@@ -523,16 +544,27 @@ open class PreeditUi(
         heightBeforeExpand = tips.height
         expandedIndex = index
         lastKey = ""
-        val screen = ctx.resources.displayMetrics.widthPixels
         val params = tips.layoutParams as LinearLayout.LayoutParams
         params.width = LinearLayout.LayoutParams.MATCH_PARENT
-        params.height = if (heightBeforeExpand > 0) heightBeforeExpand else LinearLayout.LayoutParams.WRAP_CONTENT
+        // 展开高度不简单沿用展开前高度：只命中一条时块只有一行高，
+        // 展开等于把几百字塞进一行高的窗。夹在「设置行数」与「屏幕 40%」之间。
+        val rows =
+            if (runCatching { TipBlocks.current() }.getOrDefault(TipBlocks.GLOSSARY) == TipBlocks.WENQUXING) {
+                WenquxingPrefs.expandRows
+            } else {
+                GlossaryPrefs.expandRows
+            }
+        val lineHeight = tips.lineHeight.takeIf { it > 0 } ?: ctx.dp(LINE_FALLBACK_DP)
+        val minHeight = rows.coerceIn(1, 8) * lineHeight
+        val maxHeight = (ctx.resources.displayMetrics.heightPixels * EXPAND_MAX_RATIO).toInt()
+        val target = heightBeforeExpand.coerceAtLeast(minHeight).coerceAtMost(maxHeight)
+        params.height = target
         tips.layoutParams = params
         refreshTips()
         HandwritingLog.d(
             "tips",
-            "expand idx=$index screen=$screen tipsW=${tips.width} rootW=${root.width} " +
-                "h=${tips.height} beforeH=$heightBeforeExpand maxLines=${tips.maxLines}",
+            "expand idx=$index rows=$rows lineH=$lineHeight beforeH=$heightBeforeExpand " +
+                "target=$target h=${tips.height} rootW=${root.width} maxLines=${tips.maxLines}",
         )
     }
 
@@ -653,7 +685,10 @@ open class PreeditUi(
         private const val EN_SCALE = 0.82f
         private const val MARK_SCALE = 1.1f
         private const val COUNT_SCALE = 0.78f
-        private const val ICON_SCALE = 1.3f
+        private const val COLLAPSE_SLACK_DP = 8
+        private const val LINE_FALLBACK_DP = 22
+        private const val EXPAND_MAX_RATIO = 0.4f
+        private const val ICON_SCALE = 1.5f
 
         /** 三角和提示块底色的最低对比度，低于这个就退回文字色，避免箭头看不见。 */
         private const val MIN_MARK_CONTRAST = 2.0
@@ -662,7 +697,7 @@ open class PreeditUi(
         private const val MANUAL_SCROLL_GRACE_MS = 2500L
 
         /** 展开图标的热区宽度（dp）：从行尾往左这么多都算点到图标，不用精确点那个小三角。 */
-        private const val ICON_TOUCH_DP = 40
+        private const val ICON_TOUCH_DP = 72
 
         private const val MARK = "\u25B6\u3000"
         private const val INDENT = "\u3000\u3000"

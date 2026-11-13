@@ -233,6 +233,19 @@ class GlossaryFragment : PaddingPreferenceFragment() {
                     ) {
                         GlossaryPrefs.unmatchedTextScale = it
                     }
+                    addSeek(
+                        "命中项展开显示的高度",
+                        "点开某一条展开后，这块约占几行高；1–8 行，默认 5 行",
+                        min = 1,
+                        max = 8,
+                        step = 1,
+                        default = 5,
+                        current = GlossaryPrefs.expandRows,
+                        unit = " 行",
+                        resetters = resetters,
+                    ) {
+                        GlossaryPrefs.expandRows = it
+                    }
                     addRow(
                         "学习条和上屏共用这里的设置",
                         "学习条每条一行，英文太长会截断成「…」；上屏用的是纯英文、不带标签",

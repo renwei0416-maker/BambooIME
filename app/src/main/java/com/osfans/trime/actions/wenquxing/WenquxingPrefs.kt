@@ -66,6 +66,11 @@ object WenquxingPrefs {
         set(value) = p().edit().putInt("tips_alpha", value.coerceIn(0, 100)).apply()
 
     /** 行尾「·N字」：这一条点下去会提交多少字。 */
+    /** 命中项展开后的可见高度（按行数算，1–8）。 */
+    var expandRows: Int
+        get() = p().getInt("expand_rows", 5).coerceIn(1, 8)
+        set(value) = p().edit().putInt("expand_rows", value.coerceIn(1, 8)).apply()
+
     var showCharCount: Boolean
         get() = p().getBoolean("show_char_count", true)
         set(value) = p().edit().putBoolean("show_char_count", value).apply()
