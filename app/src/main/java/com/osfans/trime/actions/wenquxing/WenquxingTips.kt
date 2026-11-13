@@ -5,10 +5,13 @@
 // 把摘要拼到编码后面」。命中后逗号/句号直接上屏对应正文。
 package com.osfans.trime.actions.wenquxing
 
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.view.KeyEvent
 
 import com.osfans.trime.actions.bamboo.BambooActions
+import com.osfans.trime.ime.core.TrimeInputMethodService
 import com.osfans.trime.actions.handwriting.HandwritingLog
 import com.osfans.trime.actions.tips.TipEntry
 
@@ -53,7 +56,12 @@ object WenquxingTips {
      * 只有「挂在编码后面」的提示才跟着清；剪贴板那种自己占一行的提示不受影响。
      */
     fun onCompositionCleared() {
-        if (shownPreedit.isNotEmpty()) clear()
+        if (shownPreedit.isEmpty()) return
+        clear()
+        // 这里只清了数据，视图要等下一次组合事件才收；主动通知一次，立刻收掉。
+        Handler(Looper.getMainLooper()).post {
+            runCatching { TrimeInputMethodService.current?.refreshCandidatesPreedit() }
+        }
     }
 
     /**
@@ -105,7 +113,10 @@ object WenquxingTips {
         // 自己刚引发的重绘（adoptUntil 之内）不算编码变动。
         if (tips.isNotEmpty() && preedit != shownPreedit) {
             if (SystemClock.uptimeMillis() < adoptUntil) {
+                // 只吸收「上屏那一下」的这一次变化，吸完立刻关窗：
+                // 否则连打时每次按键都只记账，块会一直挂着不消失。
                 shownPreedit = preedit
+                adoptUntil = 0L
             } else {
                 HandwritingLog.d("wenquxing", "clear by preedit change")
                 clear()
@@ -153,7 +164,15 @@ object WenquxingTips {
         for (i in 0 until cap) {
             val full = tips.getOrNull(order.getOrNull(i) ?: break) ?: continue
             val shown = circled(i + 1) + "〔" + brief(full, len) + "〕"
-            out.add(TipEntry(text = shown, detail = full, payload = full))
+            // 只有 brief() 真的截断了才给展开入口
+            out.add(
+                TipEntry(
+                    text = shown,
+                    detail = full,
+                    payload = full,
+                    expandable = full.length > len,
+                ),
+            )
         }
         return out
     }

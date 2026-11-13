@@ -93,6 +93,8 @@ object GlossaryTips {
                     highlighted = i == highlight,
                     unmatched = english == null,
                     english = english,
+                    // 显示的英文已经完整 = 没有更多内容可看，不给展开入口
+                    expandable = detail.length > english.orEmpty().length,
                 ),
             )
         }

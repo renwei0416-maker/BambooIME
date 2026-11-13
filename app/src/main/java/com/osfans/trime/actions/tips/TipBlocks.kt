@@ -26,11 +26,10 @@ data class TipEntry(
     val highlighted: Boolean = false,
     val unmatched: Boolean = false,
     val english: String? = null,
+    /** 是否有被截掉的内容：只有这时才画展开入口（看得全就不给按钮）。 */
+    val expandable: Boolean = detail.length > text.length,
 ) {
     val chars: Int get() = payload.length
-
-    /** 展开后是否有更多内容可看（没有就不画展开图标）。 */
-    val expandable: Boolean get() = detail.length > text.length
 }
 
 /**

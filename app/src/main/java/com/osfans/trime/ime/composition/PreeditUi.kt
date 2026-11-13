@@ -263,7 +263,8 @@ open class PreeditUi(
                         // 用户自己滑了：短时间内别把人家拽回高亮行；同时自己接管滚动，
                         // 不再交给 ScrollingMovementMethod（两套判断会打架）。
                         manualScrollAt = SystemClock.uptimeMillis()
-                        scrollBy(distanceX.toInt(), distanceY.toInt())
+                        // 只认纵向：横向位移一律丢掉，否则手感像拖一张图片
+                        scrollBy(0, distanceY.toInt())
                         return true
                     }
                 },
@@ -277,6 +278,7 @@ open class PreeditUi(
             horizontalPadding = dp(theme.preedit.horizontalPadding)
             clipToOutline = true
             isVerticalScrollBarEnabled = true
+            isHorizontalScrollBarEnabled = false
             visibility = View.GONE
             setOnTouchListener(
                 object : View.OnTouchListener {
@@ -288,6 +290,9 @@ open class PreeditUi(
                 },
             )
         }
+
+        /** 禁止一切横向滚动（文本比视口宽时也不许左右拖）。 */
+        override fun canScrollHorizontally(direction: Int): Boolean = false
 
         // ---- 设置项：只读自己所属模块的 ----
 
@@ -446,7 +451,8 @@ open class PreeditUi(
                         setSpan(RelativeSizeSpan(EN_SCALE), enStart, length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
                     }
                     // 行尾字数：这次点击会提交多少字
-                    if (showCount && line.chars > 0) {
+                    // 字数只对文曲星有意义（外语学习上屏的是英文，字数参考价值不大）
+                    if (showCount && wenquxing && line.chars > 0) {
                         append("  ")
                         val cntStart = length
                         append("·${line.chars}字")
