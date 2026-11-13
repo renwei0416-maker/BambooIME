@@ -1195,7 +1195,7 @@ open class PreeditUi(
                 measuredWidth.takeIf { it > 0 }
                     ?: runCatching { ctx.resources.displayMetrics.widthPixels }.getOrDefault(1080)
             val used = paddingLeft + paddingRight + column.paddingLeft + column.paddingRight +
-                ctx.dp(theme.preedit.horizontalPadding) * 2
+                sidePadPx() * 2
             return (w - used).coerceAtLeast(120)
         }
 
@@ -1240,25 +1240,6 @@ open class PreeditUi(
          * 把 [...展开] 当按钮拼上去：能整块放进行尾就放行尾，放不下就整块换到下一行。
          * 绝不允许折成两行（历史上就是被挤成 [...展 / 开]）。
          */
-        private fun withHint(base: CharSequence, width: Int): CharSequence {
-            // 三角贴在最后一行最后一个字符位：不算额外行、不加空格、不换行。
-            // 放不下就把正文尾部让出一个字符位给它。
-            val hint = EXPAND_HINT_ARROW
-            val limit = lineCountOf(base, width).coerceAtLeast(1)
-            var cut = base.length
-            while (cut > 1) {
-                val cand = SpannableStringBuilder(base.subSequence(0, cut)).append(hint)
-                if (lineCountOf(cand, width) <= limit) {
-                    styleHint(cand, cand.length - hint.length, cand.length)
-                    return cand
-                }
-                cut--
-            }
-            val only = SpannableStringBuilder(hint)
-            styleHint(only, 0, only.length)
-            return only
-        }
-
         private fun styleHint(sb: SpannableStringBuilder, start: Int, end: Int) {
             sb.setSpan(ForegroundColorSpan(tipColor), start, end, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
             sb.setSpan(RelativeSizeSpan(EXPAND_ARROW_SCALE), start, end, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
@@ -1421,12 +1402,76 @@ open class PreeditUi(
                 }
             }
 
+        /** 一个正文字符的宽度（px）：用来把「2 个字宽」换算成像素。 */
+        private fun charWidthPx(): Float {
+            val p = textPaint()
+            return p.measureText("\u4E00").coerceAtLeast(1f)
+        }
+
+        /** 正文左右各留出的像素（2 个字宽，且不小于主题的横向内边距）。 */
+        private fun sidePadPx(): Int {
+            val two = (charWidthPx() * ROW_SIDE_CHARS).toInt()
+            return maxOf(ctx.dp(theme.preedit.horizontalPadding), two)
+        }
+
+        /**
+         * 一条列表项 = 正文 + **固定位置**的展开三角。
+         *
+         * 三角不参与文字排版：它固定贴在整条右下、右侧留白槽里居中，
+         * 所以不管这条最后一行写了多少字，所有条的三角都落在同一个 x 上、竖直成一列。
+         * 正文左右各留 2 个字宽（用户要求），三角就住右边那 2 个字宽里，压不到字。
+         */
+        private fun entryRow(body: CharSequence, expandable: Boolean): View {
+            val side = sidePadPx()
+            val bodyView =
+                entryView(body, bodyTextSize()).apply {
+                    setPadding(side, ctx.dp(2), side, ctx.dp(2))
+                    layoutParams =
+                        FrameLayout.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.WRAP_CONTENT,
+                        )
+                }
+            if (!expandable) return bodyView
+            val paint = textPaint()
+            paint.textSize = bodyTextSize() * EXPAND_ARROW_SCALE
+            val arrowW = paint.measureText(EXPAND_HINT_ARROW).toInt()
+            // 三角在上一条最后一行右侧：与「2 个字宽」的留白槽居中对齐
+            val gap = ((side - arrowW) / 2).coerceAtLeast(0)
+            val arrow =
+                TextView(ctx).apply {
+                    text = EXPAND_HINT_ARROW
+                    textSize = bodyTextSize() * EXPAND_ARROW_SCALE
+                    typeface = FontManager.getTypeface()
+                    setTextColor(tipColor)
+                    setLineSpacing(0f, 1.0f)
+                    includeFontPadding = false
+                    setPadding(0, 0, 0, 0)
+                    isClickable = false
+                    isFocusable = false
+                    layoutParams =
+                        FrameLayout.LayoutParams(
+                            ViewGroup.LayoutParams.WRAP_CONTENT,
+                            ViewGroup.LayoutParams.WRAP_CONTENT,
+                            Gravity.END or Gravity.BOTTOM,
+                        ).apply {
+                            marginEnd = gap
+                            bottomMargin = ctx.dp(5)
+                        }
+                }
+            return FrameLayout(ctx).apply {
+                isClickable = true
+                addView(bodyView)
+                addView(arrow)
+            }
+        }
+
         /** 一条列表项：`▶ 中文  释义  ·N字  [...]展开`，整行可点。 */
         private fun makeEntry(
             index: Int,
             item: TipEntry,
             isMark: Boolean,
-        ): TextView {
+        ): View {
             val en = item.english.orEmpty()
             val unmatchedAlpha = runCatching { GlossaryPrefs.unmatchedAlpha }.getOrDefault(80)
             val unmatchedScale = runCatching { GlossaryPrefs.unmatchedTextScale }.getOrDefault(100)
@@ -1488,12 +1533,8 @@ open class PreeditUi(
                 }
             val truncated = if (wenquxing) item.expandable else fitted.second
             entryExpandable[index] = truncated
-            // 提示按钮整块放：行尾放得下就放行尾，放不下整块换行，绝不拆开
-            val shown = if (truncated) withHint(fitted.first, width) else fitted.first
-            return entryView(shown, bodyTextSize()).apply {
+            return entryRow(fitted.first, truncated).apply {
                 tag = index
-                setPadding(paddingLeft, ctx.dp(2), paddingRight, ctx.dp(2))
-                // 条目之间留 6dp：每条一个块，视觉上分得开
                 layoutParams = LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -1929,6 +1970,8 @@ open class PreeditUi(
         private const val MARK_SCALE = 1.1f
         /** 外语学习行尾展开三角：比行首 ▶ 再小一档，避免视觉上压过正文。 */
         private const val EXPAND_ARROW_SCALE = 0.80f
+        /** 外语学习每条正文左右各留几个字宽（用户要求 2 个）。 */
+        private const val ROW_SIDE_CHARS = 2f
         private const val COUNT_SCALE = 0.78f
         /** 展开小图标的相对字号（比正文大一点，才看得清是实心三角）。 */
         private const val BADGE_SCALE = 0.88f
