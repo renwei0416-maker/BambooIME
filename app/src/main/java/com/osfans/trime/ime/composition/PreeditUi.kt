@@ -1261,7 +1261,7 @@ open class PreeditUi(
 
         private fun styleHint(sb: SpannableStringBuilder, start: Int, end: Int) {
             sb.setSpan(ForegroundColorSpan(tipColor), start, end, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
-            sb.setSpan(RelativeSizeSpan(MARK_SCALE), start, end, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
+            sb.setSpan(RelativeSizeSpan(EXPAND_ARROW_SCALE), start, end, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
         }
 
         /** 量一段文字在正文尺寸下的像素宽度（悬挂缩进要用）。 */
@@ -1927,6 +1927,8 @@ open class PreeditUi(
         private const val DEFAULT_ALPHA_PCT = 90
         private const val EN_SCALE = 0.82f
         private const val MARK_SCALE = 1.1f
+        /** 外语学习行尾展开三角：比行首 ▶ 再小一档，避免视觉上压过正文。 */
+        private const val EXPAND_ARROW_SCALE = 0.80f
         private const val COUNT_SCALE = 0.78f
         /** 展开小图标的相对字号（比正文大一点，才看得清是实心三角）。 */
         private const val BADGE_SCALE = 0.88f
