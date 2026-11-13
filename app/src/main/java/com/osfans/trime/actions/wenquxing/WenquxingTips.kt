@@ -153,14 +153,21 @@ object WenquxingTips {
         for (i in 0 until cap) {
             val full = tips.getOrNull(order.getOrNull(i) ?: break) ?: continue
             val shown = circled(i + 1) + "〔" + brief(full, len) + "〕"
-            val suffix = if (total > 1 && i == cap - 1) "共${total}组" else ""
-            out.add(TipEntry(text = shown + suffix, detail = full, payload = full))
+            out.add(TipEntry(text = shown, detail = full, payload = full))
         }
         return out
     }
 
     /** 真实命中组数，用于在块末尾跟「共 N 组」。 */
     fun hitCount(): Int = total
+
+    /** 顶部那行：「共 N 组」（轮换过就带上「第 M 组起」）。 */
+    fun badgeText(): String? {
+        if (total <= 0) return null
+        val head = (order.firstOrNull() ?: 0) + 1
+        val tail = if (total >= 3 && head != 1) "\u00b7 \u7b2c${head}\u7ec4\u8d77" else ""
+        return "\u5171${total}\u7ec4$tail"
+    }
 
     private fun ensureOrder() {
         if (order.size != total) order = MutableList(total) { it }

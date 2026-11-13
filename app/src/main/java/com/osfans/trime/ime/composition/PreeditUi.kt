@@ -364,7 +364,16 @@ open class PreeditUi(
         entryBlockEnd = IntArray(n)
         iconStart = IntArray(n) { -1 }
         iconEnd = IntArray(n) { -1 }
+        val badge = if (wenquxing) runCatching { WenquxingTips.badgeText() }.getOrNull() else null
         return buildSpannedString {
+            // 第一行单独放「共N组」，贴最左
+            if (!badge.isNullOrEmpty()) {
+                val badgeStart = length
+                append(badge)
+                setSpan(ForegroundColorSpan(tipColor), badgeStart, length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
+                setSpan(RelativeSizeSpan(BADGE_SCALE), badgeStart, length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
+                append('\n')
+            }
             entries.forEachIndexed { index, line ->
                 if (index > 0) append('\n')
                 val markStart = length
@@ -411,11 +420,11 @@ open class PreeditUi(
                     setSpan(RelativeSizeSpan(COUNT_SCALE), cntStart, length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
                 }
                 entryBlockEnd[index] = length
-                // 展开图标：只有「展开后确实能看到更多内容」才给
+                // 展开按钮：只有「展开后确实能看到更多内容」才给，文字 + 底色
                 if (line.detail.length > line.text.length) {
-                    append(" ")
+                    append("  ")
                     iconStart[index] = length
-                    append(if (index == expandedIndex) ICON_COLLAPSE else ICON_EXPAND)
+                    append("\u5c55\u5f00")
                     iconEnd[index] = length
                     setSpan(
                         ForegroundColorSpan(tipColor),
@@ -424,13 +433,7 @@ open class PreeditUi(
                         Spanned.SPAN_INCLUSIVE_EXCLUSIVE,
                     )
                     setSpan(
-                        RelativeSizeSpan(ICON_SCALE),
-                        iconStart[index],
-                        iconEnd[index],
-                        Spanned.SPAN_INCLUSIVE_EXCLUSIVE,
-                    )
-                    setSpan(
-                        StyleSpan(Typeface.BOLD),
+                        RelativeSizeSpan(EXPAND_TEXT_SCALE),
                         iconStart[index],
                         iconEnd[index],
                         Spanned.SPAN_INCLUSIVE_EXCLUSIVE,
@@ -494,10 +497,13 @@ open class PreeditUi(
         val offset = layout.getOffsetForHorizontal(line, vx.coerceAtLeast(0f))
 
         if (expandedIndex >= 0) {
-            // 展开态：只有顶部「收起」那一行（上下各放宽几 dp）才算收起；
-            // 正文区域点哪儿都不动作，避免看内容时误上屏。
+            // 展开态：顶部「收起」那一行（上下放宽几 dp）收起，其余区域点了就上屏
             val collapseBottom = layout.getLineBottom(0) + ctx.dp(COLLAPSE_SLACK_DP)
-            if (vy <= collapseBottom) collapse()
+            if (vy <= collapseBottom) {
+                collapse()
+                return
+            }
+            commitPayload(blockEntries.getOrNull(expandedIndex)?.payload.orEmpty())
             return
         }
 
@@ -689,6 +695,8 @@ open class PreeditUi(
         private const val LINE_FALLBACK_DP = 22
         private const val EXPAND_MAX_RATIO = 0.4f
         private const val ICON_SCALE = 1.5f
+        private const val EXPAND_TEXT_SCALE = 0.86f
+        private const val BADGE_SCALE = 0.88f
 
         /** 三角和提示块底色的最低对比度，低于这个就退回文字色，避免箭头看不见。 */
         private const val MIN_MARK_CONTRAST = 2.0
