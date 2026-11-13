@@ -14,6 +14,7 @@ import android.text.Spanned
 import android.text.style.AlignmentSpan
 import android.text.style.BackgroundColorSpan
 import android.text.style.ForegroundColorSpan
+import android.text.method.ScrollingMovementMethod
 import android.text.style.RelativeSizeSpan
 import android.text.style.StyleSpan
 import android.view.GestureDetector
@@ -260,12 +261,10 @@ open class PreeditUi(
                         distanceX: Float,
                         distanceY: Float,
                     ): Boolean {
-                        // 用户自己滑了：短时间内别把人家拽回高亮行；同时自己接管滚动，
-                        // 不再交给 ScrollingMovementMethod（两套判断会打架）。
+                        // 只记「用户自己滑过」，滚动本身交给 ScrollingMovementMethod
+                        // （它带惯性甩动，手感才对）。返回 false 表示不消费事件。
                         manualScrollAt = SystemClock.uptimeMillis()
-                        // 只认纵向：横向位移一律丢掉，否则手感像拖一张图片
-                        scrollBy(0, distanceY.toInt())
-                        return true
+                        return false
                     }
                 },
             )
@@ -277,6 +276,7 @@ open class PreeditUi(
             setLineSpacing(0f, 1.18f)
             horizontalPadding = dp(theme.preedit.horizontalPadding)
             clipToOutline = true
+            movementMethod = ScrollingMovementMethod()
             isVerticalScrollBarEnabled = true
             isHorizontalScrollBarEnabled = false
             visibility = View.GONE
@@ -285,7 +285,7 @@ open class PreeditUi(
                     override fun onTouch(v: View, event: MotionEvent): Boolean {
                         // 全部接管：点击走 gestureDetector，滑动在 onScroll 里自己 scrollBy
                         gestureDetector.onTouchEvent(event)
-                        return true
+                        return false
                     }
                 },
             )
@@ -534,7 +534,7 @@ open class PreeditUi(
             }
         }
 
-        /** 点到了什么：全部按「字符偏移落在哪个区间」判断，不再按像素猜热区。 */
+        /** 点到了什么：先看展开入口热区，再按字符偏移落到某一条。 */
         private fun handleTap(x: Int, y: Int) {
             val layout = layout ?: return
             val vx = (x - totalPaddingLeft + scrollX).toFloat()
@@ -546,8 +546,8 @@ open class PreeditUi(
 
             // 展开态：顶端那一段（字符区间）收起，其余任意位置点了上屏
             if (expandedIndex >= 0) {
-                val collapseEnd = iconEnd.getOrNull(0) ?: -1
-                if (collapseEnd > 0 && offset < collapseEnd) {
+                val collapseBottom = layout.getLineBottom(0) + ctx.dp(COLLAPSE_SLACK_DP)
+                if (vy <= collapseBottom) {
                     collapse()
                     return
                 }
@@ -555,15 +555,11 @@ open class PreeditUi(
                 return
             }
 
-            // 展开入口：字符落在入口区间内就展开（行尾空白也会算到这一行的最后一个字，所以好点）
-            for (i in iconStart.indices) {
-                val s = iconStart.getOrNull(i) ?: -1
-                val e = iconEnd.getOrNull(i) ?: -1
-                if (s < 0 || e <= s) continue
-                if (offset in s until e) {
-                    expand(i)
-                    return
-                }
+            // 展开入口热区：文曲星按「展开」按钮的实际范围，外语学习按「该条最后一行 + 行尾一段」
+            val hit = if (wenquxing) hitExpandButton(x, y, layout) else hitExpandIcon(x, y, layout)
+            if (hit >= 0) {
+                expand(hit)
+                return
             }
 
             // 正文：落到第几条就上屏第几条
@@ -571,6 +567,49 @@ open class PreeditUi(
             if (index < 0) return
             if (offset < entryStart[index] || offset >= entryBlockEnd[index]) return
             commitPayload(entries[index].payload)
+        }
+
+        /** 外语学习：按「该条最后一行 + 行尾 GLOSSARY_ICON_TOUCH_DP」算热区。 */
+        private fun hitExpandIcon(
+            x: Int,
+            y: Int,
+            layout: android.text.Layout,
+        ): Int {
+            val vx = (x - totalPaddingLeft + scrollX).toFloat()
+            val vy = y - totalPaddingTop + scrollY
+            val slack = ctx.dp(GLOSSARY_COLLAPSE_SLACK_DP)
+            for (i in iconStart.indices) {
+                val start = iconStart.getOrNull(i) ?: -1
+                if (start < 0) continue
+                val line = layout.getLineForOffset(start)
+                if (vy < layout.getLineTop(line) - slack || vy > layout.getLineBottom(line) + slack) continue
+                if (vx >= layout.getLineRight(line) - ctx.dp(GLOSSARY_ICON_TOUCH_DP)) return i
+            }
+            return -1
+        }
+
+        /** 文曲星：按「展开」文字按钮的实际横向范围 ± BUTTON_SLACK_DP 算热区。 */
+        private fun hitExpandButton(
+            x: Int,
+            y: Int,
+            layout: android.text.Layout,
+        ): Int {
+            val vx = (x - totalPaddingLeft + scrollX).toFloat()
+            val vy = y - totalPaddingTop + scrollY
+            val slack = ctx.dp(BUTTON_SLACK_DP)
+            for (i in iconStart.indices) {
+                val start = iconStart.getOrNull(i) ?: -1
+                val end = iconEnd.getOrNull(i) ?: -1
+                if (start < 0 || end <= start) continue
+                val line = layout.getLineForOffset(start)
+                val top = layout.getLineTop(line) - slack
+                val bottom = layout.getLineBottom(line) + slack
+                if (vy < top || vy > bottom) continue
+                val left = layout.getPrimaryHorizontal(start) - slack
+                val right = layout.getPrimaryHorizontal(end - 1) + slack
+                if (vx >= left && vx <= right + ctx.dp(6)) return i
+            }
+            return -1
         }
 
         /** 二分查找「这个字符偏移属于第几条」。 */
@@ -705,6 +744,17 @@ open class PreeditUi(
 
         /** 三角和提示块底色的最低对比度，低于这个就退回文字色，避免箭头看不见。 */
         private const val MIN_MARK_CONTRAST = 2.0
+        /** 展开「展开」文字按钮时，横向/纵向各放宽多少 dp（热区翻倍）。 */
+        private const val BUTTON_SLACK_DP = 24
+
+        /** 外语学习 ▾ 的热区宽度（从行右端往左算）。 */
+        const val GLOSSARY_ICON_TOUCH_DP = 144
+
+        /** 外语学习 ▾ 的纵向松弛。 */
+        private const val GLOSSARY_COLLAPSE_SLACK_DP = 12
+
+        /** 展开态「收起」行的纵向松弛。 */
+        private const val COLLAPSE_SLACK_DP = 12
 
         /** 手动滑动之后多久之内不再自动把视口拉回高亮项。 */
         private const val MANUAL_SCROLL_GRACE_MS = 2500L
