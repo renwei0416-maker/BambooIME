@@ -98,11 +98,6 @@ object GlossaryPrefs {
         set(v) = p().edit().putInt("tips_alpha", v.coerceIn(0, 100)).apply()
 
     /** 行尾「·N字」：这一条点下去会提交多少字。 */
-    /** 命中项展开后的可见高度（按行数算，1–8）。 */
-    var expandRows: Int
-        get() = p().getInt("expand_rows", 5).coerceIn(1, 8)
-        set(value) = p().edit().putInt("expand_rows", value.coerceIn(1, 8)).apply()
-
     var showCharCount: Boolean
         get() = p().getBoolean("show_char_count", true)
         set(v) = p().edit().putBoolean("show_char_count", v).apply()
@@ -153,7 +148,6 @@ object GlossaryPrefs {
             .putInt("tips_text_scale", 90)
             .putInt("tips_alpha", 90)
             .putBoolean("show_char_count", true)
-            .putInt("expand_rows", 5)
             .putInt("unmatched_alpha", 80)
             .putInt("unmatched_text_scale", 100)
             .putBoolean("show_pos", true)

@@ -21,6 +21,8 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import android.graphics.Rect
+import android.view.TouchDelegate
 import androidx.core.text.buildSpannedString
 import com.osfans.trime.actions.glossary.GlossaryPrefs
 import com.osfans.trime.actions.glossary.GlossaryTips
@@ -331,11 +333,6 @@ open class PreeditUi(
                 if (wenquxing) WenquxingPrefs.showCharCount else GlossaryPrefs.showCharCount
             }.getOrDefault(true)
 
-        private fun expandRows(): Int =
-            runCatching {
-                if (wenquxing) WenquxingPrefs.expandRows else GlossaryPrefs.expandRows
-            }.getOrDefault(5)
-
         private fun bodyTextSize(): Float =
             theme.preedit.foreground.fontSize * textScale * (scalePct() / 100f)
 
@@ -344,21 +341,6 @@ open class PreeditUi(
             android.graphics.Paint().apply {
                 isAntiAlias = true
             }
-
-        /**
-         * 实测「一行正文」的像素高度。
-         *
-         * 以前用 `bodyTextSize() * 1.18` 估算，字号一改就和真实行高对不上；
-         * 这里直接用同一套 Paint 的字体度量（bottom - top），与条目 TextView 一致。
-         */
-        private fun measuredLineHeight(): Int {
-            val size = bodyTextSize()
-            measurePaint.textSize = size
-            measurePaint.typeface = FontManager.getTypeface()
-            val fm = measurePaint.fontMetrics
-            val one = (fm.bottom - fm.top).toInt().coerceAtLeast(size.toInt())
-            return (one * 1.18f).toInt().coerceAtLeast(1)
-        }
 
         private fun measureWidth(text: CharSequence): Int {
             measurePaint.textSize = bodyTextSize()
@@ -576,6 +558,23 @@ open class PreeditUi(
             // 高度已经在 onMeasure 里定好，这里不再改 layoutParams（布局阶段改参数会被推迟，
             // 表现就是「有时全显示 / 有时显示 N 条又滑不动」）。
             this@PreeditUi.syncTouchable()
+            installCollapseTouchDelegate()
+        }
+
+        /**
+         * 「收起」按钮视觉不变，只把**可点矩形**四周各放宽一圈。
+         *
+         * 60×26dp 的胶囊用指尖本来就难点中，TouchDelegate 让父容器把放大后的矩形也交给它。
+         */
+        private fun installCollapseTouchDelegate() {
+            if (expandedIndex < 0 || collapseButton.visibility != View.VISIBLE) {
+                if (touchDelegate != null) touchDelegate = null
+                return
+            }
+            val rc = Rect()
+            collapseButton.getHitRect(rc)
+            rc.inset(-ctx.dp(18), -ctx.dp(11))
+            touchDelegate = TouchDelegate(rc, collapseButton)
         }
 
         /**
@@ -593,10 +592,9 @@ open class PreeditUi(
             val contentH = column.measuredHeight + padV
             val want =
                 if (expandedIndex >= 0) {
-                    // 展开态用**固定**高度：行数 × 实测行高 + 收起条高度，不再被内容高度压小。
-                    val fixed = expandRows().coerceIn(1, MAX_EXPAND_ROWS) * measuredLineHeight() +
-                        ctx.dp(COLLAPSE_H_DP + 8)
-                    fixed.coerceAtMost((ctx.resources.displayMetrics.heightPixels * EXPAND_MAX_RATIO).toInt())
+                    // 展开态用**固定**高度：屏高的 35%（不再按行数、也不被内容高度压小）。
+                    // 这个比例避开了下方键盘，字号变化也不会把块撑爆。
+                    (ctx.resources.displayMetrics.heightPixels * EXPAND_HEIGHT_RATIO).toInt()
                 } else {
                     val r = rows().coerceIn(1, MAX_ROWS)
                     // 第一行可能是「共N组」角标，不算进条数
@@ -690,7 +688,7 @@ open class PreeditUi(
         private const val MARK_SCALE = 1.1f
         private const val COUNT_SCALE = 0.78f
         private const val BADGE_SCALE = 0.88f
-        private const val EXPAND_MAX_RATIO = 0.4f
+        private const val EXPAND_HEIGHT_RATIO = 0.35f
         private const val MAX_ROWS = 6
         private const val MAX_EXPAND_ROWS = 8
         private const val BUTTON_BG_ALPHA = 40
