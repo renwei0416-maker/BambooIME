@@ -72,13 +72,15 @@ object TipBlocks {
     private fun decide(): Int {
         val glossaryOn = GlossaryTips.shouldShow()
         val wenquxingEnabled = WenquxingPrefs.enabled
-        val wenquxingEntries = if (wenquxingEnabled) WenquxingTips.entries() else null
+        // 用「有没有命中」而不是「这一帧 entries 是否为空」：后者会在上屏/展开那一瞬间
+        // 被清空，导致块内容闪跳到另一个模块。
+        val wenquxingHit = wenquxingEnabled && WenquxingTips.hitCount() > 0
         val conflict = GlossaryPrefs.conflict
         return when {
-            !glossaryOn -> if (wenquxingEntries.isNullOrEmpty()) NONE else WENQUXING
+            !glossaryOn -> if (wenquxingHit) WENQUXING else NONE
             conflict == GlossaryTips.CONFLICT_GLOSSARY -> GLOSSARY
-            conflict == GlossaryTips.CONFLICT_OFF -> if (wenquxingEnabled) WENQUXING else GLOSSARY
-            else -> if (wenquxingEntries.isNullOrEmpty()) GLOSSARY else WENQUXING
+            conflict == GlossaryTips.CONFLICT_OFF -> if (wenquxingHit) WENQUXING else GLOSSARY
+            else -> if (wenquxingHit) WENQUXING else GLOSSARY
         }
     }
 

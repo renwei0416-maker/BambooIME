@@ -133,6 +133,8 @@ open class PreeditUi(
 
     /** 上一次渲染的内容指纹，相同就不重画（否则每次按键都会把滚动位置打回顶部）。 */
     private var lastKey: String = ""
+    private var viewportRows = 3
+    private var tipsIsWenquxing = false
 
     /** 用户手动滚动的时间戳，用来判断要不要把视口拽回高亮项。 */
     private var manualScrollAt: Long = 0L
@@ -177,8 +179,6 @@ open class PreeditUi(
         object : LinearLayout(ctx) {
             override fun onInterceptTouchEvent(ev: MotionEvent?): Boolean = false
 
-            private var lastMeasureLog = ""
-
             override fun onMeasure(
                 widthMeasureSpec: Int,
                 heightMeasureSpec: Int,
@@ -192,22 +192,6 @@ open class PreeditUi(
                         ?: ctx.resources.displayMetrics.widthPixels
                 val forced = MeasureSpec.makeMeasureSpec(parentWidth, MeasureSpec.EXACTLY)
                 super.onMeasure(forced, heightMeasureSpec)
-                val mode =
-                    when (MeasureSpec.getMode(widthMeasureSpec)) {
-                        MeasureSpec.EXACTLY -> "EXACT"
-                        MeasureSpec.AT_MOST -> "ATMOST"
-                        else -> "UNSPEC"
-                    }
-                val line =
-                    "measure spec=$mode:${MeasureSpec.getSize(widthMeasureSpec)} forced=$parentWidth " +
-                        "-> rootW=$measuredWidth " +
-                        "preeditW=${preedit.measuredWidth}/${preedit.layoutParams.width} " +
-                        "tipsW=${tips.measuredWidth}/${tips.layoutParams.width} " +
-                        "parent=${parent?.javaClass?.simpleName}:${(parent as? View)?.width}"
-                if (line != lastMeasureLog) {
-                    lastMeasureLog = line
-                    HandwritingLog.d("tips", line)
-                }
             }
 
             init {
@@ -280,21 +264,17 @@ open class PreeditUi(
             if (expandedIndex >= 0) {
                 buildExpanded(picked.entries, expandedIndex, picked.wenquxing)
             } else {
-                // 「显示几条」= 条目数：只构建前 N 条，块高随之自适应
-                val rows = (if (picked.wenquxing) WenquxingPrefs.maxDisplay else GlossaryPrefs.tipsMax).coerceIn(1, 6)
-                buildBlock(picked.entries.take(rows), picked.wenquxing)
+                // 全部命中项都画进 TextView；视口高度 = 前 N 条的高度（见 applyViewportHeight）
+                viewportRows =
+                    (if (picked.wenquxing) WenquxingPrefs.maxDisplay else GlossaryPrefs.tipsMax).coerceIn(1, 6)
+                tipsIsWenquxing = picked.wenquxing
+                buildBlock(picked.entries, picked.wenquxing)
             }
         tips.visibility = View.VISIBLE
         visible = true
         // 正常态不限行：高度 = 构建出来的那几条占多少行；展开态由 expand() 锁死高度
         tips.maxLines = Int.MAX_VALUE
-        tips.post {
-            HandwritingLog.d(
-                "tips",
-                "block w=${tips.width} rootW=${root.width} h=${tips.height} entries=${blockEntries.size} " +
-                    "expanded=$expandedIndex maxLines=${tips.maxLines} scroll=${tips.scrollY}",
-            )
-        }
+        tips.post { applyViewportHeight() }
         if (expandedIndex >= 0) {
             tips.scrollTo(0, 0)
         } else {
@@ -419,24 +399,37 @@ open class PreeditUi(
                     setSpan(RelativeSizeSpan(COUNT_SCALE), cntStart, length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
                 }
                 entryBlockEnd[index] = length
-                // 展开按钮：文字 + 底色（空格也包进底色里当左右内边距）
+                // 展开入口：文曲星用「展开」文字按钮；外语学习只留一个 ▾，不带底色
                 if (line.detail.length > line.text.length) {
                     append("  ")
                     iconStart[index] = length
-                    append(" \u5c55\u5f00 ")
+                    if (wenquxing) {
+                        append(" \u5c55\u5f00 ")
+                    } else {
+                        append(ICON_EXPAND)
+                    }
                     iconEnd[index] = length
                     setSpan(
-                        ForegroundColorSpan(textColor),
+                        ForegroundColorSpan(if (wenquxing) textColor else tipColor),
                         iconStart[index],
                         iconEnd[index],
                         Spanned.SPAN_INCLUSIVE_EXCLUSIVE,
                     )
-                    setSpan(
-                        BackgroundColorSpan(withAlpha(textColor, BUTTON_BG_ALPHA)),
-                        iconStart[index],
-                        iconEnd[index],
-                        Spanned.SPAN_INCLUSIVE_EXCLUSIVE,
-                    )
+                    if (!wenquxing) {
+                        setSpan(
+                            RelativeSizeSpan(GLOSSARY_ICON_SCALE),
+                            iconStart[index],
+                            iconEnd[index],
+                            Spanned.SPAN_INCLUSIVE_EXCLUSIVE,
+                        )
+                    } else {
+                        setSpan(
+                            BackgroundColorSpan(withAlpha(textColor, BUTTON_BG_ALPHA)),
+                            iconStart[index],
+                            iconEnd[index],
+                            Spanned.SPAN_INCLUSIVE_EXCLUSIVE,
+                        )
+                    }
                 }
             }
         }
@@ -506,8 +499,8 @@ open class PreeditUi(
             return
         }
 
-        // 按钮热区：按「展开」这两个字实际占的横向范围算，上下各放宽 BUTTON_SLACK_DP
-        val hitButton = hitExpandButton(x, y, layout)
+        // 热区：文曲星按「展开」两个字的实际范围，外语学习按行尾一段（三角太小）
+        val hitButton = if (tipsIsWenquxing) hitExpandButton(x, y, layout) else hitExpandIcon(x, y, layout)
         if (hitButton >= 0) {
             expand(hitButton)
             return
@@ -517,6 +510,25 @@ open class PreeditUi(
         // 落在行首缩进、三角标记上不算点到这一条
         if (offset < entryStart[index] || offset >= entryBlockEnd[index]) return
         commitPayload(blockEntries[index].payload)
+    }
+
+    /** 外语学习：三角太小，按「该条最后一行 + 行尾 GLOSSARY_ICON_TOUCH_DP」算热区。 */
+    private fun hitExpandIcon(
+        x: Int,
+        y: Int,
+        layout: android.text.Layout,
+    ): Int {
+        val vx = (x - tips.totalPaddingLeft + tips.scrollX).toFloat()
+        val vy = y - tips.totalPaddingTop + tips.scrollY
+        val slack = ctx.dp(GLOSSARY_COLLAPSE_SLACK_DP)
+        for (i in iconStart.indices) {
+            val start = iconStart.getOrNull(i) ?: -1
+            if (start < 0) continue
+            val line = layout.getLineForOffset(start)
+            if (vy < layout.getLineTop(line) - slack || vy > layout.getLineBottom(line) + slack) continue
+            if (vx >= layout.getLineRight(line) - ctx.dp(GLOSSARY_ICON_TOUCH_DP)) return i
+        }
+        return -1
     }
 
     /** 点没点到某一条的「展开」按钮；命中返回条目下标。 */
@@ -587,11 +599,6 @@ open class PreeditUi(
         params.height = target
         tips.layoutParams = params
         refreshTips()
-        HandwritingLog.d(
-            "tips",
-            "expand idx=$index rows=$rows lineH=$lineHeight beforeH=$heightBeforeExpand " +
-                "target=$target h=${tips.height} rootW=${root.width} maxLines=${tips.maxLines}",
-        )
     }
 
     private fun collapse() {
@@ -602,12 +609,10 @@ open class PreeditUi(
         params.height = LinearLayout.LayoutParams.WRAP_CONTENT
         tips.layoutParams = params
         refreshTips()
-        tips.post { tips.scrollTo(0, scrollBeforeExpand) }
-        HandwritingLog.d(
-            "tips",
-            "collapse w=${tips.width} h=${tips.height} lpW=${tips.layoutParams.width} " +
-                "lpH=${tips.layoutParams.height} maxLines=${tips.maxLines}",
-        )
+        tips.post {
+            applyViewportHeight()
+            tips.scrollTo(0, scrollBeforeExpand)
+        }
     }
 
     /** 上屏：与 `BambooTip` 系列 token 同一条路——先清组合，再提交。 */
@@ -623,6 +628,31 @@ open class PreeditUi(
     }
 
     /** 高亮项换了就把它滚到视口里；用户刚手动滑过就不动。 */
+    /**
+     * 视口高度 = 前 N 条（「显示条数」）的高度，内容 = 全部命中项。
+     * 两者之差就是可滑动的余量；命中项不超过 N 条时高度自适应，不留空白。
+     */
+    private fun applyViewportHeight() {
+        if (expandedIndex >= 0) return
+        val lp = tips.layoutParams as? LinearLayout.LayoutParams ?: return
+        val layout = tips.layout ?: return
+        if (blockEntries.isEmpty()) return
+        val rows = viewportRows.coerceIn(1, 6)
+        val want =
+            if (blockEntries.size <= rows) {
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            } else {
+                val endChar = entryBlockEnd.getOrNull(rows - 1) ?: -1
+                if (endChar <= 0) return
+                val line = layout.getLineForOffset(endChar - 1)
+                tips.totalPaddingTop + layout.getLineBottom(line) + tips.totalPaddingBottom
+            }
+        if (want == lp.height) return
+        if (want != LinearLayout.LayoutParams.WRAP_CONTENT && kotlin.math.abs(want - lp.height) <= ctx.dp(1)) return
+        lp.height = want
+        tips.layoutParams = lp
+    }
+
     private fun scrollToHighlight() {
         val index = blockEntries.indexOfFirst { it.highlighted }
         if (index < 0) return
@@ -671,32 +701,21 @@ open class PreeditUi(
     /**
      * 两块提示互斥：先看文曲星这一句有没有内容，再按「外语学习 → 和文曲星同时开启时」的设置让位。
      */
+    /** 显示哪一块完全由 [TipBlocks.current] 决定，避免显示与 token/点击各判一套。 */
     private fun pick(): Picked? {
-        val wenquxingEnabled = runCatching { WenquxingPrefs.enabled }.getOrDefault(false)
-        val wenquxing =
-            if (wenquxingEnabled) {
+        return when (runCatching { TipBlocks.current() }.getOrDefault(TipBlocks.NONE)) {
+            TipBlocks.WENQUXING ->
                 runCatching { WenquxingTips.entries() }.getOrNull()
-            } else {
-                null
-            }
-        val glossaryOn = runCatching { GlossaryTips.shouldShow() }.getOrDefault(false)
-        val conflict = runCatching { GlossaryPrefs.conflict }.getOrDefault(GlossaryTips.CONFLICT_AUTO)
+                    ?.takeIf { it.isNotEmpty() }
+                    ?.let { Picked(it, true) }
 
-        val takeWenquxing =
-            when {
-                !glossaryOn -> true
-                conflict == GlossaryTips.CONFLICT_GLOSSARY -> false
-                conflict == GlossaryTips.CONFLICT_OFF -> wenquxingEnabled
-                else -> !wenquxing.isNullOrEmpty()
-            }
+            TipBlocks.GLOSSARY ->
+                runCatching { GlossaryTips.entries() }.getOrNull()
+                    ?.takeIf { it.isNotEmpty() }
+                    ?.let { Picked(it, false) }
 
-        if (takeWenquxing) {
-            val entries = wenquxing.orEmpty()
-            return if (entries.isEmpty()) null else Picked(entries, true)
+            else -> null
         }
-        if (!glossaryOn) return null
-        val entries = runCatching { GlossaryTips.entries() }.getOrDefault(emptyList())
-        return if (entries.isEmpty()) null else Picked(entries, false)
     }
 
     companion object {
@@ -731,6 +750,10 @@ open class PreeditUi(
         private const val MARK = "\u25B6\u3000"
         private const val INDENT = "\u3000\u3000"
         private const val ICON_EXPAND = "\u25BE"
+        // 外语学习专用的热区/字号，刻意与文曲星那套分开
+        private const val GLOSSARY_ICON_SCALE = 1.15f
+        private const val GLOSSARY_ICON_TOUCH_DP = 72
+        private const val GLOSSARY_COLLAPSE_SLACK_DP = 8
         private const val ICON_COLLAPSE = "\u25B4"
     }
 }
