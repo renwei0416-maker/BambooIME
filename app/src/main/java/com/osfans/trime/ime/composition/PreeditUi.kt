@@ -188,8 +188,10 @@ open class PreeditUi(
         val here = tipsShownHere()
         val wqHit =
             runCatching { WenquxingPrefs.enabled && WenquxingTips.hitCount() > 0 }.getOrDefault(false)
-        wqTips.refresh(here && wqHit)
-        glTips.refresh(here && !wqHit)
+        val noContent =
+            !wqHit && runCatching { GlossaryTips.entries().isEmpty() }.getOrDefault(true)
+        wqTips.refresh(here && wqHit, noContent)
+        glTips.refresh(here && !wqHit, noContent)
         visible = preedit.visibility == View.VISIBLE ||
             wqTips.visibility == View.VISIBLE ||
             glTips.visibility == View.VISIBLE
@@ -358,10 +360,14 @@ open class PreeditUi(
             horizontalPadding = ctx.dp(theme.preedit.horizontalPadding)
         }
 
-        /** 主入口：`active == true` 时按最新候选重画，否则隐藏并清状态。 */
-        fun refresh(active: Boolean) {
+        /**
+         * 主入口。
+         * @param active  是否由本块显示
+         * @param clear   本次「彻底没有候选」——要丢掉展开态，避免下次输入同一编码又看到上次的展开内容
+         */
+        fun refresh(active: Boolean, clear: Boolean = false) {
             if (!active) {
-                reset()
+                if (clear) hardReset() else reset()
                 return
             }
             val list =
@@ -369,7 +375,7 @@ open class PreeditUi(
                     if (wenquxing) WenquxingTips.entries() else GlossaryTips.entries()
                 }.getOrNull().orEmpty()
             if (list.isEmpty()) {
-                reset()
+                hardReset()
                 return
             }
             applyStyle()
@@ -417,6 +423,14 @@ open class PreeditUi(
                 cur.height = ViewGroup.LayoutParams.WRAP_CONTENT
                 layoutParams = cur
             }
+        }
+
+        /** 彻底没有候选时调用：连展开态一起丢。 */
+        private fun hardReset() {
+            expandedIndex = -1
+            snapshot = 0
+            entries = emptyList()
+            reset()
         }
 
         private fun applyVisibility(v: Int) {
@@ -578,7 +592,16 @@ open class PreeditUi(
                 MotionEvent.ACTION_UP -> {
                     val quick = System.currentTimeMillis() - downAt < 600L
                     if (!moved && quick) {
-                        val yInColumn = ev.y - scroller.top + scroller.scrollY
+                        // 先判「收起」：它浮在右上角、盖在内容上方，不能被当成条目
+                        val collapseTop = scroller.top.toFloat()
+                        val collapseBottom = collapseTop + ctx.dp(COLLAPSE_H_DP + 8)
+                        if (expandedIndex >= 0 && ev.y in collapseTop..collapseBottom) {
+                            HandwritingLog.d("tips", "tap collapse y=" + ev.y.toInt())
+                            collapse()
+                            return true
+                        }
+                        // 内容坐标：扣掉 scroller 的上内边距（展开态顶部给收起按钮留了位置）
+                        val yInColumn = ev.y - scroller.top - scroller.paddingTop + scroller.scrollY
                         val idx = childIndexAt(yInColumn)
                         HandwritingLog.d(
                             "tips",
