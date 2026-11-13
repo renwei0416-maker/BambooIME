@@ -1565,7 +1565,17 @@ open class PreeditUi(
                 }
 
                 MotionEvent.ACTION_MOVE -> {
-                    if (!moved && kotlin.math.abs(ev.rawY - downRawY) > ctx.dp(TAP_SLOP_DP)) moved = true
+                    if (!moved && kotlin.math.abs(ev.rawY - downRawY) > ctx.dp(TAP_SLOP_DP)) {
+                        moved = true
+                        // 诊断：确认拖动事件真的到了、ScrollView 当前的滚动位置是多少
+                        HandwritingLog.d(
+                            "tips",
+                            "gl move dy=" + (ev.rawY - downRawY).toInt() +
+                                " scrollY=" + scroller.scrollY +
+                                " scrollable=" + scroller.canScrollVertically(1) +
+                                " childH=" + column.height + " viewH=" + scroller.height,
+                        )
+                    }
                 }
 
                 MotionEvent.ACTION_UP -> {
@@ -1785,6 +1795,20 @@ open class PreeditUi(
                     lastMeasured = h
                     HandwritingLog.d("tips", "measure ${if (wenquxing) "wq" else "gl"} expanded h=$h")
                 }
+                // 先把正文按内容高度量出来，再把高度写进 column 的 layoutParams。
+                // 这样 ScrollView 拿到的子 View 是「固定高度且比视口高」，滚动范围才不为 0。
+                val cw = MeasureSpec.makeMeasureSpec(
+                    (MeasureSpec.getSize(wSpec) - paddingLeft - paddingRight).coerceAtLeast(1),
+                    MeasureSpec.EXACTLY,
+                )
+                column.measure(cw, MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED))
+                val contentH = column.measuredHeight.coerceAtLeast(1)
+                val clp = column.layoutParams
+                if (clp != null && clp.height != contentH) {
+                    clp.height = contentH
+                    column.layoutParams = clp
+                }
+                HandwritingLog.d("tips", "gl expanded content=$contentH viewport=$h")
                 scroller.measure(wSpec, MeasureSpec.makeMeasureSpec(h, MeasureSpec.EXACTLY))
                 collapseButton.measure(
                     MeasureSpec.makeMeasureSpec(ctx.dp(COLLAPSE_W_DP), MeasureSpec.EXACTLY),
