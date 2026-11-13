@@ -131,29 +131,29 @@ class GlossaryFragment : PaddingPreferenceFragment() {
                 addCategory("显示多少", "太长会截断，用「…」结尾") {
                     addSeek(
                         "义项个数",
-                        "一个词最多显示几条义项；选「全部」时按词库里的条数",
+                        "一个词最多拼几条释义；拼完再按下面的「每条最多几行」实际排版",
                         min = 1,
-                        max = 4,
+                        max = 8,
                         step = 1,
-                        default = 2,
+                        default = 5,
                         current = GlossaryPrefs.senseCount,
-                        unit = " 条（4＝全部）",
+                        unit = " 条",
                         resetters = resetters,
                     ) {
                         GlossaryPrefs.senseCount = it
                     }
                     addSeek(
-                        "每条字符数",
-                        "单条义项最多显示多少字符；调大能看全，但会挤掉候选",
-                        min = 8,
-                        max = 70,
-                        step = 2,
-                        default = 40,
-                        current = GlossaryPrefs.maxChars,
-                        unit = " 字符",
+                        "每条最多几行",
+                        "按实际宽度排版：宽就多显示，放不下才截断并出现「[...展开]」",
+                        min = 1,
+                        max = 3,
+                        step = 1,
+                        default = 2,
+                        current = GlossaryPrefs.maxLines,
+                        unit = " 行",
                         resetters = resetters,
                     ) {
-                        GlossaryPrefs.maxChars = it
+                        GlossaryPrefs.maxLines = it
                     }
                     addSeek(
                         "字号",

@@ -79,13 +79,14 @@ object GlossaryPrefs {
 
     /** 显示几个义项：1/2/3，4 表示全部。 */
     var senseCount: Int
-        get() = p().getInt("sense_count", 2).coerceIn(1, 4)
-        set(v) = p().edit().putInt("sense_count", v.coerceIn(1, 4)).apply()
+        get() = p().getInt("sense_count", 5).coerceIn(1, 8)
+        set(v) = p().edit().putInt("sense_count", v.coerceIn(1, 8)).apply()
 
     /** 每条义项最多显示多少字符（8–70）。 */
-    var maxChars: Int
-        get() = p().getInt("max_chars", 40).coerceIn(8, 100)
-        set(v) = p().edit().putInt("max_chars", v.coerceIn(8, 100)).apply()
+    /** 每条最多显示几行（1~3）：不再按字符数截断，由真实排版决定，宽度富裕就多显示。 */
+    var maxLines: Int
+        get() = p().getInt("max_lines", 2).coerceIn(1, 3)
+        set(v) = p().edit().putInt("max_lines", v.coerceIn(1, 3)).apply()
 
     /** 提示块的字号，相对编码行的百分比（50–150）。 */
     var tipsTextScale: Int
@@ -143,8 +144,8 @@ object GlossaryPrefs {
             .putBoolean("enabled", false)
             .putString("lang", LANG_EN)
             .putInt("tips_max", 4)
-            .putInt("sense_count", 2)
-            .putInt("max_chars", 40)
+            .putInt("sense_count", 5)
+            .putInt("max_lines", 2)
             .putInt("tips_text_scale", 90)
             .putInt("tips_alpha", 90)
             .putBoolean("show_char_count", true)

@@ -46,9 +46,10 @@ object WenquxingPrefs {
         set(value) = p().edit().putInt("mode", value.coerceIn(MODE_ALWAYS, MODE_TRIGGER_SEND)).apply()
 
     /** 提示里每条摘要显示多少字。 */
-    var displayLen: Int
-        get() = p().getInt("display_len", 40).coerceIn(4, 100)
-        set(value) = p().edit().putInt("display_len", value.coerceIn(4, 100)).apply()
+    /** 每条最多显示几行（1~3）：不再按字数截断，由真实排版决定。 */
+    var maxLines: Int
+        get() = p().getInt("max_lines", 2).coerceIn(1, 3)
+        set(value) = p().edit().putInt("max_lines", value.coerceIn(1, 3)).apply()
 
     /** 最多显示几条。 */
     var maxDisplay: Int

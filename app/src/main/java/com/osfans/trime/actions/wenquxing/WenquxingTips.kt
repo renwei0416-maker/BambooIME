@@ -162,21 +162,20 @@ object WenquxingTips {
     fun entries(): List<TipEntry> {
         if (tips.isEmpty()) return emptyList()
         ensureOrder()
-        val len = WenquxingPrefs.displayLen
         val cap = minOf(total, MAX_ENTRIES)
         val out = ArrayList<TipEntry>(cap)
         for (i in 0 until cap) {
             val full = tips.getOrNull(order.getOrNull(i) ?: break) ?: continue
-            val shown = circled(i + 1) + "〔" + brief(full, len) + "〕"
+            val shown = circled(i + 1) + "\u3014" + full + "\u3015"
             // 只有 brief() 真的截断了才给展开入口
             out.add(
                 TipEntry(
                     text = shown,
-                    detail = full,
+                    detail = shown,
                     payload = full,
                     // 第一条就是「逗号上屏」的那一条（轮换后跟着变），高亮它
                     highlighted = i == 0,
-                    expandable = full.length > len, // 只有真被截断了才给展开（否则点了直接上屏）
+                    expandable = false, // 只有真被截断了才给展开（否则点了直接上屏）
                 ),
             )
         }

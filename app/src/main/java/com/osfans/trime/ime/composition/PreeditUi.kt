@@ -9,6 +9,9 @@ import android.content.Context
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.text.Spanned
+import android.text.StaticLayout
+import android.text.TextPaint
+import android.text.TextUtils
 import android.text.style.ForegroundColorSpan
 import android.text.style.LeadingMarginSpan
 import android.text.style.RelativeSizeSpan
@@ -332,6 +335,56 @@ open class PreeditUi(
         private fun bodyTextSize(): Float =
             theme.preedit.foreground.fontSize * textScale * (scalePct() / 100f)
 
+        /** 每条渲染时算出来的「是否被截断」——展开入口只看这个，不再看数据层猜的 expandable。 */
+        private val entryExpandable = HashMap<Int, Boolean>()
+
+        /** 每条最多显示几行（两个模块各自设置）。 */
+        private fun maxLines(): Int =
+            runCatching {
+                if (wenquxing) WenquxingPrefs.maxLines else GlossaryPrefs.maxLines
+            }.getOrDefault(2).coerceIn(1, MAX_ENTRY_LINES)
+
+        /** 条目可用宽度（px）：块宽 - 内边距 - 条目自身左右 padding。 */
+        private fun entryAvailWidth(): Int {
+            val w =
+                measuredWidth.takeIf { it > 0 }
+                    ?: runCatching { ctx.resources.displayMetrics.widthPixels }.getOrDefault(1080)
+            val used = paddingLeft + paddingRight + column.paddingLeft + column.paddingRight +
+                ctx.dp(theme.preedit.horizontalPadding) * 2
+            return (w - used).coerceAtLeast(120)
+        }
+
+        /**
+         * 按「宽度 + 最多行数」真实排版：放得下就原样返回，放不下就二分最长前缀，
+         * 并在尾部拼上 [...展开]。返回 (显示用文本, 是否被截断)。
+         */
+        private fun fitLines(src: CharSequence, width: Int, lines: Int): Pair<CharSequence, Boolean> {
+            val tp = TextPaint().apply {
+                isAntiAlias = true
+                textSize = bodyTextSize()
+                typeface = FontManager.getTypeface()
+                color = textColor
+            }
+            fun lineCount(cs: CharSequence): Int =
+                StaticLayout.Builder.obtain(cs, 0, cs.length, tp, width)
+                    .setLineSpacing(0f, 1.0f)
+                    .setIncludePad(false)
+                    .build()
+                    .lineCount
+            if (src.length <= MEASURE_CHAR_CAP && lineCount(src) <= lines) return src to false
+            val tail = "  " + EXPAND_HINT_WQ
+            var lo = 0
+            // 只在前 MEASURE_CHAR_CAP 个字符里找截断点：3 行文本在任何手机上都远到不了 600 字，
+            // 但离骚那种 3000+ 字的条目如果整串排 12 遍会明显卡顿。
+            var hi = minOf(src.length, MEASURE_CHAR_CAP)
+            while (lo < hi) {
+                val mid = (lo + hi + 1) / 2
+                val trial = TextUtils.concat(src.subSequence(0, mid), tail)
+                if (lineCount(trial) <= lines) lo = mid else hi = mid - 1
+            }
+            return TextUtils.concat(src.subSequence(0, lo), tail) to true
+        }
+
         /** 量一段文字在正文尺寸下的像素宽度（悬挂缩进要用）。 */
         private val measurePaint =
             android.graphics.Paint().apply {
@@ -530,15 +583,13 @@ open class PreeditUi(
                         setSpan(ForegroundColorSpan(tipColor), cntStart, length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
                         setSpan(RelativeSizeSpan(COUNT_SCALE), cntStart, length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
                     }
-                    if (item.expandable) {
-                        append("  ")
-                        val hintStart = length
-                        append(EXPAND_HINT_WQ)
-                        setSpan(ForegroundColorSpan(tipColor), hintStart, length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
-                        setSpan(RelativeSizeSpan(COUNT_SCALE), hintStart, length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
-                    }
                 }
-            return entryView(text, bodyTextSize()).apply {
+            // 真实排版后再决定要不要截断（宽度富裕就多显示，窄就少显示），
+            // 截断过才给 [...展开] 入口 —— 这样不会再出现「有入口没内容 / 有内容没入口」。
+            val fitted = fitLines(text, entryAvailWidth(), maxLines())
+            entryExpandable[index] = fitted.second
+            val shown = fitted.first
+            return entryView(shown, bodyTextSize()).apply {
                 tag = index
                 setPadding(paddingLeft, ctx.dp(3), paddingRight, ctx.dp(3))
                 // 条目之间留 6dp：每条一个块，视觉上分得开
@@ -757,9 +808,9 @@ open class PreeditUi(
             val item = entries.getOrNull(idx) ?: return
             HandwritingLog.d(
                 "tips",
-                "activate idx=" + idx + " expandable=" + item.expandable + " text=" + item.text.take(12),
+                "activate idx=" + idx + " expandable=" + entryExpandable[idx] + " text=" + item.text.take(12),
             )
-            if (item.expandable) expand(idx) else commitPayload(item.payload)
+            if (entryExpandable[idx] == true) expand(idx) else commitPayload(item.payload)
         }
 
         override fun onLayout(
@@ -864,7 +915,7 @@ open class PreeditUi(
 
         private fun expand(index: Int) {
             val item = entries.getOrNull(index) ?: return
-            if (!item.expandable) {
+            if (entryExpandable[index] != true) {
                 commitPayload(item.payload)
                 return
             }
@@ -929,6 +980,10 @@ open class PreeditUi(
 
         private const val MARK = "\u25B6\u3000"
         private const val INDENT = "\u3000\u3000"
+        private const val MAX_ENTRY_LINES = 3
+
+        /** 排版测宽时只取前这么多字符。 */
+        private const val MEASURE_CHAR_CAP = 600
         private const val EXPAND_HINT = "\u25B8"
         private const val EXPAND_HINT_WQ = "[...\u5C55\u5F00]"
         private const val COLLAPSE_LABEL = "\u6536\u8D77"

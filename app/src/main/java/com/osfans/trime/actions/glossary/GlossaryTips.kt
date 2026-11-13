@@ -32,6 +32,9 @@ object GlossaryTips {
     /** 安全上限，防止极端情况下构造出几百行。 */
     private const val MAX_ENTRIES = 60
 
+    /** 数据层不截断，交给渲染层按行数裁；这里只给个足够大的上限。 */
+    private const val FULL_CHARS = 9999
+
     /**
      * 「外语学习」这块能不能用：开关打开 + 词库已就绪。
      *
@@ -71,20 +74,16 @@ object GlossaryTips {
         val end = (start + SCAN_WINDOW).coerceAtMost(candidates.size)
         val hitsOnly = GlossaryPrefs.displayMode == GlossaryPrefs.MODE_HITS_ONLY
         val senseCount = GlossaryPrefs.senseCount
-        val maxChars = GlossaryPrefs.maxChars
         val out = ArrayList<TipEntry>(end - start)
         for (i in start until end) {
             if (out.size >= MAX_ENTRIES) break
             val text = candidates[i].text
             if (text.isEmpty() || text.length > MAX_CANDIDATE_LEN) continue
             val senses = GlossaryStore.lookup(text)
-            val english = GlossaryFormatter.format(senses, senseCount, maxChars)?.takeIf { it.isNotEmpty() }
+            val english = GlossaryFormatter.format(senses, senseCount, FULL_CHARS)?.takeIf { it.isNotEmpty() }
             // 「只显示命中项」：没命中的整条不出现
             if (hitsOnly && english == null) continue
-            val detail =
-                GlossaryFormatter.format(senses, DETAIL_SENSES, DETAIL_CHARS)?.takeIf { it.isNotEmpty() }
-                    ?: english
-                    ?: text
+            val detail = english ?: text
             out.add(
                 TipEntry(
                     text = text,
@@ -94,7 +93,7 @@ object GlossaryTips {
                     unmatched = english == null,
                     english = english,
                     // 详情比显示的英文更长 = 还有内容可看，才给展开入口
-                    expandable = detail.length > english.orEmpty().length,
+                    expandable = false,
                 ),
             )
         }
