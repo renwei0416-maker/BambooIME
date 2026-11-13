@@ -126,22 +126,6 @@ class GlossaryFragment : PaddingPreferenceFragment() {
                     ) {
                         GlossaryPrefs.tipsMax = it
                     }
-                    addChoice(
-                        title = "和文曲星同时开启时",
-                        subtitle =
-                            when (GlossaryPrefs.conflict) {
-                                GlossaryTips.CONFLICT_GLOSSARY -> "外语学习优先，文曲星这次不显示"
-                                GlossaryTips.CONFLICT_OFF -> "文曲星开着就不显示外语学习"
-                                else -> "自动：文曲星这一句有结果就显示文曲星，没有就读外语学习"
-                            },
-                        entries = arrayOf("自动让位（推荐）", "外语学习优先", "文曲星开着就让位"),
-                        currentIndex = GlossaryPrefs.conflict,
-                        defaultIndex = GlossaryTips.CONFLICT_AUTO,
-                        resetters = resetters,
-                    ) { idx ->
-                        GlossaryPrefs.conflict = idx
-                        rebuildScreen()
-                    }
                 }
 
                 addCategory("显示多少", "太长会截断，用「…」结尾") {

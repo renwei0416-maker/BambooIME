@@ -16,14 +16,8 @@ import com.osfans.trime.actions.tips.TipEntry
  * 和文曲星共用编码区这一块，所以这里定了让步规则（[GlossaryTips.CONFLICT_AUTO] 等）。
  */
 object GlossaryTips {
-    /** 自动让位：文曲星这一句有结果就显示文曲星，否则显示学习条。 */
-    const val CONFLICT_AUTO = 0
 
-    /** 外语学习优先：永远显示学习条。 */
-    const val CONFLICT_GLOSSARY = 1
 
-    /** 文曲星开着就不显示学习条（等价于被顶掉）。 */
-    const val CONFLICT_OFF = 2
 
     /** 往后看几个候选位置（含高亮那个）。 */
     private const val SCAN_WINDOW = 6

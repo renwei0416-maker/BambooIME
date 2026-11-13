@@ -5,7 +5,6 @@
 
 package com.osfans.trime.actions.tips
 
-import com.osfans.trime.actions.glossary.GlossaryPrefs
 import com.osfans.trime.actions.glossary.GlossaryTips
 import com.osfans.trime.actions.wenquxing.WenquxingPrefs
 import com.osfans.trime.actions.wenquxing.WenquxingTips
@@ -40,7 +39,7 @@ data class TipEntry(
  * 显示层（`PreeditUi.pick()`）和上屏 token / 点击上屏都问这里，免得几处各判一次、结论打架：
  * 屏幕上显示的是哪一块，就取哪一块的第 N 条。
  *
- * 让位规则见 [GlossaryTips.CONFLICT_AUTO] 等三个值。
+ * 显示规则只有一条：文曲星这一句有命中就显示文曲星，否则显示外语学习。
  */
 object TipBlocks {
     /** 两块都不显示。 */
@@ -75,12 +74,11 @@ object TipBlocks {
         // 用「有没有命中」而不是「这一帧 entries 是否为空」：后者会在上屏/展开那一瞬间
         // 被清空，导致块内容闪跳到另一个模块。
         val wenquxingHit = wenquxingEnabled && WenquxingTips.hitCount() > 0
-        val conflict = GlossaryPrefs.conflict
+        // 显示规则与 PreeditUi.refreshTips() 完全一致：文曲星有命中就压住外语学习。
         return when {
-            !glossaryOn -> if (wenquxingHit) WENQUXING else NONE
-            conflict == GlossaryTips.CONFLICT_GLOSSARY -> GLOSSARY
-            conflict == GlossaryTips.CONFLICT_OFF -> if (wenquxingHit) WENQUXING else GLOSSARY
-            else -> if (wenquxingHit) WENQUXING else GLOSSARY
+            wenquxingHit -> WENQUXING
+            glossaryOn -> GLOSSARY
+            else -> NONE
         }
     }
 

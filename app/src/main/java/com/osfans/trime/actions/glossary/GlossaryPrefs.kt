@@ -76,10 +76,6 @@ object GlossaryPrefs {
         get() = p().getInt("tips_max", 4).coerceIn(1, 6)
         set(v) = p().edit().putInt("tips_max", v.coerceIn(1, 6)).apply()
 
-    /** 和文曲星同时开启时怎么办，见 [GlossaryTips.CONFLICT_AUTO]。 */
-    var conflict: Int
-        get() = p().getInt("conflict", GlossaryTips.CONFLICT_AUTO).coerceIn(0, 2)
-        set(v) = p().edit().putInt("conflict", v.coerceIn(0, 2)).apply()
 
     /** 显示几个义项：1/2/3，4 表示全部。 */
     var senseCount: Int
@@ -152,7 +148,6 @@ object GlossaryPrefs {
             .putBoolean("enabled", false)
             .putString("lang", LANG_EN)
             .putInt("tips_max", 4)
-            .putInt("conflict", GlossaryTips.CONFLICT_AUTO)
             .putInt("sense_count", 2)
             .putInt("max_chars", 40)
             .putInt("tips_text_scale", 90)
