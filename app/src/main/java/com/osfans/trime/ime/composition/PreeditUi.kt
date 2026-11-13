@@ -421,20 +421,27 @@ open class PreeditUi(
          * 绝不允许折成两行（历史上就是被挤成 [...展 / 开]）。
          */
         private fun withHint(base: CharSequence, width: Int): CharSequence {
-            val hint = EXPAND_HINT_WQ
-            val inline = SpannableStringBuilder(base).append("  ").append(hint)
-            if (lineCountOf(inline, width) <= lineCountOf(base, width)) {
-                styleHint(inline, inline.length - hint.length, inline.length)
-                return inline
+            // 提示一定和正文待在同一行末尾：放不下就从正文尾部删字，
+            // 绝不 append("\n") 另起一行（那样会多占一行、把块撑高）。
+            val hint = EXPAND_HINT_TEXT
+            val limit = lineCountOf(base, width).coerceAtLeast(1)
+            var cut = base.length
+            while (cut > 1) {
+                val cand = SpannableStringBuilder(base.subSequence(0, cut)).append(hint)
+                if (lineCountOf(cand, width) <= limit) {
+                    styleHint(cand, cand.length - hint.length, cand.length)
+                    return cand
+                }
+                cut--
             }
-            val next = SpannableStringBuilder(base).append("\n").append(hint)
-            styleHint(next, next.length - hint.length, next.length)
-            return next
+            val only = SpannableStringBuilder(hint)
+            styleHint(only, 0, only.length)
+            return only
         }
 
         private fun styleHint(sb: SpannableStringBuilder, start: Int, end: Int) {
             sb.setSpan(ForegroundColorSpan(tipColor), start, end, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
-            sb.setSpan(RelativeSizeSpan(EXPAND_ICON_SCALE), start, end, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
+            sb.setSpan(RelativeSizeSpan(COUNT_SCALE), start, end, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
         }
 
         /** 量一段文字在正文尺寸下的像素宽度（悬挂缩进要用）。 */
@@ -1234,20 +1241,27 @@ open class PreeditUi(
          * 绝不允许折成两行（历史上就是被挤成 [...展 / 开]）。
          */
         private fun withHint(base: CharSequence, width: Int): CharSequence {
-            val hint = EXPAND_HINT_WQ
-            val inline = SpannableStringBuilder(base).append("  ").append(hint)
-            if (lineCountOf(inline, width) <= lineCountOf(base, width)) {
-                styleHint(inline, inline.length - hint.length, inline.length)
-                return inline
+            // 三角贴在最后一行最后一个字符位：不算额外行、不加空格、不换行。
+            // 放不下就把正文尾部让出一个字符位给它。
+            val hint = EXPAND_HINT_ARROW
+            val limit = lineCountOf(base, width).coerceAtLeast(1)
+            var cut = base.length
+            while (cut > 1) {
+                val cand = SpannableStringBuilder(base.subSequence(0, cut)).append(hint)
+                if (lineCountOf(cand, width) <= limit) {
+                    styleHint(cand, cand.length - hint.length, cand.length)
+                    return cand
+                }
+                cut--
             }
-            val next = SpannableStringBuilder(base).append("\n").append(hint)
-            styleHint(next, next.length - hint.length, next.length)
-            return next
+            val only = SpannableStringBuilder(hint)
+            styleHint(only, 0, only.length)
+            return only
         }
 
         private fun styleHint(sb: SpannableStringBuilder, start: Int, end: Int) {
             sb.setSpan(ForegroundColorSpan(tipColor), start, end, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
-            sb.setSpan(RelativeSizeSpan(EXPAND_ICON_SCALE), start, end, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
+            sb.setSpan(RelativeSizeSpan(MARK_SCALE), start, end, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
         }
 
         /** 量一段文字在正文尺寸下的像素宽度（悬挂缩进要用）。 */
@@ -1829,10 +1843,29 @@ open class PreeditUi(
             post { scroller.scrollTo(0, 0) }
         }
 
-        /** 展开态固定高度：占屏高比例（文曲星 28%、外语学习 14%）。 */
+        /**
+         * 展开态高度：屏高比例（文曲星 28%、外语学习 14%），但**不能超过窗口里真正剩下的空间**。
+         *
+         * 单编码时候选行少、提示块位置更低，按 14% 屏高撑开会顶出输入法窗口，
+         * 被裁掉的那一截既滑不到（看着不全）也点不到右上角的「收起」——就是「单编码展开异常」。
+         */
         private fun expandHeightPx(): Int {
             val ratio = if (wenquxing) EXPAND_RATIO_WQ else EXPAND_RATIO_GL
-            return (resources.displayMetrics.heightPixels * ratio).toInt().coerceAtLeast(1)
+            val wanted = (resources.displayMetrics.heightPixels * ratio).toInt()
+            return wanted.coerceAtMost(availableAbove()).coerceAtLeast(ctx.dp(COLLAPSE_H_DP + 12))
+        }
+
+        /** 本块顶部往上顶到窗口底部还剩多少像素可用（窗口内、不含被键盘盖住的部分）。 */
+        private fun availableAbove(): Int {
+            val fallback = (resources.displayMetrics.heightPixels * EXPAND_RATIO_GL).toInt()
+            val root = rootView ?: return fallback
+            if (root.height <= 0) return fallback
+            val me = IntArray(2)
+            getLocationOnScreen(me)
+            val rt = IntArray(2)
+            root.getLocationOnScreen(rt)
+            val bottom = rt[1] + root.height
+            return (bottom - me[1] - ctx.dp(4)).coerceAtLeast(1)
         }
 
         /**
@@ -1896,7 +1929,6 @@ open class PreeditUi(
         private const val MARK_SCALE = 1.1f
         private const val COUNT_SCALE = 0.78f
         /** 展开小图标的相对字号（比正文大一点，才看得清是实心三角）。 */
-        private const val EXPAND_ICON_SCALE = 1.30f
         private const val BADGE_SCALE = 0.88f
         /** 展开态高度占屏高的比例：文曲星 28%、外语学习 18%。 */
         private const val EXPAND_RATIO_WQ = 0.28f
@@ -1915,7 +1947,10 @@ open class PreeditUi(
         /** 排版测宽时只取前这么多字符。 */
         private const val MEASURE_CHAR_CAP = 600
         private const val EXPAND_HINT = "\u25B8"
-        private const val EXPAND_HINT_WQ = "\u25BC" // ▼ 实心朝下小三角
+        /** 文曲星：沿用它原本的 [...展开]，只保证贴在行尾、不单独换行。 */
+        private const val EXPAND_HINT_TEXT = "[...\u5C55\u5F00]"
+        /** 外语学习：行尾实心小三角，字号与行首 ▶ 一致。 */
+        private const val EXPAND_HINT_ARROW = "\u25BC"
         private const val COLLAPSE_LABEL = "\u6536\u8D77"
         private const val COLLAPSE_TEXT_SP = 12f
         private const val DIVIDER_ALPHA = 36
