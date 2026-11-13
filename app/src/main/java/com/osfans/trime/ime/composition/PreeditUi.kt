@@ -1422,20 +1422,29 @@ open class PreeditUi(
          * 正文左右各留 2 个字宽（用户要求），三角就住右边那 2 个字宽里，压不到字。
          */
         private fun entryRow(body: CharSequence, expandable: Boolean): View {
-            val side = sidePadPx()
+            val charW = charWidthPx()
+            // 行首留 2 个字宽（用户要求）；行尾也留 2 个字宽。
+            val side = maxOf(ctx.dp(theme.preedit.horizontalPadding), (charW * ROW_SIDE_CHARS).toInt())
+            // 三角有自己的固定列：宽度固定、在列里居中。它不参与正文排版，
+            // 所以所有条的三角天然落在同一个 x 上（竖直成一列），也不会被裁。
+            val box = (charW * ARROW_BOX_CHARS).toInt().coerceAtLeast(ctx.dp(10))
             val bodyView =
                 entryView(body, bodyTextSize()).apply {
-                    setPadding(side, ctx.dp(2), side, ctx.dp(2))
+                    setPadding(0, ctx.dp(2), 0, ctx.dp(2))
                     layoutParams =
-                        FrameLayout.LayoutParams(
-                            ViewGroup.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams(
+                            0,
                             ViewGroup.LayoutParams.WRAP_CONTENT,
+                            1f,
                         )
                 }
-            if (!expandable) return bodyView
-            // 三角自己就占满右侧那个「2 个字宽」的槽，在槽内居中。
-            // 不用 Paint 去估算字形宽度再算 margin —— 字形的 ink 宽度常大于 advance 宽度，
-            // 算小了就会被容器裁掉右半边（就是「右边距不够、左边空太多」）。
+            if (!expandable) {
+                return LinearLayout(ctx).apply {
+                    isClickable = true
+                    setPadding(side, 0, side, 0)
+                    addView(bodyView)
+                }
+            }
             val arrow =
                 TextView(ctx).apply {
                     text = EXPAND_HINT_ARROW
@@ -1449,16 +1458,15 @@ open class PreeditUi(
                     isClickable = false
                     isFocusable = false
                     layoutParams =
-                        FrameLayout.LayoutParams(
-                            side,
-                            ViewGroup.LayoutParams.WRAP_CONTENT,
-                            Gravity.END or Gravity.BOTTOM,
-                        ).apply {
-                            bottomMargin = ctx.dp(4)
-                        }
+                        LinearLayout.LayoutParams(
+                            box,
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                        )
                 }
-            return FrameLayout(ctx).apply {
+            return LinearLayout(ctx).apply {
                 isClickable = true
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(side, 0, side, 0)
                 addView(bodyView)
                 addView(arrow)
             }
@@ -1970,6 +1978,8 @@ open class PreeditUi(
         private const val EXPAND_ARROW_SCALE = 0.80f
         /** 外语学习每条正文左右各留几个字宽（用户要求 2 个）。 */
         private const val ROW_SIDE_CHARS = 2f
+        /** 行尾三角所在的固定列宽（字宽倍数）。 */
+        private const val ARROW_BOX_CHARS = 1.6f
         private const val COUNT_SCALE = 0.78f
         /** 展开小图标的相对字号（比正文大一点，才看得清是实心三角）。 */
         private const val BADGE_SCALE = 0.88f
