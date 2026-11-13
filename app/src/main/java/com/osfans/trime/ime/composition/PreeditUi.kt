@@ -473,8 +473,8 @@ open class PreeditUi(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ctx.dp(1),
                 ).apply {
-                    topMargin = ctx.dp(3)
-                    bottomMargin = ctx.dp(3)
+                    topMargin = ctx.dp(2)
+                    bottomMargin = ctx.dp(2)
                 }
             }
 
@@ -545,7 +545,7 @@ open class PreeditUi(
                 layoutParams = LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT,
-                ).apply { bottomMargin = ctx.dp(6) }
+                )
             }
         }
 
@@ -825,19 +825,20 @@ open class PreeditUi(
                     (ctx.resources.displayMetrics.heightPixels * ratio).toInt()
                 } else {
                     val r = rows().coerceIn(1, MAX_ROWS)
-                    // 第一行可能是「共N组」角标，不算进条数
-                    // 第一行若是「共N组」角标，它也要占高度（之前只跳过统计、没加回来，最后一条被裁）
-                    val start = if (column.childCount > entries.size) 1 else 0
-                    val badgeH = if (start == 1) column.getChildAt(0).measuredHeight else 0
+                    // 子 View 里混着三种东西：角标、条目（带 tag）、分隔线（不带 tag）。
+                    // 只有**带 tag 的**才算一条；角标和分隔线照样占高度、但不计条数。
+                    // （之前「取前 r 个子 View」会把分隔线也算成一条，导致设 3 条只显示 1.5 条。）
                     var sum = 0
                     var count = 0
-                    var i = start
+                    var i = 0
                     while (i < column.childCount && count < r) {
-                        sum += column.getChildAt(i).measuredHeight
-                        count++
+                        val ch = column.getChildAt(i)
+                        val m = ch.layoutParams as? ViewGroup.MarginLayoutParams
+                        sum += ch.measuredHeight + (m?.topMargin ?: 0) + (m?.bottomMargin ?: 0)
+                        if (ch.tag is Int) count++
                         i++
                     }
-                    if (count == 0) contentH else sum + badgeH + padV
+                    if (count == 0) contentH else sum + padV
                 }
             // 内容不够高就自适应，别留空白
             val h =
