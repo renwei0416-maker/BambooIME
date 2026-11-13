@@ -200,12 +200,29 @@ open class PreeditUi(
      *
      * 不并进来，手指按在提示块上会被系统判成点到下面的 App（表现为「滑编辑区」「点不中」）。
      */
+    /**
+     * 同步「提示块是否占用触摸区」。
+     *
+     * 不能只在可见性变化时刷新：块会随展开/收起、命中条数变高变矮，
+     * 新长出来的那部分（通常是「收起」按钮那一带）如果不在触摸区里，点了会穿透给下面的 App。
+     * 这里用「可见矩形签名」判断，真的变了才通知输入法重算 insets。
+     */
     private fun syncTouchable() {
         val any = wqTips.visibility == View.VISIBLE || glTips.visibility == View.VISIBLE
-        if (any == tipsTouchable) return
         tipsTouchable = any
+        val sig =
+            if (!any) {
+                0
+            } else {
+                wqTips.height * 31 + wqTips.top * 7 +
+                    glTips.height * 131 + glTips.top * 17 + 1
+            }
+        if (sig == lastTouchSig) return
+        lastTouchSig = sig
         runCatching { TrimeInputMethodService.current?.updateInputViewShown() }
     }
+
+    private var lastTouchSig = 0
 
     /** 相对亮度（WCAG），只看 RGB。 */
     private fun luminance(color: Int): Double {
@@ -327,6 +344,21 @@ open class PreeditUi(
             android.graphics.Paint().apply {
                 isAntiAlias = true
             }
+
+        /**
+         * 实测「一行正文」的像素高度。
+         *
+         * 以前用 `bodyTextSize() * 1.18` 估算，字号一改就和真实行高对不上；
+         * 这里直接用同一套 Paint 的字体度量（bottom - top），与条目 TextView 一致。
+         */
+        private fun measuredLineHeight(): Int {
+            val size = bodyTextSize()
+            measurePaint.textSize = size
+            measurePaint.typeface = FontManager.getTypeface()
+            val fm = measurePaint.fontMetrics
+            val one = (fm.bottom - fm.top).toInt().coerceAtLeast(size.toInt())
+            return (one * 1.18f).toInt().coerceAtLeast(1)
+        }
 
         private fun measureWidth(text: CharSequence): Int {
             measurePaint.textSize = bodyTextSize()
@@ -561,13 +593,16 @@ open class PreeditUi(
             val contentH = column.measuredHeight + padV
             val want =
                 if (expandedIndex >= 0) {
-                    val lineH = (bodyTextSize() * 1.18f).toInt().coerceAtLeast(1)
-                    val minH = expandRows().coerceIn(1, MAX_EXPAND_ROWS) * lineH + ctx.dp(COLLAPSE_H_DP + 8)
-                    minH.coerceAtMost((ctx.resources.displayMetrics.heightPixels * EXPAND_MAX_RATIO).toInt())
+                    // 展开态用**固定**高度：行数 × 实测行高 + 收起条高度，不再被内容高度压小。
+                    val fixed = expandRows().coerceIn(1, MAX_EXPAND_ROWS) * measuredLineHeight() +
+                        ctx.dp(COLLAPSE_H_DP + 8)
+                    fixed.coerceAtMost((ctx.resources.displayMetrics.heightPixels * EXPAND_MAX_RATIO).toInt())
                 } else {
                     val r = rows().coerceIn(1, MAX_ROWS)
                     // 第一行可能是「共N组」角标，不算进条数
+                    // 第一行若是「共N组」角标，它也要占高度（之前只跳过统计、没加回来，最后一条被裁）
                     val start = if (column.childCount > entries.size) 1 else 0
+                    val badgeH = if (start == 1) column.getChildAt(0).measuredHeight else 0
                     var sum = 0
                     var count = 0
                     var i = start
@@ -576,10 +611,15 @@ open class PreeditUi(
                         count++
                         i++
                     }
-                    if (count == 0) contentH else sum + padV
+                    if (count == 0) contentH else sum + badgeH + padV
                 }
             // 内容不够高就自适应，别留空白
-            val h = if (contentH in 1 until want) contentH else want.coerceAtLeast(1)
+            val h =
+                if (expandedIndex < 0 && contentH in 1 until want) {
+                    contentH
+                } else {
+                    want.coerceAtLeast(1)
+                }
             if (h != lastMeasured) {
                 lastMeasured = h
                 HandwritingLog.d(
