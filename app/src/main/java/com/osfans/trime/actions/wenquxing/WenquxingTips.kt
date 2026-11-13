@@ -172,7 +172,7 @@ object WenquxingTips {
             out.add(
                 TipEntry(
                     text = shown,
-                    detail = shown,
+                    detail = full,
                     payload = full,
                     // 第一条就是「逗号上屏」的那一条（轮换后跟着变），高亮它
                     highlighted = i == 0,

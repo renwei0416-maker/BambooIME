@@ -8,6 +8,7 @@ package com.osfans.trime.ime.composition
 import android.content.Context
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.StaticLayout
 import android.text.TextPaint
@@ -356,31 +357,58 @@ open class PreeditUi(
          * 按「宽度 + 最多行数」真实排版：放得下就原样返回，放不下就二分最长前缀，
          * 并在尾部拼上 [...展开]。返回 (显示用文本, 是否被截断)。
          */
-        private fun fitLines(src: CharSequence, width: Int, lines: Int): Pair<CharSequence, Boolean> {
-            val tp = TextPaint().apply {
+        private fun textPaint(): TextPaint =
+            TextPaint().apply {
                 isAntiAlias = true
                 textSize = bodyTextSize()
                 typeface = FontManager.getTypeface()
                 color = textColor
             }
-            fun lineCount(cs: CharSequence): Int =
-                StaticLayout.Builder.obtain(cs, 0, cs.length, tp, width)
-                    .setLineSpacing(0f, 1.0f)
-                    .setIncludePad(false)
-                    .build()
-                    .lineCount
-            if (src.length <= MEASURE_CHAR_CAP && lineCount(src) <= lines) return src to false
-            val tail = "  " + EXPAND_HINT_WQ
+
+        /** 用真实宽度排一遍，返回行数。 */
+        private fun lineCountOf(cs: CharSequence, width: Int): Int =
+            StaticLayout.Builder.obtain(cs, 0, cs.length, textPaint(), width)
+                .setLineSpacing(0f, 1.0f)
+                .setIncludePad(false)
+                .build()
+                .lineCount
+
+        /**
+         * 只把「正文」裁到最多 [lines] 行，返回 (显示用文本, 是否被截断)。
+         * 提示按钮不在这里拼——它由 [withHint] 负责，保证不会被拆成 [...展 / 开]。
+         */
+        private fun fitLines(src: CharSequence, width: Int, lines: Int): Pair<CharSequence, Boolean> {
+            if (src.isEmpty()) return src to false
+            if (src.length <= MEASURE_CHAR_CAP && lineCountOf(src, width) <= lines) return src to false
             var lo = 0
-            // 只在前 MEASURE_CHAR_CAP 个字符里找截断点：3 行文本在任何手机上都远到不了 600 字，
-            // 但离骚那种 3000+ 字的条目如果整串排 12 遍会明显卡顿。
             var hi = minOf(src.length, MEASURE_CHAR_CAP)
             while (lo < hi) {
                 val mid = (lo + hi + 1) / 2
-                val trial = TextUtils.concat(src.subSequence(0, mid), tail)
-                if (lineCount(trial) <= lines) lo = mid else hi = mid - 1
+                val trial = src.subSequence(0, mid)
+                if (lineCountOf(trial, width) <= lines) lo = mid else hi = mid - 1
             }
-            return TextUtils.concat(src.subSequence(0, lo), tail) to true
+            return src.subSequence(0, lo) to true
+        }
+
+        /**
+         * 把 [...展开] 当按钮拼上去：能整块放进行尾就放行尾，放不下就整块换到下一行。
+         * 绝不允许折成两行（历史上就是被挤成 [...展 / 开]）。
+         */
+        private fun withHint(base: CharSequence, width: Int): CharSequence {
+            val hint = EXPAND_HINT_WQ
+            val inline = SpannableStringBuilder(base).append("  ").append(hint)
+            if (lineCountOf(inline, width) <= lineCountOf(base, width)) {
+                styleHint(inline, inline.length - hint.length, inline.length)
+                return inline
+            }
+            val next = SpannableStringBuilder(base).append("\n").append(hint)
+            styleHint(next, next.length - hint.length, next.length)
+            return next
+        }
+
+        private fun styleHint(sb: SpannableStringBuilder, start: Int, end: Int) {
+            sb.setSpan(ForegroundColorSpan(tipColor), start, end, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
+            sb.setSpan(RelativeSizeSpan(COUNT_SCALE), start, end, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
         }
 
         /** 量一段文字在正文尺寸下的像素宽度（悬挂缩进要用）。 */
@@ -577,13 +605,6 @@ open class PreeditUi(
                             Spanned.SPAN_INCLUSIVE_EXCLUSIVE,
                         )
                     }
-                    if (wenquxing && item.expandable) {
-                        append("  ")
-                        val hintStart = length
-                        append(EXPAND_HINT_WQ)
-                        setSpan(ForegroundColorSpan(tipColor), hintStart, length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
-                        setSpan(RelativeSizeSpan(COUNT_SCALE), hintStart, length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
-                    }
                     if (showChars() && wenquxing && item.chars > 0) {
                         append("  ")
                         val cntStart = length
@@ -596,14 +617,18 @@ open class PreeditUi(
             // 截断过才给 [...展开] 入口 —— 这样不会再出现「有入口没内容 / 有内容没入口」。
             // 文曲星：用户要求按「条目显示字数」控制，展开入口也按字数判定，不再按行数二次裁；
             // 外语学习：按「宽度 + 最多行数」真实排版后再裁。
+            val width = entryAvailWidth()
             val fitted =
                 if (wenquxing) {
+                    // 文曲星按「条目显示字数」截断（数据层已截），这里不再按行二次裁
                     text to false
                 } else {
-                    fitLines(text, entryAvailWidth(), maxLines())
+                    fitLines(text, width, maxLines())
                 }
-            entryExpandable[index] = if (wenquxing) item.expandable else fitted.second
-            val shown = fitted.first
+            val truncated = if (wenquxing) item.expandable else fitted.second
+            entryExpandable[index] = truncated
+            // 提示按钮整块放：行尾放得下就放行尾，放不下整块换行，绝不拆开
+            val shown = if (truncated) withHint(fitted.first, width) else fitted.first
             return entryView(shown, bodyTextSize()).apply {
                 tag = index
                 setPadding(paddingLeft, ctx.dp(2), paddingRight, ctx.dp(2))
