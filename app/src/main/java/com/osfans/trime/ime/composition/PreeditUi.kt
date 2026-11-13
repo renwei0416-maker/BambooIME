@@ -457,9 +457,26 @@ open class PreeditUi(
             if (!badge.isNullOrEmpty()) column.addView(makeBadge(badge))
             val markAt = entries.indexOfFirst { it.highlighted }.takeIf { it >= 0 } ?: 0
             entries.forEachIndexed { index, item ->
+                if (index > 0) column.addView(makeDivider())
                 column.addView(makeEntry(index, item, index == markAt))
             }
         }
+
+        /**
+         * 条目之间的分隔线：1dp、很淡。
+         * 命中判定不看它（dispatchTouchEvent 只认条目），它只是让「一条到哪结束」肉眼可见。
+         */
+        private fun makeDivider(): View =
+            View(ctx).apply {
+                setBackgroundColor(withAlpha(textColor, DIVIDER_ALPHA))
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ctx.dp(1),
+                ).apply {
+                    topMargin = ctx.dp(3)
+                    bottomMargin = ctx.dp(3)
+                }
+            }
 
         /** 一条列表项：`▶ 中文  释义  ·N字  [...]展开`，整行可点。 */
         private fun makeEntry(
@@ -522,6 +539,7 @@ open class PreeditUi(
                     }
                 }
             return entryView(text, bodyTextSize()).apply {
+                tag = index
                 setPadding(paddingLeft, ctx.dp(3), paddingRight, ctx.dp(3))
                 // 条目之间留 6dp：每条一个块，视觉上分得开
                 layoutParams = LinearLayout.LayoutParams(
@@ -661,12 +679,11 @@ open class PreeditUi(
 
         /** 返回「条目下标」（已扣掉 badge 行）；不在任何条目上返回 -1。 */
         private fun childIndexAt(yInColumn: Float): Int {
-            val badgeRows = if (column.childCount > entries.size) 1 else 0
             for (i in 0 until column.childCount) {
                 val child = column.getChildAt(i)
+                val entryIdx = (child.tag as? Int) ?: continue
                 if (yInColumn >= child.top && yInColumn < child.bottom) {
-                    val idx = i - badgeRows
-                    return if (idx in entries.indices) idx else -1
+                    return if (entryIdx in entries.indices) entryIdx else -1
                 }
             }
             // 落在条目之间的缝里（底部 6dp margin）：吸附到最近的那一条，别让手指落空
@@ -675,7 +692,8 @@ open class PreeditUi(
             var bestDist = Float.MAX_VALUE
             for (i in 0 until column.childCount) {
                 val child = column.getChildAt(i)
-                if (i - badgeRows !in entries.indices) continue
+                val entryIdx = (child.tag as? Int) ?: continue
+                if (entryIdx !in entries.indices) continue
                 val d =
                     when {
                         yInColumn < child.top -> child.top - yInColumn
@@ -683,7 +701,7 @@ open class PreeditUi(
                     }
                 if (d <= slack && d < bestDist) {
                     bestDist = d
-                    best = i - badgeRows
+                    best = entryIdx
                 }
             }
             return best
@@ -874,6 +892,7 @@ open class PreeditUi(
         private const val EXPAND_HINT_WQ = "[...\u5C55\u5F00]"
         private const val COLLAPSE_LABEL = "\u6536\u8D77"
         private const val COLLAPSE_TEXT_SP = 12f
+        private const val DIVIDER_ALPHA = 36
         private const val GAP_SLACK_DP = 10
         private const val TAP_SLOP_DP = 12
         private const val COLLAPSE_W_DP = 60
