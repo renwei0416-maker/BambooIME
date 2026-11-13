@@ -1195,7 +1195,7 @@ open class PreeditUi(
                 measuredWidth.takeIf { it > 0 }
                     ?: runCatching { ctx.resources.displayMetrics.widthPixels }.getOrDefault(1080)
             val used = paddingLeft + paddingRight + column.paddingLeft + column.paddingRight +
-                sidePadPx() * 2
+                sidePadPx() * 2 + arrowBoxPx()
             return (w - used).coerceAtLeast(120)
         }
 
@@ -1412,6 +1412,16 @@ open class PreeditUi(
         private fun sidePadPx(): Int = ctx.dp(theme.preedit.horizontalPadding)
 
         /**
+         * 行尾三角列的宽度（px）。
+         *
+         * 这一列始终存在（不可展开的行也留空），
+         * 所以正文实际可用宽度必须先把它扣掉——
+         * 否则「按宽度算能放下、实际放不下」就会多折一行。
+         */
+        private fun arrowBoxPx(): Int =
+            (charWidthPx() * ARROW_BOX_CHARS).toInt().coerceAtLeast(ctx.dp(10))
+
+        /**
          * 一条列表项 = 正文 + **固定位置**的展开三角。
          *
          * 三角不参与文字排版：它固定贴在整条右下、右侧留白槽里居中，
@@ -1419,13 +1429,8 @@ open class PreeditUi(
          * 正文左右各留 2 个字宽（用户要求），三角就住右边那 2 个字宽里，压不到字。
          */
         private fun entryRow(body: CharSequence, expandable: Boolean): View {
-            val charW = charWidthPx()
-            // 行首行尾的留白保持原样（主题的横向内边距）——
-            // 行首那个 ▶ 不能被我们挪位。
             val side = sidePadPx()
-            // 三角有自己的固定列：宽度固定、在列里居中。它不参与正文排版，
-            // 所以所有条的三角天然落在同一个 x 上（竖直成一列），也不会被裁。
-            val box = (charW * ARROW_BOX_CHARS).toInt().coerceAtLeast(ctx.dp(10))
+            val box = arrowBoxPx()
             val bodyView =
                 entryView(body, bodyTextSize()).apply {
                     setPadding(0, ctx.dp(2), 0, ctx.dp(2))
@@ -1436,37 +1441,37 @@ open class PreeditUi(
                             1f,
                         )
                 }
-            if (!expandable) {
-                return LinearLayout(ctx).apply {
-                    isClickable = true
-                    setPadding(side, 0, side, 0)
-                    addView(bodyView)
+            // 尾列始终存在：可展开就放三角，不可展开就留空。
+            // 这样所有行的正文宽度完全一致，折行也就一致；
+            // 而且与 [entryAvailWidth] 里扣掉的那一列对得上。
+            val tail =
+                if (expandable) {
+                    TextView(ctx).apply {
+                        text = EXPAND_HINT_ARROW
+                        textSize = bodyTextSize() * EXPAND_ARROW_SCALE
+                        typeface = FontManager.getTypeface()
+                        setTextColor(tipColor)
+                        setLineSpacing(0f, 1.0f)
+                        includeFontPadding = false
+                        setPadding(0, 0, 0, 0)
+                        gravity = Gravity.CENTER
+                        isClickable = false
+                        isFocusable = false
+                    }
+                } else {
+                    View(ctx)
                 }
-            }
-            val arrow =
-                TextView(ctx).apply {
-                    text = EXPAND_HINT_ARROW
-                    textSize = bodyTextSize() * EXPAND_ARROW_SCALE
-                    typeface = FontManager.getTypeface()
-                    setTextColor(tipColor)
-                    setLineSpacing(0f, 1.0f)
-                    includeFontPadding = false
-                    setPadding(0, 0, 0, 0)
-                    gravity = Gravity.CENTER
-                    isClickable = false
-                    isFocusable = false
-                    layoutParams =
-                        LinearLayout.LayoutParams(
-                            box,
-                            ViewGroup.LayoutParams.MATCH_PARENT,
-                        )
-                }
+            tail.layoutParams =
+                LinearLayout.LayoutParams(
+                    box,
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                )
             return LinearLayout(ctx).apply {
                 isClickable = true
                 gravity = Gravity.CENTER_VERTICAL
                 setPadding(side, 0, side, 0)
                 addView(bodyView)
-                addView(arrow)
+                addView(tail)
             }
         }
 
