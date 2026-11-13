@@ -417,10 +417,10 @@ open class PreeditUi(
                 } else {
                     buildBlock(entries)
                 }
-            val lp = layoutParams as? LinearLayout.LayoutParams
+            val lp = layoutParams as? FrameLayout.LayoutParams
             if (lp != null) {
-                if (lp.width != LinearLayout.LayoutParams.MATCH_PARENT) lp.width = LinearLayout.LayoutParams.MATCH_PARENT
-                if (lp.height != LinearLayout.LayoutParams.WRAP_CONTENT) lp.height = LinearLayout.LayoutParams.WRAP_CONTENT
+                if (lp.width != FrameLayout.LayoutParams.MATCH_PARENT) lp.width = FrameLayout.LayoutParams.MATCH_PARENT
+                if (lp.height != FrameLayout.LayoutParams.WRAP_CONTENT) lp.height = FrameLayout.LayoutParams.WRAP_CONTENT
                 layoutParams = lp
             }
             requestLayout()
@@ -497,7 +497,7 @@ open class PreeditUi(
          */
         private fun applyViewportHeight() {
             val lay = layout ?: return
-            val lp = layoutParams as? LinearLayout.LayoutParams ?: return
+            val lp = layoutParams as? FrameLayout.LayoutParams ?: return
             val r = viewportRows.coerceIn(1, MAX_ROWS)
             if (entries.size <= r) return
             val endChar = entryBlockEnd.getOrNull(r - 1) ?: return
@@ -506,7 +506,7 @@ open class PreeditUi(
             if (line < 0) return
             val want = totalPaddingTop + lay.getLineBottom(line) + totalPaddingBottom
             if (want <= 0) return
-            if (lp.height != LinearLayout.LayoutParams.WRAP_CONTENT && abs(lp.height - want) <= ctx.dp(1)) return
+            if (lp.height != FrameLayout.LayoutParams.WRAP_CONTENT && abs(lp.height - want) <= ctx.dp(1)) return
             lp.height = want
             layoutParams = lp
         }
@@ -663,8 +663,8 @@ open class PreeditUi(
             expandedIndex = index
             collapseButton.visibility = View.VISIBLE
             text = buildExpanded(entries, index)
-            val lp = layoutParams as LinearLayout.LayoutParams
-            lp.width = LinearLayout.LayoutParams.MATCH_PARENT
+            val lp = layoutParams as? FrameLayout.LayoutParams ?: return
+            lp.width = FrameLayout.LayoutParams.MATCH_PARENT
             val lh = lineHeight.takeIf { it > 0 } ?: ctx.dp(LINE_FALLBACK_DP)
             val minH = expandRows().coerceIn(1, MAX_EXPAND_ROWS) * lh + totalPaddingTop + totalPaddingBottom
             val maxH = (ctx.resources.displayMetrics.heightPixels * EXPAND_MAX_RATIO).toInt()
