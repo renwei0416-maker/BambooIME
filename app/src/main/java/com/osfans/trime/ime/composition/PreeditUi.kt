@@ -557,7 +557,9 @@ open class PreeditUi(
                 textSize = size
                 typeface = FontManager.getTypeface()
                 setTextColor(textColor)
-                setLineSpacing(0f, 1.18f)
+                // 行距必须 1.0：TextView 会把额外行距加在**每一行下面**（含最后一行），
+                // 那一段是不可见的死区，会让「上一条的可点区域」压住下一条，点击就错位。
+                setLineSpacing(0f, 1.0f)
                 setPadding(
                     ctx.dp(theme.preedit.horizontalPadding),
                     ctx.dp(2),
@@ -603,11 +605,25 @@ open class PreeditUi(
                         // 内容坐标：扣掉 scroller 的上内边距（展开态顶部给收起按钮留了位置）
                         val yInColumn = ev.y - scroller.top - scroller.paddingTop + scroller.scrollY
                         val idx = childIndexAt(yInColumn)
+                        val dead = StringBuilder()
+                        for (ci in 0 until column.childCount) {
+                            val cv = column.getChildAt(ci)
+                            val tv = cv as? TextView
+                            val lay = tv?.layout
+                            val textBottom =
+                                if (tv != null && lay != null && lay.lineCount > 0) {
+                                    cv.top + tv.totalPaddingTop + lay.getLineBottom(lay.lineCount - 1)
+                                } else {
+                                    cv.bottom
+                                }
+                            dead.append(" #").append(ci).append(':').append(cv.top).append("..")
+                                .append(cv.bottom).append("/txt").append(textBottom)
+                        }
                         HandwritingLog.d(
                             "tips",
                             "tap y=" + ev.y.toInt() + " yInColumn=" + yInColumn.toInt() +
                                 " idx=" + idx + " expanded=" + expandedIndex +
-                                " scrollY=" + scroller.scrollY + " children=" + column.childCount,
+                                " scrollY=" + scroller.scrollY + dead,
                         )
                         if (idx >= 0) {
                             activate(idx)
@@ -629,7 +645,24 @@ open class PreeditUi(
                     return if (idx in entries.indices) idx else -1
                 }
             }
-            return -1
+            // 落在条目之间的缝里（底部 6dp margin）：吸附到最近的那一条，别让手指落空
+            val slack = ctx.dp(GAP_SLACK_DP).toFloat()
+            var best = -1
+            var bestDist = Float.MAX_VALUE
+            for (i in 0 until column.childCount) {
+                val child = column.getChildAt(i)
+                if (i - badgeRows !in entries.indices) continue
+                val d =
+                    when {
+                        yInColumn < child.top -> child.top - yInColumn
+                        else -> yInColumn - child.bottom
+                    }
+                if (d <= slack && d < bestDist) {
+                    bestDist = d
+                    best = i - badgeRows
+                }
+            }
+            return best
         }
 
         private fun activate(idx: Int) {
@@ -817,6 +850,7 @@ open class PreeditUi(
         private const val EXPAND_HINT_WQ = "[...\u5C55\u5F00]"
         private const val COLLAPSE_LABEL = "\u6536\u8D77"
         private const val COLLAPSE_TEXT_SP = 12f
+        private const val GAP_SLACK_DP = 10
         private const val TAP_SLOP_DP = 12
         private const val COLLAPSE_W_DP = 60
         private const val COLLAPSE_H_DP = 26
