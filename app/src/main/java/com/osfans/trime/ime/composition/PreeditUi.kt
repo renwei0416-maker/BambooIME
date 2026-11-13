@@ -15,6 +15,7 @@ import android.text.style.RelativeSizeSpan
 import android.text.style.StyleSpan
 import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
 import android.view.ViewOutlineProvider
 import android.widget.FrameLayout
 import android.widget.LinearLayout
@@ -384,10 +385,13 @@ open class PreeditUi(
             snapshot = 0
             collapseButton.visibility = View.GONE
             column.removeAllViews()
-            layoutParams =
-                (layoutParams as? LayoutParams ?: LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)).apply {
-                    height = LayoutParams.WRAP_CONTENT
-                }
+            // 这里的 layoutParams 属于父容器（LinearLayout），不能用 FrameLayout.LayoutParams 覆盖，
+            // 否则下一次 measureVertical 会抛 ClassCastException。
+            val cur = layoutParams
+            if (cur != null && cur.height != ViewGroup.LayoutParams.WRAP_CONTENT) {
+                cur.height = ViewGroup.LayoutParams.WRAP_CONTENT
+                layoutParams = cur
+            }
         }
 
         private fun applyVisibility(v: Int) {
@@ -545,7 +549,7 @@ open class PreeditUi(
          * 展开态 = 「展开行数」与屏高 40% 取小。
          */
         private fun applyViewportHeight() {
-            val lp = layoutParams as? LayoutParams ?: return
+            val lp = layoutParams ?: return
             val want: Int =
                 if (expandedIndex >= 0) {
                     val lh = bodyTextSize() * 1.18f
