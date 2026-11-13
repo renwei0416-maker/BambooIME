@@ -9,6 +9,7 @@ import android.content.Context
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.text.Spanned
+import android.text.style.BackgroundColorSpan
 import android.text.style.ForegroundColorSpan
 import android.text.style.LeadingMarginSpan
 import android.text.style.RelativeSizeSpan
@@ -287,6 +288,8 @@ open class PreeditUi(
         /** 上一次测出的高度，只用来避免日志刷屏。 */
         private var lastMeasured = -1
         private var lastBounds = ""
+        /** 视图被清空过（隐藏时），回来要按 snapshot 重画一次。 */
+        private var dirty = true
 
         init {
             visibility = View.GONE
@@ -373,7 +376,9 @@ open class PreeditUi(
             applyStyle()
             var id = 7
             list.forEach { id = id * 31 + it.text.hashCode() * 17 + it.chars * 7 + it.detail.length * 13 }
-            val changed = id != snapshot || visibility != View.VISIBLE
+            // 只有「内容真的变了」才算变；可见性抖动（块被临时隐藏）不算，
+            // 否则展开态会被自己人清掉——用户看到的就是「展开后一秒自己缩回」。
+            val changed = id != snapshot
             if (changed) {
                 HandwritingLog.d(
                     "tips",
@@ -390,17 +395,22 @@ open class PreeditUi(
                 scroller.setPadding(0, 0, 0, 0)
                 render()
                 scroller.scrollTo(0, 0)
+                dirty = false
+            } else if (dirty) {
+                // 之前被 reset() 清过视图，内容没变：按原状态（含展开态）重画
+                render()
+                dirty = false
             }
             applyVisibility(View.VISIBLE)
         }
 
         private fun reset() {
+            // 只是隐藏：**不**清 expandedIndex / snapshot / entries，
+            // 否则「可见性抖动」会把展开态丢掉（历史 bug：展开 1 秒后自己缩回）。
             applyVisibility(View.GONE)
-            entries = emptyList()
-            expandedIndex = -1
-            snapshot = 0
             collapseButton.visibility = View.GONE
             column.removeAllViews()
+            dirty = true
             // 这里的 layoutParams 属于父容器（LinearLayout），不能用 FrameLayout.LayoutParams 覆盖，
             // 否则下一次 measureVertical 会抛 ClassCastException。
             val cur = layoutParams
@@ -457,6 +467,13 @@ open class PreeditUi(
                         setSpan(RelativeSizeSpan(MARK_SCALE), markStart, length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
                     }
                     val prefixEnd = length
+                    // 很淡的底色块：标出「这一条从这里开始」，折行后不至于和上一条糊在一起
+                    setSpan(
+                        BackgroundColorSpan(withAlpha(tipColor, 26)),
+                        markStart,
+                        prefixEnd,
+                        Spanned.SPAN_INCLUSIVE_EXCLUSIVE,
+                    )
                     val cnStart = length
                     append(item.text)
                     val cnEnd = length
@@ -473,16 +490,15 @@ open class PreeditUi(
                         append(en)
                         setSpan(ForegroundColorSpan(tipColor), enStart, length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
                         setSpan(RelativeSizeSpan(EN_SCALE), enStart, length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
-                        if (!wenquxing) {
-                            // 外语学习：换行后缩进到释义起点（悬挂缩进），与第一条文案对齐
-                            val indent = measureWidth(substring(0, prefixEnd))
-                            setSpan(
-                                LeadingMarginSpan.Standard(0, indent),
-                                0,
-                                length,
-                                Spanned.SPAN_INCLUSIVE_EXCLUSIVE,
-                            )
-                        }
+                        // 折行的续行缩进到正文开头（悬挂缩进）：两个模块都要，
+                        // 否则一条折成三行时看起来像三条。
+                        val indent = measureWidth(substring(0, prefixEnd))
+                        setSpan(
+                            LeadingMarginSpan.Standard(0, indent),
+                            0,
+                            length,
+                            Spanned.SPAN_INCLUSIVE_EXCLUSIVE,
+                        )
                     }
                     if (showChars() && wenquxing && item.chars > 0) {
                         append("  ")
@@ -501,6 +517,11 @@ open class PreeditUi(
                 }
             return entryView(text, bodyTextSize()).apply {
                 setPadding(paddingLeft, ctx.dp(3), paddingRight, ctx.dp(3))
+                // 条目之间留 6dp：每条一个块，视觉上分得开
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ).apply { bottomMargin = ctx.dp(6) }
                 setOnTouchListener { v, e ->
                     if (e.actionMasked == MotionEvent.ACTION_UP) {
                         runCatching {
