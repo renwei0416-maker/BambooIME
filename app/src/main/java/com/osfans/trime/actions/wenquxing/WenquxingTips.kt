@@ -174,7 +174,9 @@ object WenquxingTips {
                     text = shown,
                     detail = full,
                     payload = full,
-                    expandable = true, // 每条都给入口：点条目即展开，展开态点内容才上屏
+                    // 第一条就是「逗号上屏」的那一条（轮换后跟着变），高亮它
+                    highlighted = i == 0,
+                    expandable = full.length > len, // 只有真被截断了才给展开（否则点了直接上屏）
                 ),
             )
         }

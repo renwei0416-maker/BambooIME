@@ -93,8 +93,8 @@ object GlossaryTips {
                     highlighted = i == highlight,
                     unmatched = english == null,
                     english = english,
-                    // 显示的英文已经完整 = 没有更多内容可看，不给展开入口
-                    expandable = true, // 每条都给入口：点条目即展开，展开态点内容才上屏
+                    // 详情比显示的英文更长 = 还有内容可看，才给展开入口
+                    expandable = detail.length > english.orEmpty().length,
                 ),
             )
         }

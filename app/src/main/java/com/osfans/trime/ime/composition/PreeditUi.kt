@@ -8,13 +8,12 @@ package com.osfans.trime.ime.composition
 import android.content.Context
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
-import android.os.SystemClock
 import android.text.Layout
 import android.text.Spanned
+import android.text.method.ScrollingMovementMethod
 import android.text.style.AlignmentSpan
 import android.text.style.BackgroundColorSpan
 import android.text.style.ForegroundColorSpan
-import android.text.method.ScrollingMovementMethod
 import android.text.style.RelativeSizeSpan
 import android.text.style.StyleSpan
 import android.view.GestureDetector
@@ -25,8 +24,8 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.text.buildSpannedString
 import com.osfans.trime.actions.glossary.GlossaryPrefs
-import com.osfans.trime.actions.handwriting.HandwritingLog
 import com.osfans.trime.actions.glossary.GlossaryTips
+import com.osfans.trime.actions.handwriting.HandwritingLog
 import com.osfans.trime.actions.tips.TipBlocks
 import com.osfans.trime.actions.tips.TipEntry
 import com.osfans.trime.actions.wenquxing.WenquxingPrefs
@@ -44,6 +43,7 @@ import splitties.views.dsl.core.matchParent
 import splitties.views.dsl.core.view
 import splitties.views.dsl.core.wrapContent
 import splitties.views.horizontalPadding
+import kotlin.math.abs
 
 /**
  * 编码区。
@@ -55,20 +55,23 @@ import splitties.views.horizontalPadding
  * - [wqTips] 文曲星（诗词 / 名句）
  * - [glTips] 外语学习（候选 + 英文 / 日文）
  *
- * 它们共用同一套外观，但状态、内容、设置项全部各管各的，互不影响。
+ * 它们外观一样，但状态、内容、设置项各管各的，互不影响。
  *
  * ## 唯一的一条显示规则
  *
  * 文曲星这一句有命中时，**只显示文曲星那一块**，外语学习强制隐藏；
  * 文曲星没命中时才轮到外语学习（它自己没命中就不显示）。
- * 规则只写在 [refreshTips] 一处，其他任何地方都不再判一次。
+ * 规则只写在 [refreshTips] 一处。
  *
- * ## 每块自己能做什么
+ * ## 每块的状态机（就这四个变量，没有别的）
  *
- * - 高度 = 各自设置里「显示几条」那么多行，内容不足自动变矮，超出则内部滚动；
- * - 点某一条 = 上屏它（与 `BambooTip` 系列 token 同一条路）；
- * - 点每条末尾的展开入口 = 在这块地里展开全文（高度锁定、内部滚动），点顶部收起；
- * - 高亮项换了会自动滚到它那一行，但用户手动滑过之后短时间内不再抢滚动位置。
+ * - `snapshot`：这一批候选的内容指纹。**指纹一变，展开态与滚动位置全部作废**，
+ *   回到未展开、滚到顶部——这就是「候选变了就丢弃当前显示」。
+ * - `expandedIndex`：展开的是第几条，`-1` 表示列表态。只对当前 `snapshot` 有效。
+ * - `viewportRows`：视口高度按「显示几条」算，内容永远是全部条目。
+ * - 滚动位置由 View 自己持有（原生 `ScrollingMovementMethod`）。
+ *
+ * 高度只在 **`onLayout` 之后**量（`applyViewportHeight`），不再赌 `post` 时序。
  */
 open class PreeditUi(
     final override val ctx: Context,
@@ -140,6 +143,12 @@ open class PreeditUi(
             }
         }
 
+    /** 把颜色按 [percent]（0–100）改成半透明。 */
+    private fun withAlpha(color: Int, percent: Int): Int {
+        val a = ((color ushr 24) and 0xFF) * percent.coerceIn(0, 100) / 100
+        return (color and 0x00FFFFFF) or (a shl 24)
+    }
+
     private fun CompositionProto.toSpannedString() = buildSpannedString {
         if (!preedit.isNullOrEmpty()) {
             append(preedit)
@@ -183,6 +192,19 @@ open class PreeditUi(
         visible = preedit.visibility == View.VISIBLE ||
             wqTips.visibility == View.VISIBLE ||
             glTips.visibility == View.VISIBLE
+        syncTouchable()
+    }
+
+    /**
+     * 提示块占着屏幕时，把它并进输入法窗口的触摸区。
+     *
+     * 不并进来，手指按在提示块上会被系统判成点到下面的 App（表现为「滑编辑区」「点不中」）。
+     */
+    private fun syncTouchable() {
+        val any = wqTips.visibility == View.VISIBLE || glTips.visibility == View.VISIBLE
+        if (any == tipsTouchable) return
+        tipsTouchable = any
+        runCatching { TrimeInputMethodService.current?.updateInputViewShown() }
     }
 
     /** 相对亮度（WCAG），只看 RGB。 */
@@ -191,61 +213,29 @@ open class PreeditUi(
             val s = v / 255.0
             return if (s <= 0.03928) s / 12.92 else Math.pow((s + 0.055) / 1.055, 2.4)
         }
-        return 0.2126 * ch((color shr 16) and 0xFF) +
-            0.7152 * ch((color shr 8) and 0xFF) +
-            0.0722 * ch(color and 0xFF)
+        val r = ch((color shr 16) and 0xFF)
+        val g = ch((color shr 8) and 0xFF)
+        val b = ch(color and 0xFF)
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b
     }
 
-    /** 两色的对比度（1.0–21.0）。 */
-    private fun contrastRatio(a: Int, b: Int): Double {
+    private fun contrastRatio(
+        a: Int,
+        b: Int,
+    ): Double {
         val la = luminance(a)
         val lb = luminance(b)
-        val hi = if (la > lb) la else lb
-        val lo = if (la > lb) lb else la
-        return (hi + 0.05) / (lo + 0.05)
+        return (maxOf(la, lb) + 0.05) / (minOf(la, lb) + 0.05)
     }
 
     /**
-     * 一块提示区。文曲星和外语学习各持一个实例：
-     * 内容、展开态、滚动位置、视口高度、设置项来源全部是**这个对象自己的**，
-     * 两块之间没有任何共享状态，也就没有互相踩的可能。
+     * 一块提示区：列表态一条一行，点某一条 = 展开或上屏；展开态整块换成那一好的全文。
+     *
+     * 所有交互都在这个类里闭环，外部只有 [refresh]。
      */
     private inner class TipsView(
         private val wenquxing: Boolean,
     ) : TextView(ctx) {
-        // ---- 内容与命中测试所需的元数据（每块自己一份）----
-
-        /** 当前块里的每一条（顺序 = 屏幕上的显示顺序）。 */
-        var entries: List<TipEntry> = emptyList()
-            private set
-
-        /** 每条在 Spanned 里的起始字符偏移，点击时用来把「点到的字」换算成「第几条」。 */
-        private var entryStart: IntArray = IntArray(0)
-
-        /** 每条「正文区」的结束偏移（正文 + 行尾字数，不含展开入口）。 */
-        private var entryBlockEnd: IntArray = IntArray(0)
-
-        /** 每条展开入口在 Spanned 里的字符范围（-1 表示这条没有入口）。 */
-        private var iconStart: IntArray = IntArray(0)
-        private var iconEnd: IntArray = IntArray(0)
-
-        /** 正在展开的那一条的下标；-1 表示列表视图。 */
-        private var expandedIndex: Int = -1
-
-        /** 上一次渲染的内容指纹，相同就不重画（否则每次按键都会把滚动位置打回顶部）。 */
-        private var lastKey: String = ""
-        private var lastRotationSeq: Int = -1
-
-        /** 视口条数（= 各自设置里的「显示几条」），只在列表视图用。 */
-        private var viewportRows = 3
-
-        /** 用户手动滚动的时间戳，用来判断要不要把视口拽回高亮项。 */
-        private var manualScrollAt: Long = 0L
-
-        /** 展开前的滚动位置与高度，收起时还原。 */
-        private var scrollBeforeExpand: Int = 0
-        private var heightBeforeExpand: Int = 0
-
         private val gestureDetector =
             GestureDetector(
                 ctx,
@@ -256,51 +246,30 @@ open class PreeditUi(
                         handleTap(e.x.toInt(), e.y.toInt())
                         return true
                     }
-
-                    override fun onScroll(
-                        e1: MotionEvent?,
-                        e2: MotionEvent,
-                        distanceX: Float,
-                        distanceY: Float,
-                    ): Boolean {
-                        // 只记「用户自己滑过」，滚动本身交给 ScrollingMovementMethod
-                        // （它带惯性甩动，手感才对）。返回 false 表示不消费事件。
-                        manualScrollAt = SystemClock.uptimeMillis()
-                        return false
-                    }
                 },
             )
 
+        private var entries: List<TipEntry> = emptyList()
+        private var entryStart = IntArray(0)
+        private var entryBlockEnd = IntArray(0)
+        private var snapshot = 0
+        private var expandedIndex = -1
+        private var viewportRows = 3
+        private var scrollBeforeExpand = 0
+
         init {
             setTextColor(textColor)
-            textSize = theme.preedit.foreground.fontSize
             typeface = FontManager.getTypeface()
-            setLineSpacing(0f, 1.18f)
-            horizontalPadding = dp(theme.preedit.horizontalPadding)
-            clipToOutline = true
             movementMethod = ScrollingMovementMethod()
             isVerticalScrollBarEnabled = true
             isHorizontalScrollBarEnabled = false
+            maxLines = Int.MAX_VALUE
             visibility = View.GONE
+            horizontalPadding = ctx.dp(theme.preedit.horizontalPadding)
+            clipToOutline = true
+            setLineSpacing(0f, 1.18f)
+            outlineProvider = ViewOutlineProvider.BACKGROUND
         }
-
-        /**
-         * 触摸只做两件事：事件喂给 GestureDetector 识别点击，其余交回 TextView
-         * （滚动与惯性由 ScrollingMovementMethod 处理）。
-         *
-         * 以前用 setOnTouchListener 返回 false，事件在「监听器 → TextView.onTouchEvent」
-         * 之间来回走两遍，滑动时好时坏就是从这里来的。
-         */
-        override fun onTouchEvent(event: MotionEvent): Boolean {
-            gestureDetector.onTouchEvent(event)
-            val handled = super.onTouchEvent(event)
-            return handled || event.actionMasked == MotionEvent.ACTION_DOWN
-        }
-
-        /** 禁止一切横向滚动（文本比视口宽时也不许左右拖）。 */
-        override fun canScrollHorizontally(direction: Int): Boolean = false
-
-        // ---- 设置项：只读自己所属模块的 ----
 
         private fun scalePct(): Int =
             runCatching {
@@ -314,7 +283,7 @@ open class PreeditUi(
 
         private fun rows(): Int =
             runCatching {
-                (if (wenquxing) WenquxingPrefs.maxDisplay else GlossaryPrefs.tipsMax).coerceIn(1, 6)
+                if (wenquxing) WenquxingPrefs.maxDisplay else GlossaryPrefs.tipsMax
             }.getOrDefault(3)
 
         private fun showChars(): Boolean =
@@ -324,65 +293,9 @@ open class PreeditUi(
 
         private fun expandRows(): Int =
             runCatching {
-                (if (wenquxing) WenquxingPrefs.expandRows else GlossaryPrefs.expandRows).coerceIn(1, 8)
+                if (wenquxing) WenquxingPrefs.expandRows else GlossaryPrefs.expandRows
             }.getOrDefault(5)
 
-        // ---- 渲染 ----
-
-        /** 外部（组合变化、设置变化、翻页）调这个：决定这一块要不要显示、显示什么。 */
-        fun refresh(active: Boolean) {
-            if (!active) {
-                if (visibility != View.GONE) visibility = View.GONE
-                return
-            }
-            val list =
-                runCatching {
-                    if (wenquxing) WenquxingTips.entries() else GlossaryTips.entries()
-                }.getOrNull().orEmpty()
-            if (list.isEmpty()) {
-                entries = emptyList()
-                entryStart = IntArray(0)
-                entryBlockEnd = IntArray(0)
-                iconStart = IntArray(0)
-                iconEnd = IntArray(0)
-                expandedIndex = -1
-                lastKey = ""
-                if (visibility != View.GONE) visibility = View.GONE
-                return
-            }
-            applyStyle()
-            if (expandedIndex !in list.indices) expandedIndex = -1
-            val key =
-                list.joinToString("\u0001") { "${it.text}\u0002${it.chars}\u0002${it.detail.length}" } +
-                    "#$expandedIndex#${showChars()}#${textScale}"
-            if (key == lastKey && visibility == View.VISIBLE) return
-            lastKey = key
-            entries = list
-            text =
-                if (expandedIndex >= 0) {
-                    buildExpanded(list, expandedIndex)
-                } else {
-                    viewportRows = rows()
-                    buildBlock(list)
-                }
-            maxLines = Int.MAX_VALUE
-            visibility = View.VISIBLE
-            // 句号轮换：视口跳回第一条，否则看到的还是原来那几条
-            if (wenquxing) {
-                val seq = runCatching { WenquxingTips.rotationSeq }.getOrDefault(0)
-                if (seq != lastRotationSeq) {
-                    lastRotationSeq = seq
-                    scrollTo(0, 0)
-                }
-            }
-            post { applyViewportHeight() }
-            if (expandedIndex >= 0) scrollTo(0, 0) else scrollToHighlight()
-        }
-
-        /**
-         * 背景与字号：背景色跟编码行同一个键，圆角挪到右下角（和编码行拼成一张卡片），
-         * 不透明度与字号各用所属模块自己的设置。
-         */
         private fun applyStyle() {
             textSize = theme.preedit.foreground.fontSize * textScale * (scalePct() / 100f)
             val base = ColorManager.getColor("text_back_color")
@@ -394,15 +307,117 @@ open class PreeditUi(
                 GradientDrawable().apply {
                     setColor(fill)
                     shape = GradientDrawable.RECTANGLE
-                    // 上左、上右、下右、下左：只有右下角圆
+                    // 上左、上右、下右、下左：只有右下角圆，跟编码行拼成一张卡片
                     cornerRadii = floatArrayOf(0f, 0f, 0f, 0f, radius, radius, 0f, 0f)
                 }
-            outlineProvider = ViewOutlineProvider.BACKGROUND
         }
 
-        /** 列表视图：一条一行，行尾「·N字」和展开入口。 */
+        /**
+         * 主入口。`active == true` 时按最新候选重画；否则隐藏并清状态。
+         *
+         * 候选内容一变（[snapshot] 不同），展开态与滚动位置**一律作废**。
+         */
+        fun refresh(active: Boolean) {
+            if (!active) {
+                if (visibility != View.GONE) visibility = View.GONE
+                entries = emptyList()
+                entryStart = IntArray(0)
+                entryBlockEnd = IntArray(0)
+                expandedIndex = -1
+                snapshot = 0
+                scrollTo(0, 0)
+                return
+            }
+            val list =
+                runCatching {
+                    if (wenquxing) WenquxingTips.entries() else GlossaryTips.entries()
+                }.getOrNull().orEmpty()
+            if (list.isEmpty()) {
+                if (visibility != View.GONE) visibility = View.GONE
+                entries = emptyList()
+                entryStart = IntArray(0)
+                entryBlockEnd = IntArray(0)
+                expandedIndex = -1
+                snapshot = 0
+                scrollTo(0, 0)
+                return
+            }
+            applyStyle()
+            viewportRows = rows()
+            var id = 7
+            list.forEach { id = id * 31 + it.text.hashCode() * 17 + it.chars * 7 + it.detail.length * 13 }
+            val changed = id != snapshot || visibility != View.VISIBLE
+            snapshot = id
+            entries = list
+            if (changed) {
+                // 候选变了：丢弃展开态、回到顶部，全部重画
+                expandedIndex = -1
+                render()
+                scrollTo(0, 0)
+            }
+            visibility = View.VISIBLE
+        }
+
+        /** 按当前 `expandedIndex` 重建文本；高度交给 [onLayout] 或 [expand]。 */
+        private fun render() {
+            text =
+                if (expandedIndex >= 0) {
+                    buildExpanded(entries, expandedIndex)
+                } else {
+                    buildBlock(entries)
+                }
+            val lp = layoutParams as? LinearLayout.LayoutParams
+            if (lp != null) {
+                if (lp.width != LinearLayout.LayoutParams.MATCH_PARENT) lp.width = LinearLayout.LayoutParams.MATCH_PARENT
+                if (lp.height != LinearLayout.LayoutParams.WRAP_CONTENT) lp.height = LinearLayout.LayoutParams.WRAP_CONTENT
+                layoutParams = lp
+            }
+            requestLayout()
+        }
+
+        override fun onLayout(
+            changed: Boolean,
+            left: Int,
+            top: Int,
+            right: Int,
+            bottom: Int,
+        ) {
+            super.onLayout(changed, left, top, right, bottom)
+            if (expandedIndex < 0) applyViewportHeight()
+            this@PreeditUi.syncTouchable()
+        }
+
+        override fun onTouchEvent(event: MotionEvent): Boolean {
+            gestureDetector.onTouchEvent(event)
+            val handled = super.onTouchEvent(event)
+            return handled || event.actionMasked == MotionEvent.ACTION_DOWN
+        }
+
+        override fun canScrollHorizontally(direction: Int): Boolean = false
+
+        /**
+         * 视口高度 = 前「显示几条」条的高度（**不含「共N组」那一行**，
+         * 它只是标题，永远可见）。条目不足一屏就自适应，不留空白。
+         */
+        private fun applyViewportHeight() {
+            val lay = layout ?: return
+            val lp = layoutParams as? LinearLayout.LayoutParams ?: return
+            val r = viewportRows.coerceIn(1, MAX_ROWS)
+            if (entries.size <= r) return
+            val endChar = entryBlockEnd.getOrNull(r - 1) ?: return
+            if (endChar <= 0) return
+            val line = lay.getLineForOffset(endChar - 1)
+            if (line < 0) return
+            val want = totalPaddingTop + lay.getLineBottom(line) + totalPaddingBottom
+            if (want <= 0) return
+            if (lp.height != LinearLayout.LayoutParams.WRAP_CONTENT && abs(lp.height - want) <= ctx.dp(1)) return
+            lp.height = want
+            layoutParams = lp
+        }
+
+        /** 列表视图：一条一行，行尾「·N字」；可展开的条目行尾带提示。 */
         private fun buildBlock(list: List<TipEntry>): CharSequence {
-            // 三角跟在高亮那一条前面；文曲星块没有高亮，就落在第一条
+            // 三角跟在高亮那一条前面（文曲星的高亮就是轮换到当前的第一条）
             val markAt = list.indexOfFirst { it.highlighted }.takeIf { it >= 0 } ?: 0
             val unmatchedAlpha = runCatching { GlossaryPrefs.unmatchedAlpha }.getOrDefault(80)
             val unmatchedScale = runCatching { GlossaryPrefs.unmatchedTextScale }.getOrDefault(100)
@@ -410,11 +425,8 @@ open class PreeditUi(
             val n = list.size
             entryStart = IntArray(n)
             entryBlockEnd = IntArray(n)
-            iconStart = IntArray(n) { -1 }
-            iconEnd = IntArray(n) { -1 }
             val badge = if (wenquxing) runCatching { WenquxingTips.badgeText() }.getOrNull() else null
             return buildSpannedString {
-                // 第一行单独放「共N组」，贴最左
                 if (!badge.isNullOrEmpty()) {
                     val badgeStart = length
                     append(badge)
@@ -427,7 +439,6 @@ open class PreeditUi(
                     val markStart = length
                     append(if (index == markAt) MARK else INDENT)
                     if (index == markAt) {
-                        // 只放大三角字形本身，后面的全角空格保持原宽度，避免各行文字错位
                         listOf(
                             ForegroundColorSpan(markColor),
                             StyleSpan(Typeface.BOLD),
@@ -443,7 +454,6 @@ open class PreeditUi(
                     }
                     val en = line.english
                     if (line.unmatched) {
-                        // 词库里没有这个词：中文斜体 + 按设置调淡（只有「外语学习」会置这个标记）
                         setSpan(StyleSpan(Typeface.ITALIC), cnStart, cnEnd, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
                         setSpan(
                             RelativeSizeSpan(unmatchedScale / 100f),
@@ -464,8 +474,6 @@ open class PreeditUi(
                         setSpan(ForegroundColorSpan(tipColor), enStart, length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
                         setSpan(RelativeSizeSpan(EN_SCALE), enStart, length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
                     }
-                    // 行尾字数：这次点击会提交多少字
-                    // 字数只对文曲星有意义（外语学习上屏的是英文，字数参考价值不大）
                     if (showCount && wenquxing && line.chars > 0) {
                         append("  ")
                         val cntStart = length
@@ -473,174 +481,101 @@ open class PreeditUi(
                         setSpan(ForegroundColorSpan(tipColor), cntStart, length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
                         setSpan(RelativeSizeSpan(COUNT_SCALE), cntStart, length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
                     }
-                    // 可展开提示：只是提示，点整行都能触发
                     if (line.expandable) {
                         append("  ")
                         val hintStart = length
-                        append(if (wenquxing) "[\u5c55\u5f00]" else "\u25B8")
-                        setSpan(
-                            ForegroundColorSpan(tipColor),
-                            hintStart,
-                            length,
-                            Spanned.SPAN_INCLUSIVE_EXCLUSIVE,
-                        )
-                        setSpan(
-                            RelativeSizeSpan(COUNT_SCALE),
-                            hintStart,
-                            length,
-                            Spanned.SPAN_INCLUSIVE_EXCLUSIVE,
-                        )
+                        append(EXPAND_HINT)
+                        setSpan(ForegroundColorSpan(tipColor), hintStart, length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
+                        setSpan(RelativeSizeSpan(COUNT_SCALE), hintStart, length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
                     }
                     entryBlockEnd[index] = length
                 }
             }
         }
 
-        /** 展开视图：占满这块地显示某一条的全文，第一行是收起入口。 */
+        /** 展开视图：第一行右上角「收起」，后面是该条全文。 */
         private fun buildExpanded(
             list: List<TipEntry>,
             index: Int,
         ): CharSequence {
-            val line = list[index]
-            entryStart = intArrayOf(0)
-            entryBlockEnd = intArrayOf(0)
-            iconStart = intArrayOf(0)
-            iconEnd = intArrayOf(0)
+            val item = list[index]
             return buildSpannedString {
-                val rowStart = length
-                append("\u25B4 \u6536\u8d77 ")
-                iconEnd[0] = length
-                setSpan(ForegroundColorSpan(tipColor), rowStart, length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
-                setSpan(RelativeSizeSpan(ICON_SCALE), rowStart, length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
-                setSpan(
-                    BackgroundColorSpan(withAlpha(textColor, BUTTON_BG_ALPHA)),
-                    rowStart,
-                    length,
-                    Spanned.SPAN_INCLUSIVE_EXCLUSIVE,
-                )
+                val collapseStart = length
+                append(COLLAPSE_LABEL)
+                val collapseEnd = length
+                setSpan(AlignmentSpan.Standard(Layout.Alignment.ALIGN_OPPOSITE), collapseStart, collapseEnd, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
+                setSpan(BackgroundColorSpan(withAlpha(textColor, BUTTON_BG_ALPHA)), collapseStart, collapseEnd, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
+                setSpan(ForegroundColorSpan(tipColor), collapseStart, collapseEnd, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
                 append('\n')
-                // 段落级对齐必须把换行也包进 span 才生效
-                setSpan(
-                    AlignmentSpan.Standard(Layout.Alignment.ALIGN_OPPOSITE),
-                    rowStart,
-                    length,
-                    Spanned.SPAN_INCLUSIVE_EXCLUSIVE,
-                )
-                entryStart[0] = length
-                append(line.detail)
+                append(item.detail)
             }
         }
 
-        /** 点到了什么：先看展开入口热区，再按字符偏移落到某一条。 */
-
-        /**
-         * 点到了什么。
-         *
-         * - 列表态：落在某一条上——这条还有更多内容就展开它，否则直接上屏；
-         * - 展开态：顶部「收起」那行收起，其余任意位置点了上屏。
-         */
-        private fun handleTap(x: Int, y: Int) {
-            val layout = layout ?: return
-            val vx = (x - totalPaddingLeft + scrollX).toFloat()
+        /** 点在哪儿：展开态第一行 = 收起，其余 = 上屏；列表态按条目判。 */
+        private fun handleTap(
+            x: Int,
+            y: Int,
+        ) {
+            val lay = layout ?: return
             val vy = y - totalPaddingTop + scrollY
-            if (vy < 0) return
-            val line = layout.getLineForVertical(vy)
-            if (line < 0 || line >= layout.lineCount) return
-            val offset = layout.getOffsetForHorizontal(line, vx.coerceAtLeast(0f))
-
+            val line = lay.getLineForVertical(vy.coerceAtLeast(0))
+            if (line < 0) return
             if (expandedIndex >= 0) {
-                val collapseBottom = layout.getLineBottom(0) + ctx.dp(COLLAPSE_SLACK_DP)
-                if (vy <= collapseBottom) {
+                if (line == 0) {
                     collapse()
-                    return
+                } else {
+                    entries.getOrNull(expandedIndex)?.let { commitPayload(it.payload) }
                 }
-                commitPayload(entries.getOrNull(expandedIndex)?.payload.orEmpty())
                 return
             }
-
-            // 按「视觉行 → 条目行区间」定位，比字符偏移稳（行首缩进、折行都不影响）
             val index = entryIndexForLine(line)
-            val item = entries.getOrNull(index)
+            val item = entries.getOrNull(index) ?: return
             HandwritingLog.d(
                 "tips",
-                "tap line=$line offset=$offset scroll=$scrollY -> idx=$index " +
-                    "expandable=${item?.expandable} payloadLen=${item?.payload?.length} entries=${entries.size}",
+                "tap line=$line y=$y vy=$vy -> idx=$index expandable=${item.expandable} entries=${entries.size}",
             )
-            if (item == null) return
-            // 点哪一条就作用于哪一条：滚动之后按当前视觉位置算（vy 里已经含 scrollY）
-            if (item.expandable) {
-                expand(index)
-                return
-            }
-            commitPayload(item.payload)
+            if (item.expandable) expand(index) else commitPayload(item.payload)
         }
 
-        /** 外语学习：按「该条最后一行 + 行尾 GLOSSARY_ICON_TOUCH_DP」算热区。 */
-
-        /** 文曲星：按「展开」文字按钮的实际横向范围 ± BUTTON_SLACK_DP 算热区。 */
-
-        /** 二分查找「这个字符偏移属于第几条」。 */
-        /** 某个视觉行属于第几条（不在任何条目上时返回 -1）。 */
+        /** 视觉行 → 条目下标（折行时同一视觉行的多个条目取第一个）。 */
         private fun entryIndexForLine(line: Int): Int {
             val lay = layout ?: return -1
-            for (i in entryStart.indices) {
-                if (i >= entryBlockEnd.size) break
-                val end = entryBlockEnd[i].coerceAtLeast(entryStart[i] + 1) - 1
-                val first = lay.getLineForOffset(entryStart[i])
-                val last = lay.getLineForOffset(end)
+            for (i in entries.indices) {
+                val start = entryStart.getOrNull(i) ?: continue
+                val end = entryBlockEnd.getOrNull(i) ?: continue
+                if (end <= start) continue
+                val first = lay.getLineForOffset(start)
+                val last = lay.getLineForOffset(end - 1)
                 if (line in first..last) return i
             }
             return -1
         }
 
-        private fun entryIndexOf(offset: Int): Int {
-            if (entryStart.isEmpty()) return -1
-            var lo = 0
-            var hi = entryStart.size - 1
-            var ans = -1
-            while (lo <= hi) {
-                val mid = (lo + hi) / 2
-                if (entryStart[mid] <= offset) {
-                    ans = mid
-                    lo = mid + 1
-                } else {
-                    hi = mid - 1
-                }
-            }
-            return ans
-        }
-
-        /**
-         * 展开某一条：把块锁成整宽，并把高度夹在「设置行数」与「屏幕 40%」之间。
-         * 只命中一条时块本来只有一行高，展开不该把几百字塞进一行高的窗。
-         */
+        /** 展开某一条：宽度锁成整块，高度夹在「展开行数」与屏高 40% 之间。 */
         private fun expand(index: Int) {
+            val item = entries.getOrNull(index) ?: return
+            if (!item.expandable) {
+                commitPayload(item.payload)
+                return
+            }
             scrollBeforeExpand = scrollY
-            heightBeforeExpand = height
             expandedIndex = index
-            lastKey = ""
-            val params = layoutParams as LinearLayout.LayoutParams
-            params.width = LinearLayout.LayoutParams.MATCH_PARENT
-            val lineHeight = lineHeight.takeIf { it > 0 } ?: ctx.dp(LINE_FALLBACK_DP)
-            val minHeight = expandRows() * lineHeight
-            val maxHeight = (ctx.resources.displayMetrics.heightPixels * EXPAND_MAX_RATIO).toInt()
-            params.height = heightBeforeExpand.coerceAtLeast(minHeight).coerceAtMost(maxHeight)
-            layoutParams = params
-            refresh(true)
+            text = buildExpanded(entries, index)
+            val lp = layoutParams as LinearLayout.LayoutParams
+            lp.width = LinearLayout.LayoutParams.MATCH_PARENT
+            val lh = lineHeight.takeIf { it > 0 } ?: ctx.dp(LINE_FALLBACK_DP)
+            val minH = expandRows().coerceIn(1, MAX_EXPAND_ROWS) * lh + totalPaddingTop + totalPaddingBottom
+            val maxH = (ctx.resources.displayMetrics.heightPixels * EXPAND_MAX_RATIO).toInt()
+            lp.height = height.coerceAtLeast(minH).coerceAtMost(maxH)
+            layoutParams = lp
+            scrollTo(0, 0)
         }
 
+        /** 收起：回到列表态，滚回展开前的位置。 */
         private fun collapse() {
             expandedIndex = -1
-            lastKey = ""
-            val params = layoutParams as LinearLayout.LayoutParams
-            params.width = LinearLayout.LayoutParams.MATCH_PARENT
-            params.height = LinearLayout.LayoutParams.WRAP_CONTENT
-            layoutParams = params
-            refresh(true)
-            post {
-                applyViewportHeight()
-                scrollTo(0, scrollBeforeExpand)
-            }
+            render()
+            post { scrollTo(0, scrollBeforeExpand) }
         }
 
         /** 上屏：与 `BambooTip` 系列 token 同一条路——先清组合，再提交。 */
@@ -653,51 +588,6 @@ open class PreeditUi(
                     service.commitText(payload)
                 }
             }
-        }
-
-        /**
-         * 视口高度 = 前 N 条（「显示条数」）的高度，内容 = 全部条目。
-         * 两者之差就是可滑动的余量；条目不超过 N 条时高度自适应，不留空白。
-         */
-        private fun applyViewportHeight() {
-            if (expandedIndex >= 0) return
-            val lp = layoutParams as? LinearLayout.LayoutParams ?: return
-            val lay = layout ?: return
-            if (entries.isEmpty()) return
-            val r = viewportRows.coerceIn(1, 6)
-            val want =
-                if (entries.size <= r) {
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                } else {
-                    val endChar = entryBlockEnd.getOrNull(r - 1) ?: -1
-                    if (endChar <= 0) return
-                    val line = lay.getLineForOffset(endChar - 1)
-                    totalPaddingTop + lay.getLineBottom(line) + totalPaddingBottom
-                }
-            if (want == lp.height) return
-            if (want != LinearLayout.LayoutParams.WRAP_CONTENT && kotlin.math.abs(want - lp.height) <= ctx.dp(1)) return
-            lp.height = want
-            layoutParams = lp
-        }
-
-        /** 高亮项换了就把它滚到视口里；用户刚手动滑过就不动。 */
-        private fun scrollToHighlight() {
-            val index = entries.indexOfFirst { it.highlighted }
-            if (index < 0) return
-            post {
-                if (SystemClock.uptimeMillis() - manualScrollAt < MANUAL_SCROLL_GRACE_MS) return@post
-                val lay = layout ?: return@post
-                val offset = entryStart.getOrNull(index) ?: return@post
-                val line = lay.getLineForOffset(offset)
-                if (line < 0) return@post
-                scrollTo(0, lay.getLineTop(line).coerceAtLeast(0))
-            }
-        }
-
-        /** 把颜色按 [percent]（0–100）改成半透明，用于「没命中」的行 / 按钮底色。 */
-        private fun withAlpha(color: Int, percent: Int): Int {
-            val a = ((color ushr 24) and 0xFF) * percent.coerceIn(0, 100) / 100
-            return (color and 0x00FFFFFF) or (a shl 24)
         }
     }
 
@@ -713,10 +603,6 @@ open class PreeditUi(
         var tipsTouchable: Boolean = false
             private set
 
-        fun noteTipsVisible(visible: Boolean) {
-            tipsTouchable = visible
-        }
-
         private const val MIN_SCALE = 0.4f
         private const val MAX_SCALE = 2f
         private const val DEFAULT_SCALE_PCT = 90
@@ -724,31 +610,19 @@ open class PreeditUi(
         private const val EN_SCALE = 0.82f
         private const val MARK_SCALE = 1.1f
         private const val COUNT_SCALE = 0.78f
+        private const val BADGE_SCALE = 0.88f
         private const val LINE_FALLBACK_DP = 22
         private const val EXPAND_MAX_RATIO = 0.4f
-        private const val ICON_SCALE = 1.5f
+        private const val MAX_ROWS = 6
+        private const val MAX_EXPAND_ROWS = 8
         private const val BUTTON_BG_ALPHA = 34
-        private const val BADGE_SCALE = 0.88f
-        private const val GLOSSARY_ICON_SCALE = 1.15f
 
         /** 三角和提示块底色的最低对比度，低于这个就退回文字色，避免箭头看不见。 */
         private const val MIN_MARK_CONTRAST = 2.0
-        /** 展开「展开」文字按钮时，横向/纵向各放宽多少 dp（热区翻倍）。 */
-        private const val BUTTON_SLACK_DP = 24
-
-        /** 外语学习 ▾ 的热区宽度（从行右端往左算）。 */
-        const val GLOSSARY_ICON_TOUCH_DP = 144
-
-        /** 外语学习 ▾ 的纵向松弛。 */
-        private const val GLOSSARY_COLLAPSE_SLACK_DP = 12
-
-        /** 展开态「收起」行的纵向松弛。 */
-        private const val COLLAPSE_SLACK_DP = 12
-
-        /** 手动滑动之后多久之内不再自动把视口拉回高亮项。 */
-        private const val MANUAL_SCROLL_GRACE_MS = 2500L
 
         private const val MARK = "\u25B6\u3000"
         private const val INDENT = "\u3000\u3000"
+        private const val EXPAND_HINT = "\u25B8"
+        private const val COLLAPSE_LABEL = "\u25BE \u6536\u8D77"
     }
 }
