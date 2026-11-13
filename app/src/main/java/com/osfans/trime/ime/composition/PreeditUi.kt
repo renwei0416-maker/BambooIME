@@ -588,7 +588,7 @@ open class PreeditUi(
                 isFocusable = false
             }
 
-        private var downY = 0f
+        private var downRawY = 0f
         private var downAt = 0L
         private var moved = false
 
@@ -600,29 +600,31 @@ open class PreeditUi(
         override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
             when (ev.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
-                    downY = ev.y
+                    downRawY = ev.rawY
                     downAt = System.currentTimeMillis()
                     moved = false
                 }
 
                 MotionEvent.ACTION_MOVE -> {
-                    if (!moved && kotlin.math.abs(ev.y - downY) > ctx.dp(TAP_SLOP_DP)) moved = true
+                    if (!moved && kotlin.math.abs(ev.rawY - downRawY) > ctx.dp(TAP_SLOP_DP)) moved = true
                 }
 
                 MotionEvent.ACTION_UP -> {
                     val quick = System.currentTimeMillis() - downAt < 600L
                     if (!moved && quick) {
+                        val me = IntArray(2)
+                        getLocationOnScreen(me)
+                        val localY = ev.rawY - me[1]
                         // 先判「收起」：它浮在右上角、盖在内容上方，不能被当成条目
                         val collapseTop = scroller.top.toFloat()
                         val collapseBottom = collapseTop + ctx.dp(COLLAPSE_H_DP + 8)
-                        if (expandedIndex >= 0 && ev.y in collapseTop..collapseBottom) {
-                            HandwritingLog.d("tips", "tap collapse y=" + ev.y.toInt())
+                        if (expandedIndex >= 0 && localY in collapseTop..collapseBottom) {
+                            HandwritingLog.d("tips", "tap collapse rawY=" + ev.rawY.toInt())
                             collapse()
                             return true
                         }
-                        // 内容坐标：扣掉 scroller 的上内边距（展开态顶部给收起按钮留了位置）
-                        val yInColumn = ev.y - scroller.top - scroller.paddingTop + scroller.scrollY
-                        val idx = childIndexAt(yInColumn)
+                        val yInColumn = localY - scroller.top - scroller.paddingTop + scroller.scrollY
+                        val idx = childIndexAtScreen(ev.rawY)
                         val dead = StringBuilder()
                         for (ci in 0 until column.childCount) {
                             val cv = column.getChildAt(ci)
@@ -678,6 +680,44 @@ open class PreeditUi(
         }
 
         /** 返回「条目下标」（已扣掉 badge 行）；不在任何条目上返回 -1。 */
+        /**
+         * 用**屏幕绝对 y** 命中：把每条 TextView 的屏幕矩形拿出来直接比。
+         * 这样不管事件来自哪个坐标空间（可能是 TouchEventReceiverWindow 转发的、
+         * 带偏移的 ev.y），结果都一样。
+         */
+        private fun childIndexAtScreen(rawY: Float): Int {
+            val loc = IntArray(2)
+            for (i in 0 until column.childCount) {
+                val child = column.getChildAt(i)
+                val entryIdx = (child.tag as? Int) ?: continue
+                child.getLocationOnScreen(loc)
+                val top = loc[1].toFloat()
+                val bottom = top + child.height
+                if (rawY >= top && rawY < bottom) {
+                    return if (entryIdx in entries.indices) entryIdx else -1
+                }
+            }
+            // 落在分隔线/缝里：吸附到最近的一条
+            val slack = ctx.dp(GAP_SLACK_DP).toFloat()
+            var best = -1
+            var bestDist = Float.MAX_VALUE
+            for (i in 0 until column.childCount) {
+                val child = column.getChildAt(i)
+                val entryIdx = (child.tag as? Int) ?: continue
+                if (entryIdx !in entries.indices) continue
+                child.getLocationOnScreen(loc)
+                val top = loc[1].toFloat()
+                val bottom = top + child.height
+                val d = if (rawY < top) top - rawY else rawY - bottom
+                if (d <= slack && d < bestDist) {
+                    bestDist = d
+                    best = entryIdx
+                }
+            }
+            return best
+        }
+
+        @Suppress("unused")
         private fun childIndexAt(yInColumn: Float): Int {
             for (i in 0 until column.childCount) {
                 val child = column.getChildAt(i)
