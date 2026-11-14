@@ -1,0 +1,81 @@
+﻿diff --git a/app/src/main/java/com/osfans/trime/ui/main/settings/PackageListFragment.kt b/app/src/main/java/com/osfans/trime/ui/main/settings/PackageListFragment.kt
+index 1667cea1..bcd67abc 100644
+--- a/app/src/main/java/com/osfans/trime/ui/main/settings/PackageListFragment.kt
++++ b/app/src/main/java/com/osfans/trime/ui/main/settings/PackageListFragment.kt
+@@ -12,11 +12,16 @@ import androidx.appcompat.app.AlertDialog
+ import androidx.lifecycle.lifecycleScope
+ import androidx.recyclerview.widget.RecyclerView
+ import com.osfans.trime.R
++import com.osfans.trime.data.packaging.PackageSchemaList
+ import com.osfans.trime.data.packaging.PackageStateManager
+ import com.osfans.trime.data.packaging.SchemaPackage
+ import com.osfans.trime.data.packaging.SchemaPackageManager
++import com.osfans.trime.data.theme.ThemeManager
+ import com.osfans.trime.ui.common.buildDialog
++import kotlinx.coroutines.Dispatchers
+ import kotlinx.coroutines.launch
++import kotlinx.coroutines.withContext
++import timber.log.Timber
+ import splitties.resources.styledColor
+ import splitties.views.backgroundColor
+ import splitties.views.dsl.recyclerview.recyclerView
+@@ -125,17 +130,52 @@ class PackageListFragment : ProgressFragment() {
+             }
+             .setPositiveButton(android.R.string.ok) { _, _ ->
+                 val selectedIds = ids.filterIndexed { i, _ -> checked[i] }
++                // 一个都不勾时保持上游行为：什么都不做（不写盘、不切包）
+                 if (selectedIds.isEmpty()) return@setPositiveButton
+-                lifecycleScope.launch {
+-                    rime.runOnReady {
+-                        selectSchemaCrossPackage(selectedIds.first())
+-                        setEnabledSchemata(selectedIds.toTypedArray())
+-                        selectSchema(selectedIds.first())
+-                    }
+-                }
++                lifecycleScope.launch { applySelection(pkg, selectedIds) }
+             }
+             .setNegativeButton(android.R.string.cancel, null)
+             .show()
++            .also { dialog ->
++                currentDialog = dialog
++                // 上游这里漏了刷新，勾选完列表里的 (已启用/总数) 不会变
++                dialog.setOnDismissListener { refreshPackages() }
++            }
++    }
++
++    /**
++     * 把勾选结果写进**被点开的这个包**，必要时再把它切成活动包。
++     *
++     * 不能用上游的 `selectSchemaCrossPackage()`：它按方案名反查包
++     * （`SchemaPackageManager.findPackageForSchema()` 取排序靠前的第一个命中项），
++     * 两个包里有同名方案时会命中别人的包 —— 表现为「点 A 包、改到 B 包」。
++     * 这里改成按包名（目录名）定位，点谁改谁。
++     */
++    private suspend fun applySelection(
++        pkg: com.osfans.trime.data.packaging.SchemaPackage,
++        selectedIds: List<String>,
++    ) {
++        val written = withContext(Dispatchers.IO) { PackageSchemaList.write(pkg.id, selectedIds) }
++        if (!written) {
++            Timber.w("applySelection: failed to write schema_list for %s", pkg.id)
++            return
++        }
++        rime.runOnReady {
++            if (SchemaPackageManager.activePackageId == pkg.id) {
++                // 同一个包：只换当前方案，不用重新部署
++                selectSchema(selectedIds.first())
++            } else {
++                // 换包：switchPackage 会记住旧包的 lastSchema 再切过去，并触发一次部署
++                switchPackage(pkg.id)
++                selectSchema(selectedIds.first())
++            }
++        }
++        PackageStateManager.updateSchemaAndTheme(
++            pkg.id,
++            lastSchemaId = selectedIds.first(),
++            lastThemeId = ThemeManager.prefs.selectedTheme.getValue(),
++        )
++        refreshPackages()
+     }
+ 
+     private class PackageAdapter(
