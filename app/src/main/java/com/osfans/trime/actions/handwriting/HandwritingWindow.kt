@@ -1080,6 +1080,13 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
                     setTextColor(if (selected) colorKeyText else colorSub)
                     setPadding(dp(8), 0, dp(2), 0)
                     setOnClickListener { gotoPage(i, 0) }
+                    // 「常用」是记录页，长按就地清空（不另开设置项）
+                    if (i == SymbolPages.PAGE_FAVORITE) {
+                        setOnLongClickListener {
+                            confirmClearFavorites()
+                            true
+                        }
+                    }
                 },
                 LinearLayout.LayoutParams(WRAP_CONTENT, MATCH_PARENT),
             )
@@ -1123,6 +1130,32 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
             val scroll = (target.left - (panelTabsScroll.width - target.width) / 2)
                 .coerceAtLeast(0)
             panelTabsScroll.smoothScrollTo(scroll, 0)
+        }
+    }
+
+    /** 长按「常用」页签：确认后清空上屏统计。 */
+    private fun confirmClearFavorites() {
+        if (runCatching { SymbolUsage.favorites() }.getOrDefault(emptyList()).isEmpty()) {
+            setMessage("常用记录已经是空的")
+            return
+        }
+        runCatching {
+            android.app.AlertDialog.Builder(context)
+                .setTitle("清空常用记录？")
+                .setMessage("会清掉所有符号的上屏次数，「常用」页和右侧符号列的排序都会回到默认。")
+                .setPositiveButton("清空") { _, _ ->
+                    SymbolUsage.clear()
+                    if (currentPage == SymbolPages.PAGE_FAVORITE) {
+                        buildPanelGrid(SymbolPages.PAGE_FAVORITE)
+                    }
+                    setMessage("已清空常用记录")
+                    HandwritingLog.d("panel", "favorites cleared")
+                }
+                .setNegativeButton("取消", null)
+                .show()
+        }.onFailure {
+            HandwritingLog.w("panel", "clear favorites dialog failed", it)
+            setMessage("打不开确认框，长按再试一次")
         }
     }
 

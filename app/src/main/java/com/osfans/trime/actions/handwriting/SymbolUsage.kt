@@ -84,6 +84,16 @@ object SymbolUsage {
         return defaults.sortedByDescending { counts[it] ?: 0 }
     }
 
+    /**
+     * 清空全部上屏统计。
+     *
+     * 只有一份计数，所以「常用」页和右侧符号列的排序会一起回到默认——
+     * 这符合「清空使用记录」的意思，不做成两套。
+     */
+    fun clear() {
+        p().edit().remove(K_COUNTS).remove(K_RECENT).apply()
+    }
+
     fun record(symbol: String) {
         if (symbol.isEmpty()) return
         val counts = readCounts().toMutableMap()
