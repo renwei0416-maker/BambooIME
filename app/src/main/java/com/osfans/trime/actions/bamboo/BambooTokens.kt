@@ -34,6 +34,15 @@ object BambooTokens {
     /** 退出 AI 模式（等价 `tc;`）。 */
     const val AI_OFF = "BambooAiOff"
 
+    /**
+     * 打开「AI 模式」面板：所有 AI 模式 + 文曲星做成按钮，点一下就进，不用记触发码。
+     *
+     * 与其它 token 的区别：它要建视图，所以在
+     * [com.osfans.trime.ime.keyboard.CommonKeyboardActionListener] 里就拦下来了，
+     * 不会走到 [BambooActions.handleToken]（那里跑在 rime 线程上）。
+     */
+    const val AI_PANEL = "BambooAiPanel"
+
     /** 所有 token 的公共前缀；[match] 只认这个前缀，避免误吞用户真打出来的文字。 */
     const val PREFIX = "Bamboo"
 
@@ -77,8 +86,8 @@ object BambooTokens {
 
     val fixed: List<String> =
         listOf(
-            REVERT, CLEAR, DELETE_LINE, DELETE_WORD, AI_SEND, AI_CLIP, AI_OFF, SETTINGS,
-            QUOTE, QUOTE_SINGLE, TIP, VOICE_AI,
+            REVERT, CLEAR, DELETE_LINE, DELETE_WORD, AI_SEND, AI_CLIP, AI_OFF, AI_PANEL,
+            SETTINGS, QUOTE, QUOTE_SINGLE, TIP, VOICE_AI,
         ) + TIP_SLOTS
 
     /** 设置页「动作名一览」用的说明表；与 [fixed] 同源，不会漏项。 */
@@ -91,6 +100,7 @@ object BambooTokens {
             AI_SEND to "用当前 AI 模式发送（等价双击发送键）",
             AI_CLIP to "用当前 AI 模式发送剪贴板（等价 jt;）",
             AI_OFF to "退出 AI 模式（等价 tc;）",
+            AI_PANEL to "打开「AI 模式」面板（点按钮选模式 / 再点一次退出）",
             SETTINGS to "打开「回退与AI」设置页",
             QUOTE to "提交左双引号“（开启「符号补全」时自动补右半边并居中）",
             QUOTE_SINGLE to "提交左单引号‘（同上）",

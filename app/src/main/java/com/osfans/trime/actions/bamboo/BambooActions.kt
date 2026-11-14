@@ -86,6 +86,65 @@ object BambooActions {
 
     val armedName: String? get() = armed?.name
 
+    /** 当前是不是停在文曲星模式（不是 AI 模式）。 */
+    val armedIsTips: Boolean get() = armed?.key == TIPS_KEY
+
+    /** 面板顶部显示的「当前」名字：文曲星单独显示，其余用模式名。 */
+    val armedDisplayName: String?
+        get() = armed?.let { if (it.key == TIPS_KEY) "文曲星" else it.name }
+
+    /** 当前模式对应的触发码（面板高亮比对用）。 */
+    val armedCode: String?
+        get() = armed?.let { if (it.key == TIPS_KEY) BambooPrefs.wenquxingCode else it.code }
+
+    // ---------------------------------------------------------------- 面板用的开关
+    // 面板（AiPanelWindow）只调这三个入口，语义必须与「打触发码」完全一致，
+    // 否则会出现「面板进的和码进的不是同一个状态」。改动这里请同步改 handleKey 里的模式码分支。
+
+    /** 进入某个 AI 模式（等价于打它的触发码）。false = 该模式不可用（AI 总开关关着 / 码不存在）。 */
+    fun enterAiMode(code: String): Boolean {
+        if (!BambooPrefs.aiEnabled) {
+            toast("AI 模式未开")
+            return false
+        }
+        val m = BambooPrefs.aiModes.firstOrNull { it.code == code }
+        if (m == null) {
+            Timber.w("bamboo: panel enter unknown code %s", code)
+            return false
+        }
+        armed = m
+        lastSendTapAt = 0
+        toast("AI：${m.name}（${m.code}）")
+        Timber.d("bamboo: panel enter ai %s", m.code)
+        return true
+    }
+
+    /** 进入文曲星模式（等价于打 mj;）。false = 文曲星没启用。 */
+    fun enterTipsMode(): Boolean {
+        if (!WenquxingPrefs.enabled) {
+            toast("文曲星未启用")
+            return false
+        }
+        armed = tipsMode()
+        lastSendTapAt = 0
+        WenquxingTips.clear()
+        toast("文曲星（${BambooPrefs.wenquxingCode}）")
+        Timber.d("bamboo: panel enter tips")
+        return true
+    }
+
+    /** 退出当前模式（AI 或文曲星都算）。返回 true = 原本确实在模式里。 */
+    fun exitArmedMode(): Boolean {
+        val current = armed ?: return false
+        val wasTips = current.key == TIPS_KEY
+        armed = null
+        lastSendTapAt = 0
+        WenquxingTips.clear()
+        toast(if (wasTips) "已退出文曲星" else "已退出 AI 模式")
+        Timber.d("bamboo: panel exit mode tips=%s", wasTips)
+        return true
+    }
+
     /** 输入法服务重启时用。 */
     fun reset() {
         armed = null

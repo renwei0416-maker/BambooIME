@@ -30,6 +30,7 @@ import com.osfans.trime.data.prefs.AppPrefs
 import com.osfans.trime.data.theme.ColorManager
 import com.osfans.trime.data.theme.KeyActionManager
 import com.osfans.trime.actions.handwriting.HandwritingWindow
+import com.osfans.trime.actions.bamboo.AiPanelWindow
 import com.osfans.trime.actions.ocr.OcrWindow
 import com.osfans.trime.data.theme.ThemeManager
 import com.osfans.trime.ime.bar.InputBarDelegate
@@ -71,6 +72,7 @@ class CommonKeyboardActionListener {
     /** 手写板窗口：主题弹窗里选中 Handwriting 时才创建。 */
     private val handwritingWindow: HandwritingWindow get() = HandwritingWindow.instance
     private val ocrWindow: OcrWindow get() = OcrWindow.instance
+    private val aiPanelWindow: AiPanelWindow get() = AiPanelWindow.instance
     private val inputBarDelegate: InputBarDelegate by di.instance()
 
     private val prefs = AppPrefs.defaultInstance()
@@ -225,6 +227,19 @@ class CommonKeyboardActionListener {
                         windowManager.attachWindow(keyboardWindow)
                     } else {
                         windowManager.attachWindow(ocrWindow)
+                    }
+                    return
+                }
+
+                // AI 模式面板：同样是 code==0 的纯文本，而且同样要建视图
+                // （不能在 rime 线程上跑 postKeyJob），所以放在通用 token 分发之前。
+                if (action.code == 0 &&
+                    AiPanelWindow.isToken(action.getText(KeyboardWindow.currentKeyboard))
+                ) {
+                    if (windowManager.isAttached(aiPanelWindow)) {
+                        windowManager.attachWindow(keyboardWindow)
+                    } else {
+                        windowManager.attachWindow(aiPanelWindow)
                     }
                     return
                 }
