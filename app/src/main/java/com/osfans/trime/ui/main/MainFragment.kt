@@ -12,6 +12,8 @@ import androidx.fragment.app.activityViewModels
 import androidx.navigation.fragment.findNavController
 import androidx.preference.PreferenceGroup
 import com.osfans.trime.R
+import com.osfans.trime.actions.wanxiang.WanxiangPrefs
+import com.osfans.trime.data.packaging.SchemaPackStore
 import com.osfans.trime.ui.common.PaddingPreferenceFragment
 import com.osfans.trime.ui.texteditor.FileBrowserActivity
 import com.osfans.trime.util.addCategory
@@ -40,11 +42,37 @@ class MainFragment : PaddingPreferenceFragment() {
         }
     }
 
+    private fun wanxiangTitle(): String =
+        if (SchemaPackStore.isInstalled() && WanxiangPrefs.wizardDone) "万象拼音" else "万象拼音（还没配置）"
+
+    private fun wanxiangSummary(): String {
+        if (!SchemaPackStore.isInstalled()) {
+            return "第一次用？点这里，1 分钟配好：内置全拼/双拼 + 九键，67 MB 不用担心下载"
+        }
+        if (!WanxiangPrefs.wizardDone) {
+            return "点这里选键盘形态和编码方式，1 分钟完成；也可以用「方案设置」逐项调"
+        }
+        val layout = when (WanxiangPrefs.layout) {
+            WanxiangPrefs.LAYOUT_9 -> "九键"
+            WanxiangPrefs.LAYOUT_18 -> "18 键"
+            WanxiangPrefs.LAYOUT_14 -> "14 键"
+            else -> "26 键"
+        }
+        val encode =
+            if (WanxiangPrefs.encode == WanxiangPrefs.ENCODE_QUANPIN) "全拼" else "双拼 · ${WanxiangPrefs.scheme}"
+        return "已配置：$layout · $encode（点这里改设置、换下载源、启用/切换方案包）"
+    }
+
     override fun onCreatePreferences(
         savedInstanceState: Bundle?,
         rootKey: String?,
     ) {
         preferenceScreen = preferenceManager.createPreferenceScreen(requireContext()).apply {
+            // 万象拼音放最顶部：它是「第一次用要配的东西」，不能藏在中间。
+            // 副标题按状态说人话：没就绪 -> 第一次用；就绪但没走向导 -> 还没配；配好了 -> 显示当前形态。
+            addPreference(wanxiangTitle(), wanxiangSummary(), R.drawable.ic_baseline_text_fields_24) {
+                findNavController().navigateWithAnim(NavigationRoute.Wanxiang)
+            }
             addDestinationPreference(
                 R.string.packages_title,
                 R.drawable.ic_baseline_folder_24,
@@ -131,9 +159,6 @@ class MainFragment : PaddingPreferenceFragment() {
                 }
                 addPreference("语音发AI", "按住空格说完话，识别结果直接交给当前 AI 模式处理", R.drawable.ic_baseline_mic_24) {
                     findNavController().navigateWithAnim(NavigationRoute.VoiceAi)
-                }
-                addPreference("万象拼音", "内置万象拼音 Base（全拼/双拼 + 九键）：释放、启用、方案设置", R.drawable.ic_baseline_text_fields_24) {
-                    findNavController().navigateWithAnim(NavigationRoute.Wanxiang)
                 }
                 addPreference(
                     "按键动作调用说明",

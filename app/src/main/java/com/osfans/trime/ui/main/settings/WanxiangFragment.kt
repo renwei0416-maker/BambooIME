@@ -59,11 +59,30 @@ class WanxiangFragment : PaddingPreferenceFragment() {
     private fun buildScreen() {
         val installed = SchemaPackStore.isInstalled()
         val active = SchemaPackStore.isActive()
+        val activeId = SchemaPackageManager.activePackageId
         preferenceScreen =
             preferenceManager.createPreferenceScreen(requireContext()).apply {
+                // 顶部状态行：让用户随时知道「现在生效的是哪个包」，避免改了不生效还不知道
+                addRow(
+                    title = when {
+                        !installed -> "尚未安装内置方案包"
+                        active -> "当前生效：wanxiang-base（内置）"
+                        activeId.isBlank() -> "当前没有活动方案包"
+                        else -> "当前生效：$activeId（不是内置包）"
+                    },
+                    summary = when {
+                        !installed ->
+                            "安装包里已内置 67 MB，点下面的「启用这个方案包」释放并启用，约 1 分钟"
+                        active ->
+                            "${layoutLabel()} · ${encodeLabel()}，下面「方案设置」改的就是它"
+                        else ->
+                            "下面「方案设置」只会写进内置包，不会影响你现在用的这个包；" +
+                                "想改内置包的设置，先点「启用这个方案包」切过去"
+                    },
+                )
                 addBambooCategory(
                     "内置方案包",
-                    "万象拼音 Base（全拼/双拼 + 九键），首次启动时已静默释放到用户目录",
+                    "万象拼音 Base（全拼/双拼 + 九键）。装好后在后台静默释放，不需要你手动解压",
                 ) {
                     addRow(
                         title = if (installed) "已就绪" else "尚未释放",
@@ -129,7 +148,7 @@ class WanxiangFragment : PaddingPreferenceFragment() {
                         }.onFailure { toast("打不开向导：${it.message}") }
                     }
 
-                    addRow(
+                    settingRow(
                         title = "键盘形态",
                         summary = layoutLabel() + "　（改这个不会切换键盘布局，键盘请在键盘弹窗里选）",
                     ) {
@@ -145,7 +164,7 @@ class WanxiangFragment : PaddingPreferenceFragment() {
                         ) { WanxiangPrefs.layout = it; refresh() }
                     }
 
-                    addRow(
+                    settingRow(
                         title = "编码方式",
                         summary = if (WanxiangPrefs.layout == WanxiangPrefs.LAYOUT_9) {
                             "九键固定全拼"
@@ -167,7 +186,7 @@ class WanxiangFragment : PaddingPreferenceFragment() {
                         }
                     }
 
-                    addRow(
+                    settingRow(
                         title = "双拼方案",
                         summary = WanxiangPrefs.scheme + "（只在双拼下生效）",
                     ) {
@@ -182,7 +201,7 @@ class WanxiangFragment : PaddingPreferenceFragment() {
                         }
                     }
 
-                    addRow(
+                    settingRow(
                         title = "辅助码",
                         summary = if (SchemaPackStore.variant() == SchemaPackStore.VARIANT_BASE) {
                             "内置 Base 词库不含辅助码，装上 Pro 变体后才能开"
@@ -198,11 +217,11 @@ class WanxiangFragment : PaddingPreferenceFragment() {
                     ) {
                         if (SchemaPackStore.variant() == SchemaPackStore.VARIANT_BASE) {
                             toast("内置 Base 词库不含辅助码；装上 Pro 变体后再来开")
-                            return@addRow
+                            return@settingRow
                         }
                         if (WanxiangPrefs.layout == WanxiangPrefs.LAYOUT_9) {
                             toast("九键下辅助码无效，切回全键盘再开")
-                            return@addRow
+                            return@settingRow
                         }
                         pickInt(
                             "辅助码",
@@ -215,7 +234,7 @@ class WanxiangFragment : PaddingPreferenceFragment() {
                         ) { WanxiangPrefs.aux = it; refresh() }
                     }
 
-                    addRow(
+                    settingRow(
                         title = "模糊音",
                         summary = if (WanxiangPrefs.layout == WanxiangPrefs.LAYOUT_9) {
                             "九键不跟随模糊音（切回全键盘后可设）"
@@ -227,12 +246,12 @@ class WanxiangFragment : PaddingPreferenceFragment() {
                     ) {
                         if (WanxiangPrefs.layout == WanxiangPrefs.LAYOUT_9) {
                             toast("九键不跟随模糊音，切回全键盘再设")
-                            return@addRow
+                            return@settingRow
                         }
                         pickFuzzy()
                     }
 
-                    addRow(
+                    settingRow(
                         title = "候选个数",
                         summary = "${WanxiangPrefs.pageSize} 个（官方默认 6，最大 6）",
                     ) {
@@ -243,7 +262,7 @@ class WanxiangFragment : PaddingPreferenceFragment() {
                         ) { WanxiangPrefs.pageSize = it; refresh() }
                     }
 
-                    addRow(
+                    settingRow(
                         title = "用户词典（自动调频）",
                         summary = if (WanxiangPrefs.userDict) "已开启" else "关闭（官方默认）",
                     ) {
@@ -252,7 +271,7 @@ class WanxiangFragment : PaddingPreferenceFragment() {
                         }
                     }
 
-                    addRow(
+                    settingRow(
                         title = "智能调频（上下文预测）",
                         summary = if (!WanxiangPrefs.userDict) {
                             "依赖用户词典，先打开「用户词典」再设"
@@ -264,14 +283,14 @@ class WanxiangFragment : PaddingPreferenceFragment() {
                     ) {
                         if (!WanxiangPrefs.userDict) {
                             toast("先打开「用户词典」")
-                            return@addRow
+                            return@settingRow
                         }
                         pickBool("智能调频（上下文预测）", WanxiangPrefs.contextual) {
                             WanxiangPrefs.contextual = it; refresh()
                         }
                     }
 
-                    addRow(
+                    settingRow(
                         title = "九键候选个数",
                         summary = "${WanxiangPrefs.t9PageSize} 个",
                     ) {
@@ -282,7 +301,7 @@ class WanxiangFragment : PaddingPreferenceFragment() {
                         ) { WanxiangPrefs.t9PageSize = it; refresh() }
                     }
 
-                    addRow(
+                    settingRow(
                         title = "九键用户词典（自动调频）",
                         summary = if (WanxiangPrefs.t9UserDict) "开启（官方默认）" else "关闭",
                     ) {
@@ -291,7 +310,7 @@ class WanxiangFragment : PaddingPreferenceFragment() {
                         }
                     }
 
-                    addRow(
+                    settingRow(
                         title = "应用并部署",
                         summary = if (WanxiangPrefs.hasPendingChanges()) {
                             "有未应用的改动 —— 点这里写盘并重新部署（约 1–4 分钟）"
@@ -302,7 +321,7 @@ class WanxiangFragment : PaddingPreferenceFragment() {
                         applyAndDeploy()
                     }
 
-                    addRow(
+                    settingRow(
                         title = "恢复官方默认",
                         summary = "把上面这些改回官方默认值（辅助码关闭、调频关闭、候选 6、模糊音全关），然后应用",
                     ) {
@@ -435,6 +454,64 @@ class WanxiangFragment : PaddingPreferenceFragment() {
     }
 
     // ---------------------------------------------------------------- 方案设置
+
+    /**
+     * 改设置前的守卫：确保「内置包存在」且「它就是当前活动的包」。
+     *
+     * 不做这个检查的后果：用户自己的包是活动包时，设置会写进内置包的 custom，
+     * 屏幕上什么都不会变，用户只会觉得「改了没用」。
+     */
+    private fun ensureWritable(): Boolean {
+        if (!SchemaPackStore.isInstalled()) {
+            toast("内置方案包还没释放，正在准备…")
+            releaseThenRefresh()
+            return false
+        }
+        if (!SchemaPackStore.isActive()) {
+            val current = SchemaPackageManager.activePackageId.ifBlank { "未选择" }
+            AlertDialog.Builder(requireContext())
+                .setTitle("先切到内置方案包")
+                .setMessage(
+                    "这些设置会写进内置包（`wanxiang-base`）的 custom，" +
+                        "但你现在用的是 $current，改了不会生效。\n\n要切过去吗？",
+                )
+                .setNegativeButton("取消", null)
+                .setPositiveButton("切过去并部署") { _, _ ->
+                    lifecycleScope.launch {
+                        val ready =
+                            withContext(Dispatchers.IO) { SchemaPackStore.ensureCopied(requireContext()) }
+                        if (!ready) {
+                            toast("释放失败：检查 Documents 目录是否可写")
+                            return@launch
+                        }
+                        toast("正在部署，请稍候…")
+                        deployToOurPackage()
+                        rebuildPreferencesKeepingScroll { buildScreen() }
+                    }
+                }
+                .show()
+            return false
+        }
+        return true
+    }
+
+    /** 「方案设置」里的行统一走这里：先过守卫，再执行。 */
+    private fun settingRow(
+        title: String,
+        summary: String,
+        onClick: () -> Unit,
+    ) {
+        preferenceScreen.addRow(title = title, summary = summary) {
+            if (ensureWritable()) onClick()
+        }
+    }
+
+    private fun encodeLabel(): String =
+        if (WanxiangPrefs.encode == WanxiangPrefs.ENCODE_QUANPIN) {
+            "全拼"
+        } else {
+            "双拼 · ${WanxiangPrefs.scheme}"
+        }
 
     private fun layoutLabel(): String = when (WanxiangPrefs.layout) {
         WanxiangPrefs.LAYOUT_18 -> "18 键"

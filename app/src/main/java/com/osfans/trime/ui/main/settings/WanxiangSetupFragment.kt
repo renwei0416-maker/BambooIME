@@ -5,6 +5,8 @@
 
 package com.osfans.trime.ui.main.settings
 
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.view.Gravity
 import android.view.LayoutInflater
@@ -18,13 +20,15 @@ import android.widget.ScrollView
 import android.widget.TextView
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
-import com.osfans.trime.R
+import androidx.navigation.fragment.findNavController
 import com.osfans.trime.actions.wanxiang.WanxiangCustom
 import com.osfans.trime.actions.wanxiang.WanxiangPrefs
-import com.osfans.trime.core.Rime
+import com.osfans.trime.data.base.DataManager
 import com.osfans.trime.data.packaging.SchemaPackageManager
 import com.osfans.trime.data.packaging.SchemaPackStore
 import com.osfans.trime.daemon.RimeDaemon
+import com.osfans.trime.ui.main.NavigationRoute
+import com.osfans.trime.util.navigateWithAnim
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -33,16 +37,19 @@ import timber.log.Timber
 /**
  * 万象拼音「新用户设置向导」。
  *
- * 四页：①键盘（26/18/14/9）②编码（全拼/双拼）③拼音方案（13 种双拼）④确认并应用。
+ * 五页：
+ *  0. 分流 —— 我是新用户 / 我是老用户（方案包自己放）
+ *  1. 键盘形态（26 / 18 / 14 / 9）—— 选完立刻在后台解包，后面几页不用等
+ *  2. 编码（全拼 / 双拼）—— 九键固定全拼
+ *  3. 顺手设置（候选个数 / 用户词典 / 模糊音说明）
+ *  4. 确认并应用 —— 把要写的 YAML 原样列出来，点「完成并应用」才写盘 + 部署
  *
  * 规则：
- *  * 九键固定全拼 —— 第 ②③ 页在九键下禁用并写明原因（避免「双拼 + 九键」这种废组合）；
+ *  * 辅助码不在这里选：内置的 Base 词库不含辅码，装上 Pro 变体后才在「方案设置」里开；
  *  * 14 键用 26 键键盘模拟（主题里没有 14 键布局），页面明确提示；
- *  * 第 ④ 页把要写的 YAML 原样展示，点「完成并应用」才写盘 + 部署。
+ *  * 老用户分支不碰任何文件，只给路径和跳转。
  */
 class WanxiangSetupFragment : Fragment() {
-
-    private val rime = RimeDaemon.createSession(javaClass.name)
 
     private lateinit var content: LinearLayout
     private lateinit var title: TextView
@@ -52,8 +59,10 @@ class WanxiangSetupFragment : Fragment() {
 
     private var page = 0
     private var busy = false
+    private var releaseStarted = false
+    private var releaseOk = false
 
-    private val pages = 4
+    private val pages = 5
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -110,7 +119,6 @@ class WanxiangSetupFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        // 从当前生效的组合反推，重复进入时不重置
         page = 0
         render()
     }
@@ -131,14 +139,78 @@ class WanxiangSetupFragment : Fragment() {
         content.removeAllViews()
         progress.text = "第 ${page + 1} / $pages 步"
         prev.isEnabled = page > 0
+        prev.visibility = if (page == 0) View.INVISIBLE else View.VISIBLE
         next.text = if (page == pages - 1) "完成并应用" else "下一步"
 
         when (page) {
-            0 -> renderLayout()
-            1 -> renderEncode()
-            2 -> renderScheme()
+            0 -> renderGate()
+            1 -> renderLayout()
+            2 -> renderEncode()
+            3 -> renderExtras()
             else -> renderConfirm()
         }
+    }
+
+    /** 第 0 页：先问一句「你是谁」。老用户不该被我们的方案包挡住。 */
+    private fun renderGate() {
+        title.text = "先确认一下"
+        content.addView(
+            hint(
+                "这个向导会给新用户配好「万象拼音」：内置全拼/双拼 + 九键，共 67 MB，不用另外下载。\n" +
+                    "已经自己放好方案包、或想继续用自己的方案的话，走下面的「老用户」就行，向导不会动你的任何文件。",
+            ),
+        )
+        content.addView(
+            bigButton("我是新用户，帮我一分钟配好") {
+                page = 1
+                render()
+                startBackgroundRelease()
+            },
+        )
+        content.addView(
+            bigButton("我是老用户，方案包我自己放") {
+                WanxiangPrefs.wizardDone = true
+                showVeteranHelp()
+            },
+        )
+    }
+
+    private fun showVeteranHelp() {
+        content.removeAllViews()
+        title.text = "老用户：方案包自己放"
+        content.addView(
+            hint(
+                "把方案包文件夹放到：\n\n" +
+                    "  ${DataManager.userDataBaseDir.absolutePath}\n\n" +
+                    "一个方案包 = 一个文件夹，里面要有 default.yaml 和至少一个 *.schema.yaml。\n" +
+                    "放好后回到「方案包管理」就能看到它，选中即用。",
+            ),
+        )
+        content.addView(
+            bigButton("打开这个文件夹") {
+                runCatching {
+                    val intent = Intent(Intent.ACTION_VIEW).apply {
+                        setDataAndType(
+                            Uri.parse("file://" + DataManager.userDataBaseDir.absolutePath),
+                            "resource/folder",
+                        )
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    requireContext().startActivity(intent)
+                }.onFailure { toast("这个系统没有文件管理器能打开文件夹，请手动进 Documents/BambooIME") }
+            },
+        )
+        content.addView(
+            bigButton("去「方案包管理」") {
+                runCatching { findNavController().navigateWithAnim(NavigationRoute.PackageList) }
+                    .onFailure { toast("跳转失败，请返回上一页从菜单进入") }
+            },
+        )
+        content.addView(
+            bigButton("我用我自己的方案，先不用万象") {
+                runCatching { parentFragmentManager.popBackStack() }
+            },
+        )
     }
 
     private fun renderLayout() {
@@ -146,7 +218,8 @@ class WanxiangSetupFragment : Fragment() {
         content.addView(
             hint(
                 "九宫格（9 键）用官方的「万象九键」方案；18 键用 18 键折叠；" +
-                    "14 键目前只能用 26 键键盘模拟（主题没有 14 键布局），按键会有重复。",
+                    "14 键目前只能用 26 键键盘模拟（主题没有 14 键布局），按键会有重复。\n\n" +
+                    "键盘布局本身要在键盘弹窗里切（9 键选「T9」，18 键选「18」），自动切会放到后面的主题设置里做。",
             ),
         )
         content.addView(
@@ -160,12 +233,18 @@ class WanxiangSetupFragment : Fragment() {
                 WanxiangPrefs.layout,
             ) { WanxiangPrefs.layout = it; render() },
         )
+        content.addView(releaseStatusView())
     }
 
     private fun renderEncode() {
         title.text = "全拼还是双拼"
         if (WanxiangPrefs.layout == WanxiangPrefs.LAYOUT_9) {
-            content.addView(hint("九键固定用全拼：九宫格每个键对应 3–4 个字母，双拼的键位在九键上无法输入。\n切回全键盘后可以再来这里改双拼。"))
+            content.addView(
+                hint(
+                    "九键固定用全拼：九宫格每个键对应 3–4 个字母，双拼的键位在九键上无法输入。\n" +
+                        "切回全键盘后可以再来这里改双拼。",
+                ),
+            )
             return
         }
         content.addView(
@@ -177,17 +256,52 @@ class WanxiangSetupFragment : Fragment() {
                 WanxiangPrefs.encode,
             ) { WanxiangPrefs.encode = it; render() },
         )
+        if (WanxiangPrefs.encode == WanxiangPrefs.ENCODE_SHUANGPIN) {
+            content.addView(
+                hint(
+                    "小提示：双拼下打单音节字要打两下（啊 = aa、哦 = oo），这是双拼本身的规则，" +
+                        "全拼没有这个限制。",
+                ),
+            )
+            content.addView(sectionLabel("用哪套双拼"))
+            content.addView(
+                radio(
+                    WanxiangPrefs.SCHEMES.map { it to it },
+                    WanxiangPrefs.scheme,
+                ) { WanxiangPrefs.scheme = it; render() },
+            )
+        }
     }
 
-    private fun renderScheme() {
-        title.text = "选一个双拼方案"
-        val quanpin = WanxiangPrefs.encode == WanxiangPrefs.ENCODE_QUANPIN
-        if (quanpin) {
-            content.addView(hint("你选的是全拼，这一步不需要选方案。"))
-            return
-        }
-        val items = WanxiangPrefs.SCHEMES.map { it to it }
-        content.addView(radio(items, WanxiangPrefs.scheme) { WanxiangPrefs.scheme = it; render() })
+    private fun renderExtras() {
+        title.text = "顺手调两个"
+        content.addView(hint("这两项以后也能在「方案设置」里改。"))
+        content.addView(sectionLabel("候选个数"))
+        content.addView(
+            radio(
+                listOf(3, 4, 5, 6).map { it to "$it 个" },
+                WanxiangPrefs.pageSize,
+            ) { WanxiangPrefs.pageSize = it; render() },
+        )
+        content.addView(sectionLabel("用户词典（记住你常打的词）"))
+        content.addView(
+            radio(
+                listOf(false to "不开（官方默认，换词序更稳定）", true to "开（越用越顺手）"),
+                WanxiangPrefs.userDict,
+            ) { WanxiangPrefs.userDict = it; render() },
+        )
+        content.addView(sectionLabel("模糊音"))
+        content.addView(
+            hint(
+                "默认全关（官方也是全关）。需要的话配好后到「万象拼音 → 方案设置 → 模糊音」逐项打开：" +
+                    "n/l、r/l、h/f、k/g、en/eng、in/ing、c/ch、z/zh、s/sh。",
+            ),
+        )
+        content.addView(
+            hint(
+                "辅助码这次不选：内置的 Base 词库不含辅码，等你在「方案设置」里装上 Pro 变体（约 30 MB）后再开。",
+            ),
+        )
     }
 
     private fun renderConfirm() {
@@ -196,17 +310,34 @@ class WanxiangSetupFragment : Fragment() {
         content.addView(
             hint(
                 "将写入这些设置：\n\n" + WanxiangCustom.algebraNodes().joinToString("\n") { "  - $it" } +
-                    "\n  menu/page_size: ${WanxiangPrefs.pageSize}\n\n" +
-                    "点「完成并应用」后会重新部署一次（约 1–4 分钟，取决于词库大小）。",
+                    "\n  menu/page_size: ${WanxiangPrefs.pageSize}\n" +
+                    "  translator/enable_user_dict: ${WanxiangPrefs.userDict}\n\n" +
+                    "点「完成并应用」后会重新部署一次（约 1–2 分钟）。",
             ),
         )
-        content.addView(
-            hint(
-                "注意：键盘布局需要你自己在键盘弹窗里切到对应的那一款（9 键选「T9」，18 键选「18」）。" +
-                    "自动切键盘会放到下一步的「主题设置」里做。",
-            ),
-        )
+        content.addView(releaseStatusView())
     }
+
+    // ------------------------------------------------------------ 解包
+
+    private fun startBackgroundRelease() {
+        if (releaseStarted) return
+        releaseStarted = true
+        viewLifecycleOwner.lifecycleScope.launch {
+            // 第 1 页选完键盘就开始解包，走到第 5 页时基本已经好了
+            releaseOk = withContext(Dispatchers.IO) { SchemaPackStore.ensureCopied(requireContext()) }
+            Timber.d("wanxiang wizard: release=$releaseOk")
+            if (page == 1 || page == 4) render()
+        }
+    }
+
+    private fun releaseStatusView(): TextView = hint(
+        when {
+            releaseOk -> "内置方案包已就绪，继续往下就行。"
+            releaseStarted -> "正在后台准备方案包（67 MB），不用等它，继续往下点就好。"
+            else -> "点「下一步」会开始在后台准备方案包（67 MB）。"
+        },
+    )
 
     override fun onDestroy() {
         RimeDaemon.destroySession(javaClass.name)
@@ -224,18 +355,27 @@ class WanxiangSetupFragment : Fragment() {
         next.text = "正在应用…"
 
         viewLifecycleOwner.lifecycleScope.launch {
+            val ready = withContext(Dispatchers.IO) { SchemaPackStore.ensureCopied(requireContext()) }
+            if (!ready) {
+                busy = false
+                next.isEnabled = true
+                next.text = "完成并应用"
+                toast("释放方案包失败：检查 Documents 目录是否可写")
+                return@launch
+            }
+
             val ok = withContext(Dispatchers.IO) { WanxiangCustom.writeAll() }
             Timber.d("wanxiang wizard: writeAll=$ok")
             if (!ok) {
                 busy = false
                 next.isEnabled = true
                 next.text = "完成并应用"
-                toast("写入失败：方案包可能还没释放，先去「万象拼音」页启用")
+                toast("写入配置失败：检查 Documents 目录是否可写")
                 return@launch
             }
 
             // 按包 id 激活：`selectSchemaCrossPackage` 是按方案 id 反查包的，
-            // 用户自己的包里也有同名 `wanxiang_pro` 时会被切到人家的包（踩过）。
+            // 用户自己的包里也有同名方案时会被切到人家的包（踩过）。
             SchemaPackageManager.setActivePackageId(SchemaPackStore.PACKAGE_ID)
             withContext(Dispatchers.IO) {
                 runCatching { RimeDaemon.restartRime(fullCheck = true) }
@@ -244,12 +384,29 @@ class WanxiangSetupFragment : Fragment() {
 
             WanxiangPrefs.wizardDone = true
             busy = false
-            toast("已应用，方案已切换为「万象${if (WanxiangPrefs.layout == WanxiangPrefs.LAYOUT_9) "九键" else "拼音"}」")
+            toast("已应用。键盘布局记得自己在键盘弹窗里切一下")
             runCatching { parentFragmentManager.popBackStack() }
         }
     }
 
     // ------------------------------------------------------------ 小工具
+
+    private fun bigButton(label: String, onClick: () -> Unit): Button = Button(requireContext()).apply {
+        text = label
+        textSize = 15f
+        setOnClickListener { onClick() }
+        layoutParams = LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        ).apply { topMargin = dp(6) }
+    }
+
+    private fun sectionLabel(text: String): TextView = TextView(requireContext()).apply {
+        this.text = text
+        textSize = 15f
+        setTextColor(0xFFF2EFE6.toInt())
+        setPadding(0, dp(14), 0, dp(4))
+    }
 
     private fun <T> radio(
         items: List<Pair<T, String>>,
