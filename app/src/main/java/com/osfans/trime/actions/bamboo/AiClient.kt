@@ -59,6 +59,7 @@ object AiClient {
         text: String,
         temperature: Float = BambooPrefs.aiTemperature,
         maxTokens: Int = BambooPrefs.aiMaxTokens,
+        timeoutMs: Int = BambooPrefs.aiTimeoutMs,
     ): Result<String> =
         withContext(Dispatchers.IO) {
             val cfg =
@@ -68,7 +69,7 @@ object AiClient {
                     key = BambooPrefs.aiApiKey,
                     temp = temperature,
                     maxTokens = maxTokens,
-                    timeoutMs = BambooPrefs.aiTimeoutMs,
+                    timeoutMs = timeoutMs,
                 )
             if (cfg.url.isEmpty()) return@withContext Result.failure(AiError("还没填 AI 接口地址"))
             if (cfg.model.isEmpty()) return@withContext Result.failure(AiError("还没填模型名"))

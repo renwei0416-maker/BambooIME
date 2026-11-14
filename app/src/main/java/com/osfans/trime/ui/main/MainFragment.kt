@@ -129,6 +129,9 @@ class MainFragment : PaddingPreferenceFragment() {
                 addPreference("外语学习", "让你边打字边学习外语", R.drawable.ic_baseline_language_24) {
                     findNavController().navigateWithAnim(NavigationRoute.Glossary)
                 }
+                addPreference("语音发AI", "按住空格说完话，识别结果直接交给当前 AI 模式处理", R.drawable.ic_baseline_mic_24) {
+                    findNavController().navigateWithAnim(NavigationRoute.VoiceAi)
+                }
                 addPreference(
                     "按键动作调用说明",
                     "全部动作名（token）的总表、写法和注意事项，供自定义键位参照",

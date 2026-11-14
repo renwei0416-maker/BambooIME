@@ -65,6 +65,7 @@ object BambooActions {
     fun init(context: Context) {
         appContext = context.applicationContext
         BambooPrefs.init(context)
+        VoiceAiPrefs.init(context)
     }
 
     /**
@@ -773,6 +774,104 @@ object BambooActions {
     /** 设置里改了「退出 AI 模式」之类时用。 */
     fun disarm() {
         armed = null
+    }
+
+    // ---------------------------------------------------------------- 语音发AI
+
+    /**
+     * 语音识别结束后的 AI 出口。由 [VoiceAi] 调用。
+     *
+     * 语义（已与用户确认）：
+     *  * 没进任何模式 / 本页被关掉 / 进的是文曲星 → 返回 false，交回原来的「只上屏」流程；
+     *  * 进了普通 AI 模式 → 发这段文字，模式保持不动；
+     *  * 结果**追加**在原文后面，不删除也不替换原文。
+     *
+     * @return true 表示已经接管（调用方不要再自己上屏）。
+     */
+    internal fun dispatchVoiceText(
+        service: TrimeInputMethodService,
+        text: String,
+    ): Boolean {
+        val source = text.trim()
+        if (source.isEmpty()) return false
+        if (!VoiceAiPrefs.enabled) return false
+        if (source.length < VoiceAiPrefs.minChars) return false
+
+        val mode = armed ?: if (VoiceAiPrefs.alwaysSend) defaultMode() else null
+        if (mode == null) return false
+        // 文曲星不是「发请求」的模式：语音进来只上屏，不打扰它
+        if (mode.key == TIPS_KEY) return false
+
+        val send = if (source.length > VoiceAiPrefs.maxChars) source.take(VoiceAiPrefs.maxChars) else source
+        return sendVoiceRequest(service, mode, send, source)
+    }
+
+    /**
+     * 语音这条路的请求体：与 [aiSend] 的区别只有两点——
+     *  * 文本由语音识别给定，不去读组合/剪贴板；
+     *  * 失败时按设置可以把识别到的原文补上屏。
+     */
+    private fun sendVoiceRequest(
+        service: TrimeInputMethodService,
+        mode: AiMode,
+        sendText: String,
+        sourceText: String,
+    ): Boolean {
+        if (inFlight) {
+            toast("AI 正在处理上一条")
+            return false
+        }
+        inFlight = true
+        val epoch = editorEpoch
+        val prompt = stackedVoicePrompt(mode)
+        val timeoutMs = VoiceAiPrefs.timeoutSec * 1000
+        service.lifecycleScope.launch {
+            try {
+                if (VoiceAiPrefs.showStatus) toast("语音已发给「${mode.name}」，处理中…")
+                val result = AiClient.chat(prompt = prompt, text = sendText, timeoutMs = timeoutMs)
+                if (editorEpoch != epoch) {
+                    Timber.i("bamboo: editor changed, drop voice ai result")
+                    return@launch
+                }
+                result
+                    .onSuccess { out ->
+                        withContext(Dispatchers.Main) {
+                            if (out.isNotEmpty()) {
+                                if (BambooPrefs.aiSendAfter) service.commitText(" ")
+                                service.commitText(out)
+                                RevertLedger.record(out)
+                            }
+                        }
+                        Timber.i("bamboo: voice ai result committed, mode kept: %s", mode.name)
+                    }.onFailure { e ->
+                        Timber.w(e, "bamboo: voice ai failed")
+                        withContext(Dispatchers.Main) {
+                            if (VoiceAiPrefs.commitOnFail) {
+                                service.commitText(sourceText)
+                                RevertLedger.record(sourceText)
+                            }
+                            toast("AI 失败：${e.message ?: "未知错误"}")
+                        }
+                    }
+            } catch (e: Throwable) {
+                Timber.w(e, "bamboo: voice ai send failed")
+                withContext(Dispatchers.Main) {
+                    toast("AI 失败：${e.message ?: "未知错误"}")
+                }
+            } finally {
+                inFlight = false
+            }
+        }
+        return true
+    }
+
+    /** 语音纠错提示词 + 模式提示词：两层都进 system，user 只放识别原文。 */
+    private fun stackedVoicePrompt(mode: AiMode): String {
+        if (!VoiceAiPrefs.stackFixPrompt) return mode.prompt
+        val fix = VoiceAiPrefs.fixPrompt.trim()
+        if (fix.isEmpty()) return mode.prompt
+        val main = mode.prompt.trim()
+        return if (main.isEmpty()) fix else "$fix\n\n$main"
     }
 
     // ---------------------------------------------------------------- 小工具

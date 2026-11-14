@@ -26,6 +26,7 @@ import com.osfans.trime.data.prefs.AppPrefs
 import com.osfans.trime.data.stats.InputStatsRepository
 import com.osfans.trime.data.stats.InputStatsVoiceSource
 import com.osfans.trime.ime.core.TrimeInputMethodService
+import com.osfans.trime.actions.bamboo.VoiceAi
 import com.osfans.trime.util.toast
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -560,9 +561,9 @@ object SherpaSpeechClient {
                     if (!finalText.isNullOrBlank()) {
                         InputStatsRepository.recordVoice(finalText, InputStatsVoiceSource.BUILTIN)
                         withContext(Dispatchers.Main) {
-                            val ic = serviceRef?.get()?.currentInputConnection
-                            ic?.setComposingText(finalText, 1)
-                            ic?.finishComposingText()
+                            // 上屏与「要不要发给 AI」都交给 VoiceAi 收口，
+                            // 这里不再自己 setComposingText。
+                            serviceRef?.get()?.let { VoiceAi.handleFinal(it, finalText) }
                         }
                     }
                     withContext(Dispatchers.Main) {

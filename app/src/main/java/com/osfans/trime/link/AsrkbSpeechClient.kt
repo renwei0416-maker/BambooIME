@@ -23,6 +23,7 @@ import com.osfans.trime.R
 import com.osfans.trime.data.stats.InputStatsRepository
 import com.osfans.trime.data.stats.InputStatsVoiceSource
 import com.osfans.trime.ime.core.TrimeInputMethodService
+import com.osfans.trime.actions.bamboo.VoiceAi
 import com.osfans.trime.util.toast
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -122,7 +123,8 @@ object AsrkbSpeechClient {
                                                 InputStatsRepository.recordVoice(text, InputStatsVoiceSource.AIDL)
                                             }
                                             ctx.lifecycleScope.launch {
-                                                ctx.commitText(text)
+                                                // 上屏与「要不要发给 AI」都交给 VoiceAi 收口
+                                                VoiceAi.handleFinal(ctx, text)
                                                 unbind()
                                             }
                                             reply?.writeNoException()

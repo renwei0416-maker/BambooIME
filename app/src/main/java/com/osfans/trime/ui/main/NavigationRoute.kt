@@ -29,6 +29,7 @@ import com.osfans.trime.ui.main.settings.OcrSettingsFragment
 import com.osfans.trime.ui.main.settings.PackageListFragment
 import com.osfans.trime.ui.main.settings.ProfileSettingsFragment
 import com.osfans.trime.ui.main.settings.VoiceInputSettingsFragment
+import com.osfans.trime.ui.main.settings.VoiceAiFragment
 import com.osfans.trime.ui.main.settings.schema.SchemaListFragment
 import com.osfans.trime.ui.main.settings.theme.ThemeSettingsFragment
 import com.osfans.trime.ui.main.settings.userdict.UserDictionaryFragment
@@ -82,6 +83,9 @@ sealed class NavigationRoute : Parcelable {
 
     @Serializable
     data object Glossary : NavigationRoute()
+
+    @Serializable
+    data object VoiceAi : NavigationRoute()
 
     @Serializable
     data object VirtualKeyboard : NavigationRoute()
@@ -186,6 +190,9 @@ sealed class NavigationRoute : Parcelable {
             }
             fragment<GlossaryFragment, Glossary> {
                 label = "外语学习"
+            }
+            fragment<VoiceAiFragment, VoiceAi> {
+                label = "语音发AI"
             }
             fragment<AdvancedSettingsFragment, Advanced> {
                 label = ctx.getString(R.string.advanced)
