@@ -160,6 +160,15 @@ class KeyAction(
 
     fun getPreview(keyboard: Keyboard): String = preview ?: getLabel(keyboard)
 
+    /**
+     * 是不是「按住说话」的苍竹 token（[com.osfans.trime.actions.bamboo.BambooTokens.VOICE_AI]）。
+     *
+     * [text] 对外是 private，而 [com.osfans.trime.ime.keyboard.KeyView] 判断长按要不要
+     * 开始/结束录音时需要它，所以在这里开一个只读窗口。
+     */
+    val isBambooVoiceAiToken: Boolean
+        get() = text == com.osfans.trime.actions.bamboo.BambooTokens.VOICE_AI
+
     init {
         when (token) {
             is KeyActionToken.Plain -> {

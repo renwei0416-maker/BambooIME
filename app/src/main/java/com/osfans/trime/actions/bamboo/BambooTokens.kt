@@ -63,10 +63,22 @@ object BambooTokens {
      */
     val TIP_SLOTS: List<String> = (1..6).map { "BambooTip$it" }
 
+    /**
+     * 按住说话（等价主题里原来的 `VoiceAssist`）。
+     *
+     * 绑到某个键的 `long_click` 上即可：按下开始录音（波纹、提示与 VoiceAssist 一致），
+     * 松手结束；识别结果出来后，若当时在某个 AI 模式里就顺带发给它。
+     *
+     * 注意：长按那一支由 [com.osfans.trime.ime.keyboard.KeyView] 直接处理（提前 return），
+     * 所以这个 token 只会在「点按 / 外接键盘」这类非长按路径上经过
+     * [BambooActions.handleToken]。
+     */
+    const val VOICE_AI = "BambooVoiceAi"
+
     val fixed: List<String> =
         listOf(
             REVERT, CLEAR, DELETE_LINE, DELETE_WORD, AI_SEND, AI_CLIP, AI_OFF, SETTINGS,
-            QUOTE, QUOTE_SINGLE, TIP,
+            QUOTE, QUOTE_SINGLE, TIP, VOICE_AI,
         ) + TIP_SLOTS
 
     /** 设置页「动作名一览」用的说明表；与 [fixed] 同源，不会漏项。 */
@@ -83,6 +95,7 @@ object BambooTokens {
             QUOTE to "提交左双引号“（开启「符号补全」时自动补右半边并居中）",
             QUOTE_SINGLE to "提交左单引号‘（同上）",
             TIP to "上屏当前高亮那一条的英文（外语学习；没有则不上屏）",
+            VOICE_AI to "按住说话（等价 VoiceAssist）；在 AI 模式里时识别结果同时发给该模式",
         ) + TIP_SLOTS.mapIndexed { i, n -> n to "上屏提示块第 ${i + 1} 条（外语学习取英文，文曲星取圈号 ${i + 1}；没有则不上屏）" }
 
     /** 名字 → 说明，与 [fixed] 同源。 */

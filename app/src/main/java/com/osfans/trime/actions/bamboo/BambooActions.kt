@@ -17,11 +17,14 @@ import com.osfans.trime.actions.wenquxing.WenquxingPrefs
 import com.osfans.trime.actions.wenquxing.WenquxingTips
 import com.osfans.trime.core.Rime
 import com.osfans.trime.core.RimeApi
+import com.osfans.trime.ime.bar.InputBarDelegate
 import com.osfans.trime.ime.core.TrimeInputMethodService
+import com.osfans.trime.ime.dependency.InputDependencyManager
 import android.content.Intent
 import com.osfans.trime.ui.main.MainActivity
 import com.osfans.trime.ui.main.NavigationRoute
 import kotlinx.coroutines.Dispatchers
+import org.kodein.di.instance
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -339,6 +342,18 @@ object BambooActions {
             api.clearComposition()
             service.commitText(text)
             HandwritingLog.d("tips", "token=$token block=${TipBlocks.current()} -> $text")
+            return true
+        }
+        // 「按住说话」属于语音链路，和「回退与AI」总开关无关（等价主题原来的 VoiceAssist）。
+        // 正常长按时 KeyView 会先命中自己那一支、直接开始录音，根本走不到这里；
+        // 这里是兜底：点按、外接键盘、或主题绑在别的 behavior 上时也能开始录音。
+        if (token == BambooTokens.VOICE_AI) {
+            runCatching {
+                // Kodein 的 di.instance<T>() 返回 LazyDelegate，必须取一次真实例才能调方法
+                val bar: InputBarDelegate by InputDependencyManager.getInstance().di.instance()
+                bar.startVoiceHoldSession()
+                HandwritingLog.d("voice ai", "token voice ai -> startVoiceHoldSession")
+            }.onFailure { Timber.w(it, "bamboo: token voice ai start failed") }
             return true
         }
         if (!BambooPrefs.enabled) return false

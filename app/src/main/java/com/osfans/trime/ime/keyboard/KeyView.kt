@@ -21,6 +21,7 @@ import android.util.LruCache
 import android.view.KeyEvent
 import com.mikepenz.iconics.IconicsDrawable
 import com.mikepenz.iconics.utils.sizePx
+import com.osfans.trime.actions.bamboo.BambooTokens
 import com.osfans.trime.daemon.RimeDaemon
 import com.osfans.trime.data.prefs.AppPrefs
 import com.osfans.trime.data.theme.ColorManager
@@ -252,7 +253,16 @@ class KeyView(
         }
     }
 
-    private fun isVoiceLongPressAction(action: KeyAction?): Boolean = action?.code == KeyEvent.KEYCODE_VOICE_ASSIST
+    /**
+     * 长按是不是「按住说话」。
+     *
+     * 除了主题原有的 `VoiceAssist`（伪键码 KEYCODE_VOICE_ASSIST），也认我们自己的
+     * 文本 token `BambooVoiceAi` —— 它解析出来 `code = 0`，如果不放宽，
+     * 按下能开始录音（走 token），松手却没人停（松手那一支只认这个判定）。
+     */
+    private fun isVoiceLongPressAction(action: KeyAction?): Boolean =
+        action?.code == KeyEvent.KEYCODE_VOICE_ASSIST ||
+            action?.isBambooVoiceAiToken == true
 
     private fun processKeyAction(action: KeyAction, behavior: KeyBehavior) {
         Timber.d("processKeyAction: label=${key.getLabel()}, code=${action.code}, type=$behavior")
