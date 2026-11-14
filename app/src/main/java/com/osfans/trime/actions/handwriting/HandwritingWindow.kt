@@ -18,6 +18,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+import android.view.inputmethod.InputConnection
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.graphics.PorterDuff
@@ -1206,6 +1207,10 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
     }
 
     private fun buildPanelGrid(page: Int) {
+        if (page == SymbolPages.PAGE_FAVORITE) {
+            buildFavoriteGrid()
+            return
+        }
         val pageData = SymbolPages.PAGES.getOrNull(page) ?: SymbolPages.PAGES[0]
         val group = pageData.groups.getOrNull(currentGroup) ?: pageData.groups.firstOrNull()
         val items = group?.items ?: pageData.items
@@ -1229,6 +1234,64 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
         // 建完行后按可见高度均分：数字页 4 行会自动撑高到几乎铺满，
         // 符号页行多则退回 30dp 靠滑动看
         panelScroll.post { applyRowHeight() }
+    }
+
+    /**
+     * 「常用」页：按上屏次数取前 20，短条目 6 列并排，长条目（颜文字、邮箱后缀）独占一行。
+     *
+     * 用「按字符数分档」而不是量宽度，是因为构建时面板宽还是 0（要等布局），
+     * 而 6 个字符以上的条目本来就不可能在一格里横排下（见 panelCell 的自动缩字号）。
+     */
+    private fun buildFavoriteGrid() {
+        panelGrid.removeAllViews()
+        panelScroll.scrollTo(0, 0)
+        val items = runCatching { SymbolUsage.favorites() }.getOrDefault(emptyList())
+        if (items.isEmpty()) {
+            val hint = TextView(context).apply {
+                text = "还没有记录：用过的符号会自动排到这里（最多 20 个）"
+                textSize = 13f
+                gravity = Gravity.CENTER
+                includeFontPadding = false
+                setTextColor(colorSub)
+            }
+            panelGrid.addView(hint, LinearLayout.LayoutParams(MATCH_PARENT, dp(36)))
+            panelScroll.post { applyRowHeight() }
+            return
+        }
+        val columns = 6
+        val bucket = mutableListOf<String>()
+        fun flush() {
+            if (bucket.isEmpty()) return
+            addFavoriteRow(bucket.toList(), columns)
+            bucket.clear()
+        }
+        for (item in items) {
+            if (item.length >= 6) {
+                flush()
+                addFavoriteRow(listOf(item), 1)
+            } else {
+                bucket.add(item)
+                if (bucket.size == columns) flush()
+            }
+        }
+        flush()
+        panelScroll.post { applyRowHeight() }
+    }
+
+    private fun addFavoriteRow(row: List<String>, visualColumns: Int) {
+        val rowView = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+        row.forEach { item ->
+            rowView.addView(
+                panelCell(item),
+                LinearLayout.LayoutParams(0, MATCH_PARENT, 1f).apply {
+                    setMargins(dp(2), dp(2), dp(2), 0)
+                },
+            )
+        }
+        repeat(visualColumns - row.size) {
+            rowView.addView(View(context), LinearLayout.LayoutParams(0, MATCH_PARENT, 1f))
+        }
+        panelGrid.addView(rowView, LinearLayout.LayoutParams(MATCH_PARENT, dp(36)))
     }
 
     /** 让当前页的行刚好（略小于）铺满滚动区，夹在 30dp~64dp。 */
@@ -1262,7 +1325,10 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
         includeFontPadding = false
         setTextColor(colorKeyText)
         background = keyDrawable("key_back_color", colorKeyBg, dp(1), cornerPx)
-        setOnClickListener { commit(item) }
+        setOnClickListener {
+            SymbolUsage.record(item)
+            commit(item)
+        }
     }
 
     // ---------------------------------------------------------------- 识别与上屏
@@ -1603,8 +1669,28 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
             HandwritingLog.w("delete", "no input connection")
             return
         }
-        val ok = runCatching { ic.deleteSurroundingText(1, 0) }.getOrDefault(false)
+        val units = unitsOfLastChar(ic)
+        val ok = runCatching { ic.deleteSurroundingText(units, 0) }.getOrDefault(false)
         if (ok) runCatching { BambooActions.onBackspaceReplayed() }
+    }
+
+    /**
+     * 光标前「一个完整字符」占几个 UTF-16 单元。
+     *
+     * 直接删 1 个单元会把 emoji 的代理对切成两半，剩下孤立的半个码位，
+     * 编辑器只能画成「黑框里一个问号」。用 BreakIterator 取字符边界，
+     * 顺带把 👨‍👩‍👧‍👦、👋🏽 这种多码位拼出来的 emoji 也一次删干净。
+     */
+    private fun unitsOfLastChar(ic: InputConnection): Int {
+        val before = runCatching { ic.getTextBeforeCursor(64, 0)?.toString() }.getOrNull()
+        if (before.isNullOrEmpty()) return 1
+        return runCatching {
+            val boundary = java.text.BreakIterator.getCharacterInstance()
+            boundary.setText(before)
+            val end = before.length
+            val start = boundary.preceding(end)
+            (end - start).coerceIn(1, 8)
+        }.getOrDefault(1)
     }
 
     private fun sendEnter() {

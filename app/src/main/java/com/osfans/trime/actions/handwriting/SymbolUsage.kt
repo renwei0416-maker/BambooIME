@@ -16,6 +16,12 @@ import com.osfans.trime.TrimeApplication
 object SymbolUsage {
     private const val K_COUNTS = "symbol_counts"
 
+    /** 最近使用顺序（最新的在最前），只用来给「次数并列」排先后。 */
+    private const val K_RECENT = "symbol_recent"
+
+    /** 「常用」页最多收多少条。 */
+    const val FAVORITE_MAX = 20
+
     /** 默认顺序按中文标点使用习惯排，数字与常见符号排在后面。 */
     val defaults: List<String> = listOf(
         "，", "。", "？", "！", "、", "；", "：", "「", "」", "（", "）", "《", "》",
@@ -83,6 +89,38 @@ object SymbolUsage {
         val counts = readCounts().toMutableMap()
         counts[symbol] = (counts[symbol] ?: 0) + 1
         val raw = counts.entries.joinToString("\n") { "${it.key}|${it.value}" }
-        p().edit().putString(K_COUNTS, raw).apply()
+        // 同时更新「最近使用」：次数并列时谁新用谁靠前
+        val recent = readRecent().filter { it != symbol }.let { listOf(symbol) + it }
+            .take(FAVORITE_MAX * 4)
+        p().edit()
+            .putString(K_COUNTS, raw)
+            .putString(K_RECENT, recent.joinToString("\n"))
+            .apply()
+    }
+
+    private fun readRecent(): List<String> {
+        val raw = p().getString(K_RECENT, "").orEmpty()
+        if (raw.isEmpty()) return emptyList()
+        return raw.split("\n").filter { it.isNotEmpty() }
+    }
+
+    /**
+     * 「常用」页的内容：[limit] 条，按上屏次数降序；次数并列时最近用过的靠前。
+     * 只收录真的被上屏过的（count > 0），所以首次打开是空的。
+     */
+    @Synchronized
+    fun favorites(limit: Int = FAVORITE_MAX): List<String> {
+        val counts = readCounts()
+        if (counts.isEmpty()) return emptyList()
+        val recent = readRecent()
+        val rank = recent.withIndex().associate { (i, s) -> s to i }
+        return counts.entries
+            .filter { it.value > 0 }
+            .sortedWith(
+                compareByDescending<Map.Entry<String, Int>> { it.value }
+                    .thenBy { rank[it.key] ?: Int.MAX_VALUE },
+            )
+            .take(limit)
+            .map { it.key }
     }
 }
