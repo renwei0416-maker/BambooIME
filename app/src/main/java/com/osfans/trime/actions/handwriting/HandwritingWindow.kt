@@ -1078,7 +1078,9 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
                     gravity = Gravity.CENTER
                     includeFontPadding = false
                     setTextColor(if (selected) colorKeyText else colorSub)
-                    setPadding(dp(8), 0, dp(2), 0)
+                    // 文字居中、左右留白相等（带 ▾ 的页签右边留给 ▾，所以单独收窄）
+                    val side = if (page.groups.size > 1) dp(6) else dp(10)
+                    setPadding(dp(10), 0, side, 0)
                     setOnClickListener { gotoPage(i, 0) }
                     // 「常用」是记录页，长按就地清空（不另开设置项）
                     if (i == SymbolPages.PAGE_FAVORITE) {
@@ -1099,14 +1101,12 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
                         gravity = Gravity.CENTER
                         includeFontPadding = false
                         setTextColor(if (selected) colorKeyText else colorSub)
-                        setPadding(dp(2), 0, dp(8), 0)
+                        setPadding(dp(2), 0, dp(6), 0)
                         contentDescription = "${page.title}的子分类"
                         setOnClickListener { showGroupPopup(i, this) }
                     },
-                    LinearLayout.LayoutParams(dp(28), MATCH_PARENT),
+                    LinearLayout.LayoutParams(dp(22), MATCH_PARENT),
                 )
-            } else {
-                tab.addView(View(context), LinearLayout.LayoutParams(dp(8), MATCH_PARENT))
             }
             tab.background = if (selected) {
                 GradientDrawable().apply {
@@ -1116,7 +1116,6 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
             } else {
                 null
             }
-            tab.minimumWidth = dp(76)
             panelTabs.addView(
                 tab,
                 LinearLayout.LayoutParams(WRAP_CONTENT, MATCH_PARENT).apply {
