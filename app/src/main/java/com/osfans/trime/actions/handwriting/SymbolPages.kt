@@ -902,11 +902,11 @@ object SymbolPages {
     private val P_FAVORITE: List<Group> = listOf(Group("常用", emptyList()))
 
     val PAGES: List<Page> = listOf(
-        Page("常用", 6, P_FAVORITE),
         Page("数字", 6, P0),
         Page("邮箱", 3, P_MAIL),
         Page("中文", 6, P1),
         Page("英文", 6, P2),
+        Page("常用", 6, P_FAVORITE),
         Page("符号", 6, P3),
         Page("表情", 6, P4),
         Page("颜文字", 2, P5),
@@ -928,21 +928,21 @@ object SymbolPages {
         Page("花体字母", 6, P21),
     )
 
-    /** 「常用」页（动态，按上屏次数排）。 */
-    const val PAGE_FAVORITE = 0
-
     /** `BambooNumber` 指向的页。 */
-    const val PAGE_NUMBER = 1
+    const val PAGE_NUMBER = 0
 
     /** 「邮箱」页。 */
-    const val PAGE_MAIL = 2
+    const val PAGE_MAIL = 1
+
+    /** 「中文」页（标点、中文符号）。 */
+    const val PAGE_CN = 2
+
+    /** 「英文」页（英文标点与西文符号）。 */
+    const val PAGE_EN = 3
+
+    /** 「常用」页（动态，按上屏次数排）。 */
+    const val PAGE_FAVORITE = 4
 
     /** `BambooSymbol` 指向的页。 */
     const val PAGE_SYMBOL = 5
-
-    /** 「中文」页（标点、中文符号）。 */
-    const val PAGE_CN = 3
-
-    /** 「英文」页（英文标点与西文符号）。 */
-    const val PAGE_EN = 4
 }
