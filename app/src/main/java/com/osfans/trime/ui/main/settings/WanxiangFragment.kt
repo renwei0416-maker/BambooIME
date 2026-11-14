@@ -495,13 +495,19 @@ class WanxiangFragment : PaddingPreferenceFragment() {
         return true
     }
 
-    /** 「方案设置」里的行统一走这里：先过守卫，再执行。 */
-    private fun settingRow(
+    /**
+     * 「方案设置」里的行统一走这里：先过守卫，再执行。
+     *
+     * 必须写成 PreferenceGroup 的扩展函数：buildScreen() 是在
+     * createPreferenceScreen(...).apply { ... } 里跑的，此时 preferenceScreen 还没赋值，
+     * 用 preferenceScreen.addRow() 会拿到 null 直接崩（踩过）。
+     */
+    private fun PreferenceGroup.settingRow(
         title: String,
         summary: String,
         onClick: () -> Unit,
     ) {
-        preferenceScreen.addRow(title = title, summary = summary) {
+        addRow(title = title, summary = summary) {
             if (ensureWritable()) onClick()
         }
     }
