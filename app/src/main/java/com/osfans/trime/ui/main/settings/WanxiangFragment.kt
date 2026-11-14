@@ -157,7 +157,7 @@ class WanxiangFragment : PaddingPreferenceFragment() {
                             listOf(
                                 WanxiangPrefs.LAYOUT_26 to "全键盘（26 键）",
                                 WanxiangPrefs.LAYOUT_18 to "18 键",
-                                WanxiangPrefs.LAYOUT_14 to "14 键（用 26 键键盘模拟，有重复按键）",
+                                WanxiangPrefs.LAYOUT_14 to "14 键",
                                 WanxiangPrefs.LAYOUT_9 to "九宫格（9 键，固定全拼）",
                             ),
                             WanxiangPrefs.layout,
@@ -521,7 +521,7 @@ class WanxiangFragment : PaddingPreferenceFragment() {
 
     private fun layoutLabel(): String = when (WanxiangPrefs.layout) {
         WanxiangPrefs.LAYOUT_18 -> "18 键"
-        WanxiangPrefs.LAYOUT_14 -> "14 键（用 26 键模拟）"
+        WanxiangPrefs.LAYOUT_14 -> "14 键"
         WanxiangPrefs.LAYOUT_9 -> "九宫格（9 键）"
         else -> "全键盘（26 键）"
     }

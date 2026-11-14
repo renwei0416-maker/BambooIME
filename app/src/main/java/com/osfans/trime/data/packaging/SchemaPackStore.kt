@@ -104,27 +104,26 @@ object SchemaPackStore {
     // ---------------------------------------------------------------- 释放
 
     /**
-     * 后台静默释放内置包（只拷文件，不部署、不改活动包）。
+     * 启动时只做「清理旧版本残留」，**不解包**。
      *
-     * 由 [com.osfans.trime.core.Rime] 在每次启动引擎时调一次；已就绪时只有一次 stat，开销可忽略。
+     * 内置包只在用户明确要用的时候才释放（向导第 1 步、或点「启用这个方案包」），
+     * 否则用户一装 App 就被塞 67 MB 文件、还占着磁盘，是很讨厌的行为。
      */
-    fun startBackgroundCopy(context: Context) {
+    fun cleanupLegacyInBackground(context: Context) {
         if (!BuildConfig.BUNDLED_WANXIANG_PRO) return
         if (copying) return
         copying = true
-        val app = context.applicationContext
         Thread(
             {
                 try {
                     cleanupLegacy()
-                    ensureCopied(app)
                 } catch (e: Exception) {
-                    Timber.w(e, "wanxiang: background copy failed")
+                    Timber.w(e, "wanxiang: legacy cleanup failed")
                 } finally {
                     copying = false
                 }
             },
-            "wanxiang-copy",
+            "wanxiang-cleanup",
         ).apply { isDaemon = true }.start()
     }
 
