@@ -4,6 +4,9 @@ package com.osfans.trime.actions.handwriting
  * 手写／拍照识字面板的符号页数据（含子分类）。**由脚本生成，不要手改**：
  *   C:\Users\Administrator\Desktop\Ai_Work\out\_mdi\gen_symbol_pages.py
  *
+ * 注意：「邮箱」页（25 个邮箱后缀）是**手工追加**的静态页，不在上面那个脚本的
+ * 生成范围内；重跑脚本后需要把下面的 P_MAIL 与 PAGES 里那一行补回去。
+ *
  * 每页第一个分组固定是「常用」（页签直接点开时显示的那一份）；
  * 其余分组通过页签右侧的 ▾ 下拉选择（表情/颜文字收录全集，序号/箭头/图形/单位/日文/结构笔画带子分类）。
  */
@@ -876,11 +879,28 @@ object SymbolPages {
         )),
     )
 
+    /**
+     * 「邮箱」页：常用邮箱后缀，点了直接插入光标处。
+     *
+     * 顺序按国内用户实际持有量排（网易/QQ 最前），再接美国那批；
+     * 3 列是为了让 "@hotmail.com" 这种长串放得下（6 列格子会挤成一条）。
+     */
+    private val P_MAIL: List<Group> = listOf(
+        Group("常用", listOf(
+            "@qq.com", "@163.com", "@126.com", "@gmail.com", "@outlook.com",
+            "@hotmail.com", "@foxmail.com", "@sina.com", "@icloud.com", "@139.com",
+            "@aliyun.com", "@yahoo.com", "@sohu.com", "@yeah.net", "@vip.163.com",
+            "@vip.qq.com", "@189.cn", "@21cn.com", "@263.net", "@live.com",
+            "@aol.com", "@comcast.net", "@att.net", "@verizon.net", "@sbcglobal.net",
+        )),
+    )
+
     val PAGES: List<Page> = listOf(
         Page("数字", 6, P0),
         Page("中文", 6, P1),
         Page("英文", 6, P2),
         Page("符号", 6, P3),
+        Page("邮箱", 3, P_MAIL),
         Page("表情", 6, P4),
         Page("颜文字", 2, P5),
         Page("数学", 6, P6),

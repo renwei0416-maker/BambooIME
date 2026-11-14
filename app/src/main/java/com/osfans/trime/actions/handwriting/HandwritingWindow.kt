@@ -29,6 +29,7 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.core.view.setPadding
+import androidx.core.widget.TextViewCompat
 import androidx.lifecycle.lifecycleScope
 import com.osfans.trime.actions.bamboo.BambooActions
 import com.osfans.trime.ime.bar.InputBarDelegate
@@ -1246,8 +1247,17 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
 
     private fun panelCell(item: String) = TextView(context).apply {
         text = item
-        textSize = if (item.length >= 6) 11f else if (item.length >= 3) 14f else 18f
-        textSize = 18f
+        if (item.length >= 6) {
+            // 长条目（邮箱后缀这类）：单行 + 字号自动缩，避免折行把 36dp 的行撑破。
+            // 用 autoSize 而不是按字符数估算，是因为中英文混排的宽度差得很远。
+            isSingleLine = true
+            maxLines = 1
+            TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
+                this, 8, 16, 1, TypedValue.COMPLEX_UNIT_SP,
+            )
+        } else {
+            textSize = 18f
+        }
         gravity = Gravity.CENTER
         includeFontPadding = false
         setTextColor(colorKeyText)
