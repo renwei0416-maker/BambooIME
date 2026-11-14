@@ -19,6 +19,7 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import android.widget.Toast
 import androidx.core.widget.TextViewCompat
 import com.mikepenz.iconics.IconicsDrawable
 import com.mikepenz.iconics.utils.sizePx
@@ -58,7 +59,7 @@ class AiPanelWindow : BoardWindow.NoBarBoardWindow() {
     private var rootView: View? = null
     private var gridBox: LinearLayout? = null
     private var statusView: TextView? = null
-    private var exitRow: View? = null
+    private var exitButton: ExitButton? = null
 
     private var colorBack = 0xFF202420.toInt()
     private var colorKeyBg = 0xFF2B302B.toInt()
@@ -127,7 +128,7 @@ class AiPanelWindow : BoardWindow.NoBarBoardWindow() {
                 clipToOutline = true
             }
 
-        // 顶部：标题 + 当前状态 + 收起
+        // 顶部：标题 + 当前状态 + 退出当前模式 + 收起
         val header =
             LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -138,7 +139,7 @@ class AiPanelWindow : BoardWindow.NoBarBoardWindow() {
             TextView(context).apply {
                 text = "AI 模式"
                 setTextColor(colorKeyText)
-                textSize = 15f
+                textSize = 14f
                 typeface = Typeface.DEFAULT_BOLD
                 includeFontPadding = false
             },
@@ -151,9 +152,30 @@ class AiPanelWindow : BoardWindow.NoBarBoardWindow() {
                 setTextColor(colorSub)
                 ellipsize = TextUtils.TruncateAt.END
                 maxLines = 1
-                setPadding(dp(8), 0, dp(8), 0)
+                setPadding(dp(8), 0, dp(6), 0)
             }
         header.addView(statusView, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+
+        // 「退出当前模式」：始终显示。没进模式时是灰的，但仍然可点（点了给提示），
+        // 免得按钮时有时无、位置跳来跳去。
+        exitButton =
+            ExitButton().apply {
+                setOnClickListener {
+                    if (BambooActions.armedDisplayName == null) {
+                        HandwritingLog.d("aipanel", "exit tapped but no mode")
+                        toast("当前未进入任何模式")
+                        return@setOnClickListener
+                    }
+                    val was = BambooActions.exitArmedMode()
+                    HandwritingLog.d("aipanel", "exit mode was=$was")
+                    leaveToKeyboard()
+                }
+            }
+        header.addView(
+            exitButton,
+            LinearLayout.LayoutParams(WRAP_CONTENT, dp(30)).apply { marginEnd = dp(4) },
+        )
+
         header.addView(
             smallButton("收起") {
                 HandwritingLog.d("aipanel", "collapse -> keyboard")
@@ -175,21 +197,6 @@ class AiPanelWindow : BoardWindow.NoBarBoardWindow() {
             scroll,
             LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f).apply { topMargin = dp(2) },
         )
-
-        // 底部：退出模式（不在模式里时隐藏，不占高度）
-        exitRow =
-            LinearLayout(context).apply {
-                orientation = LinearLayout.HORIZONTAL
-                addView(
-                    smallButton("退出模式") {
-                        val was = BambooActions.exitArmedMode()
-                        HandwritingLog.d("aipanel", "exit mode was=$was")
-                        leaveToKeyboard()
-                    },
-                    LinearLayout.LayoutParams(MATCH_PARENT, dp(34)),
-                )
-            }
-        root.addView(exitRow, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
 
         return root
     }
@@ -216,12 +223,12 @@ class AiPanelWindow : BoardWindow.NoBarBoardWindow() {
 
     private fun rebuild() {
         val box = gridBox ?: return
-        val status = statusView
-        val exit = exitRow
         val armedName = BambooActions.armedDisplayName
         val armedCode = BambooActions.armedCode
-        status?.text = if (armedName != null) "当前：$armedName（$armedCode）" else "当前：未进入模式"
-        exit?.visibility = if (armedName != null) View.VISIBLE else View.GONE
+        // 顶部状态不写触发码（用户要求）：只写名字
+        statusView?.text =
+            if (armedName != null) "当前：$armedName" else "当前：未进入模式"
+        exitButton?.applyState(armedName != null)
 
         box.removeAllViews()
 
@@ -234,7 +241,7 @@ class AiPanelWindow : BoardWindow.NoBarBoardWindow() {
                 Item(
                     code = BambooPrefs.wenquxingCode,
                     name = "文曲星",
-                    icon = "cmd_book-open-page-variant",
+                    icon = "cmd_book_open_page_variant",
                     isTips = true,
                 )
         }
@@ -378,6 +385,65 @@ class AiPanelWindow : BoardWindow.NoBarBoardWindow() {
         leaveToKeyboard()
     }
 
+    /**
+     * 「退出当前模式」按钮：图标在左、文字在右，整体是一个按钮。
+     *
+     * 颜色**不跟主题**（固定暗红），因为浅色主题下跟主题色的对比度会不够、看起来像禁用；
+     * 没进模式时变灰，但仍可点（点了给提示），保证按钮位置不跳动。
+     */
+    private inner class ExitButton : LinearLayout(context) {
+        private val iconView = ImageView(context)
+        private val labelView =
+            TextView(context).apply {
+                text = "退出当前模式"
+                textSize = 12f
+                includeFontPadding = false
+                gravity = Gravity.CENTER
+                maxLines = 1
+            }
+
+        init {
+            orientation = HORIZONTAL
+            gravity = Gravity.CENTER
+            isClickable = true
+            isFocusable = true
+            setPadding(dp(10), 0, dp(12), 0)
+            iconView.setPadding(0, 0, dp(4), 0)
+            addView(iconView, LayoutParams(dp(16), dp(16), 0f))
+            addView(labelView, LayoutParams(WRAP_CONTENT, WRAP_CONTENT))
+        }
+
+        fun applyState(inMode: Boolean) {
+            background =
+                GradientDrawable().apply {
+                    setColor(if (inMode) EXIT_BG else EXIT_BG_IDLE)
+                    cornerRadius = dp(8).toFloat()
+                }
+            val fg = if (inMode) EXIT_FG else colorSub
+            labelView.setTextColor(fg)
+            val drawable =
+                runCatching {
+                    IconicsDrawable(context, "cmd_power").apply {
+                        sizePx = dp(16)
+                        colorFilter = PorterDuffColorFilter(fg, PorterDuff.Mode.SRC_IN)
+                    }
+                }.getOrNull()
+            if (drawable != null) {
+                iconView.setImageDrawable(drawable)
+                iconView.visibility = View.VISIBLE
+            } else {
+                // 字体里没有这个字形：只留文字，不留空白方块
+                iconView.visibility = View.GONE
+            }
+        }
+    }
+
+    private fun toast(msg: String) {
+        runCatching {
+            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+        }.onFailure { Timber.w(it, "ai panel: toast failed") }
+    }
+
     private fun smallButton(
         label: String,
         onTap: () -> Unit,
@@ -407,19 +473,22 @@ class AiPanelWindow : BoardWindow.NoBarBoardWindow() {
     /**
      * 每个模式配一个图标。用户自建的（名字认不出来）统一用同一个默认图标，
      * 免得出现「一半有图标一半没有」的参差。
+     *
+     * 名字是图标字体里的**下划线**写法（`cmd_auto_fix`）。写成连字符不会报错，
+     * 只是画不出来、自动退回纯文字——排查时很容易看漏。
      */
     private fun iconOf(name: String): String =
         when (name) {
             "默认" -> "cmd_robot"
-            "润色" -> "cmd_auto-fix"
+            "润色" -> "cmd_auto_fix"
             "校对" -> "cmd_spellcheck"
             "英文翻译" -> "cmd_alphabetical"
             "日文翻译" -> "cmd_translate"
-            "中文翻译" -> "cmd_ideogram-cjk"
-            "扩写" -> "cmd_arrow-expand"
+            "中文翻译" -> "cmd_ideogram_cjk"
+            "扩写" -> "cmd_arrow_expand"
             "回复" -> "cmd_reply"
-            "聊天" -> "cmd_chat-outline"
-            else -> "cmd_star-four-points"
+            "聊天" -> "cmd_chat_outline"
+            else -> "cmd_star_four_points"
         }
 
     private fun dp(v: Int): Int = (v * density).toInt()
@@ -429,6 +498,15 @@ class AiPanelWindow : BoardWindow.NoBarBoardWindow() {
         const val TOKEN = "BambooAiPanel"
 
         private const val COLUMNS = 3
+
+        /** 「退出当前模式」固定暗红（不跟主题走，避免浅色主题下看起来像禁用）。 */
+        private const val EXIT_BG = 0xFF8E3B30.toInt()
+
+        /** 没进模式时的灰。 */
+        private const val EXIT_BG_IDLE = 0xFF43433E.toInt()
+
+        /** 暗红上的字色：米白，对比度足够。 */
+        private const val EXIT_FG = 0xFFF6F2EA.toInt()
 
         fun isToken(text: String): Boolean = text.equals(TOKEN, ignoreCase = true)
 
