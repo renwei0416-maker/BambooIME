@@ -16,7 +16,10 @@ import androidx.lifecycle.lifecycleScope
 import androidx.preference.Preference
 import androidx.preference.PreferenceGroup
 import androidx.preference.PreferenceScreen
+import androidx.navigation.fragment.findNavController
 import com.osfans.trime.R
+import com.osfans.trime.actions.wanxiang.WanxiangCustom
+import com.osfans.trime.actions.wanxiang.WanxiangPrefs
 import com.osfans.trime.daemon.RimeDaemon
 import com.osfans.trime.data.packaging.SchemaPackStore
 import com.osfans.trime.ui.common.BambooClick
@@ -81,7 +84,7 @@ class WanxiangFragment : PaddingPreferenceFragment() {
                                 "当前已经在使用它了。要换别的包请到「方案包管理」里选。"
                             } else {
                                 "会切到这个包并立即部署一次。词库较大，首次约 2–4 分钟，" +
-                                    "期间键盘可能短暂不可用；你现有目录不会被动。"
+                                    "期间键盘可能短暂不可用。"
                             },
                     ) {
                         if (active) {
@@ -107,9 +110,172 @@ class WanxiangFragment : PaddingPreferenceFragment() {
 
                     addRow(
                         title = "删除已释放的文件",
-                        summary = "只删 Documents 下这份 `wanxiang-pro`，你的 `wanxiang` 目录一个字节都不动",
+                        summary = "只删 Documents 下这份 `wanxiang-pro`，保留其它方案包",
                     ) {
                         confirmDelete()
+                    }
+                }
+
+                addBambooCategory("方案设置", "这些值会写进 custom，点「应用并部署」后生效") {
+                    addRow(
+                        title = "设置向导",
+                        summary = "三步选完：键盘 → 全拼/双拼 → 拼音方案；选完自动切方案并部署",
+                    ) {
+                        runCatching {
+                            findNavController().navigate(
+                                com.osfans.trime.ui.main.NavigationRoute.WanxiangSetup,
+                            )
+                        }.onFailure { toast("打不开向导：${it.message}") }
+                    }
+
+                    addRow(
+                        title = "键盘形态",
+                        summary = layoutLabel() + "　（改这个不会切换键盘布局，键盘请在键盘弹窗里选）",
+                    ) {
+                        pickInt(
+                            "键盘形态",
+                            listOf(
+                                WanxiangPrefs.LAYOUT_26 to "全键盘（26 键）",
+                                WanxiangPrefs.LAYOUT_18 to "18 键",
+                                WanxiangPrefs.LAYOUT_14 to "14 键（用 26 键键盘模拟，有重复按键）",
+                                WanxiangPrefs.LAYOUT_9 to "九宫格（9 键，固定全拼）",
+                            ),
+                            WanxiangPrefs.layout,
+                        ) { WanxiangPrefs.layout = it; refresh() }
+                    }
+
+                    addRow(
+                        title = "编码方式",
+                        summary = if (WanxiangPrefs.layout == WanxiangPrefs.LAYOUT_9) {
+                            "九键固定全拼"
+                        } else {
+                            if (WanxiangPrefs.encode == WanxiangPrefs.ENCODE_QUANPIN) "全拼" else "双拼"
+                        },
+                    ) {
+                        if (WanxiangPrefs.layout == WanxiangPrefs.LAYOUT_9) {
+                            toast("九键固定全拼，切回全键盘后可改")
+                        } else {
+                            pickString(
+                                "编码方式",
+                                listOf(
+                                    WanxiangPrefs.ENCODE_QUANPIN to "全拼",
+                                    WanxiangPrefs.ENCODE_SHUANGPIN to "双拼",
+                                ),
+                                WanxiangPrefs.encode,
+                            ) { WanxiangPrefs.encode = it; refresh() }
+                        }
+                    }
+
+                    addRow(
+                        title = "双拼方案",
+                        summary = WanxiangPrefs.scheme + "（只在双拼下生效）",
+                    ) {
+                        pickString(
+                            "双拼方案",
+                            WanxiangPrefs.SCHEMES.map { it to it },
+                            WanxiangPrefs.scheme,
+                        ) {
+                            WanxiangPrefs.scheme = it
+                            WanxiangPrefs.encode = WanxiangPrefs.ENCODE_SHUANGPIN
+                            refresh()
+                        }
+                    }
+
+                    addRow(
+                        title = "辅助码",
+                        summary = when (WanxiangPrefs.aux) {
+                            WanxiangPrefs.AUX_DIRECT -> "直接辅助（默认关闭，已开启）"
+                            WanxiangPrefs.AUX_INDIRECT -> "间接辅助（默认关闭，已开启）"
+                            else -> "关闭（官方默认）"
+                        },
+                    ) {
+                        pickInt(
+                            "辅助码",
+                            listOf(
+                                WanxiangPrefs.AUX_NONE to "关闭（推荐，官方默认）",
+                                WanxiangPrefs.AUX_DIRECT to "直接辅助",
+                                WanxiangPrefs.AUX_INDIRECT to "间接辅助",
+                            ),
+                            WanxiangPrefs.aux,
+                        ) { WanxiangPrefs.aux = it; refresh() }
+                    }
+
+                    addRow(
+                        title = "模糊音",
+                        summary = if (WanxiangPrefs.fuzzy.isEmpty()) {
+                            "全部关闭（官方默认）"
+                        } else {
+                            WanxiangPrefs.fuzzy.sorted().joinToString("、") { WanxiangPrefs.FUZZY_LABELS[it] ?: it }
+                        },
+                    ) {
+                        pickFuzzy()
+                    }
+
+                    addRow(
+                        title = "候选个数",
+                        summary = "${WanxiangPrefs.pageSize} 个（官方默认 6，最大 6）",
+                    ) {
+                        pickInt(
+                            "候选个数",
+                            (3..6).map { it to "$it 个" },
+                            WanxiangPrefs.pageSize,
+                        ) { WanxiangPrefs.pageSize = it; refresh() }
+                    }
+
+                    addRow(
+                        title = "用户词典（自动调频）",
+                        summary = if (WanxiangPrefs.userDict) "已开启" else "关闭（官方默认）",
+                    ) {
+                        pickBool("用户词典（自动调频）", WanxiangPrefs.userDict) {
+                            WanxiangPrefs.userDict = it; refresh()
+                        }
+                    }
+
+                    addRow(
+                        title = "智能调频（上下文预测）",
+                        summary = if (WanxiangPrefs.contextual) "已开启" else "关闭（官方默认，官方注释写着效果一般）",
+                    ) {
+                        pickBool("智能调频（上下文预测）", WanxiangPrefs.contextual) {
+                            WanxiangPrefs.contextual = it; refresh()
+                        }
+                    }
+
+                    addRow(
+                        title = "九键候选个数",
+                        summary = "${WanxiangPrefs.t9PageSize} 个",
+                    ) {
+                        pickInt(
+                            "九键候选个数",
+                            (3..9).map { it to "$it 个" },
+                            WanxiangPrefs.t9PageSize,
+                        ) { WanxiangPrefs.t9PageSize = it; refresh() }
+                    }
+
+                    addRow(
+                        title = "九键用户词典（自动调频）",
+                        summary = if (WanxiangPrefs.t9UserDict) "开启（官方默认）" else "关闭",
+                    ) {
+                        pickBool("九键用户词典（自动调频）", WanxiangPrefs.t9UserDict) {
+                            WanxiangPrefs.t9UserDict = it; refresh()
+                        }
+                    }
+
+                    addRow(
+                        title = "应用并部署",
+                        summary = if (WanxiangPrefs.hasPendingChanges()) {
+                            "有未应用的改动 —— 点这里写盘并重新部署（约 1–4 分钟）"
+                        } else {
+                            "当前配置已应用"
+                        },
+                    ) {
+                        applyAndDeploy()
+                    }
+
+                    addRow(
+                        title = "恢复官方默认",
+                        summary = "把上面这些改回官方默认值（辅助码关闭、调频关闭、候选 6、模糊音全关），然后应用",
+                    ) {
+                        confirmRestoreDefaults()
                     }
                 }
 
@@ -152,7 +318,6 @@ class WanxiangFragment : PaddingPreferenceFragment() {
             .setMessage(
                 "将切到 `wanxiang-pro` 并立即部署。\n\n" +
                     "· 词库较大，首次部署约 2–4 分钟，期间键盘可能短暂不可用\n" +
-                    "· 不动你现有的 `wanxiang` 目录\n" +
                     "· 部署完成前请不要反复切换方案",
             )
             .setNegativeButton("取消", null)
@@ -196,8 +361,7 @@ class WanxiangFragment : PaddingPreferenceFragment() {
         AlertDialog.Builder(requireContext())
             .setTitle("删除已释放的文件")
             .setMessage(
-                "只会删除 `wanxiang-pro` 这个目录（${SchemaPackStore.sizeText()}）。\n" +
-                    "你自己的 `wanxiang` 目录不受影响。\n\n" +
+                "只会删除 `wanxiang-pro` 这个目录（${SchemaPackStore.sizeText()}）。\n\n" +
                     "如果当前正在使用它，删掉后键盘会没有可用方案，请先切到别的包。",
             )
             .setNegativeButton("取消", null)
@@ -238,6 +402,132 @@ class WanxiangFragment : PaddingPreferenceFragment() {
                         },
                     )
                 }.onFailure { toast("打不开文件夹：${it.message}") }
+            }
+            .show()
+    }
+
+    // ---------------------------------------------------------------- 方案设置
+
+    private fun layoutLabel(): String = when (WanxiangPrefs.layout) {
+        WanxiangPrefs.LAYOUT_18 -> "18 键"
+        WanxiangPrefs.LAYOUT_14 -> "14 键（用 26 键模拟）"
+        WanxiangPrefs.LAYOUT_9 -> "九宫格（9 键）"
+        else -> "全键盘（26 键）"
+    }
+
+    private fun refresh() {
+        rebuildPreferencesKeepingScroll { buildScreen() }
+    }
+
+    private fun pickInt(
+        title: String,
+        items: List<Pair<Int, String>>,
+        current: Int,
+        onPick: (Int) -> Unit,
+    ) {
+        val labels = items.map { it.second }.toTypedArray()
+        val checked = items.indexOfFirst { it.first == current }.coerceAtLeast(0)
+        AlertDialog.Builder(requireContext())
+            .setTitle(title)
+            .setSingleChoiceItems(labels, checked) { dialog, which ->
+                onPick(items[which].first)
+                dialog.dismiss()
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun pickString(
+        title: String,
+        items: List<Pair<String, String>>,
+        current: String,
+        onPick: (String) -> Unit,
+    ) {
+        val labels = items.map { it.second }.toTypedArray()
+        val checked = items.indexOfFirst { it.first == current }.coerceAtLeast(0)
+        AlertDialog.Builder(requireContext())
+            .setTitle(title)
+            .setSingleChoiceItems(labels, checked) { dialog, which ->
+                onPick(items[which].first)
+                dialog.dismiss()
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun pickBool(
+        title: String,
+        current: Boolean,
+        onPick: (Boolean) -> Unit,
+    ) {
+        AlertDialog.Builder(requireContext())
+            .setTitle(title)
+            .setSingleChoiceItems(
+                arrayOf("开启", "关闭"),
+                if (current) 0 else 1,
+            ) { dialog, which ->
+                onPick(which == 0)
+                dialog.dismiss()
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun pickFuzzy() {
+        val labels =
+            WanxiangPrefs.FUZZY_KEYS.map { WanxiangPrefs.FUZZY_LABELS[it] ?: it }.toTypedArray()
+        val checked = WanxiangPrefs.FUZZY_KEYS.map { WanxiangPrefs.fuzzy.contains(it) }.toBooleanArray()
+        AlertDialog.Builder(requireContext())
+            .setTitle("模糊音")
+            .setMultiChoiceItems(labels, checked) { _, which, isChecked ->
+                val key = WanxiangPrefs.FUZZY_KEYS[which]
+                val next = WanxiangPrefs.fuzzy.toMutableSet()
+                if (isChecked) next.add(key) else next.remove(key)
+                WanxiangPrefs.fuzzy = next
+            }
+            .setNegativeButton("取消", null)
+            .setPositiveButton("好") { _, _ -> refresh() }
+            .show()
+    }
+
+    private fun applyAndDeploy() {
+        lifecycleScope.launch {
+            toast("正在写入配置…")
+            val ok = withContext(Dispatchers.IO) { WanxiangCustom.writeAll() }
+            if (!ok) {
+                toast("写入失败：检查 Documents 目录是否可写")
+                return@launch
+            }
+            val schema = WanxiangCustom.activeSchema(WanxiangPrefs.layout)
+            val enabled = WanxiangCustom.enabledSchemas(WanxiangPrefs.layout)
+            runCatching {
+                rime.runOnReady {
+                    selectSchemaCrossPackage(schema)
+                    setEnabledSchemata(enabled)
+                    selectSchema(schema)
+                }
+            }.onFailure {
+                toast("切换失败：${it.message ?: it.javaClass.simpleName}")
+            }
+            toast("正在部署，请稍候…")
+            runCatching { RimeDaemon.restartRime(fullCheck = true) }
+                .onFailure { toast("部署失败：${it.message}") }
+            refresh()
+        }
+    }
+
+    private fun confirmRestoreDefaults() {
+        AlertDialog.Builder(requireContext())
+            .setTitle("恢复官方默认")
+            .setMessage(
+                "会把方案设置改回官方默认：辅助码关闭、用户词典与智能调频关闭、" +
+                    "候选 6 个、模糊音全部关闭、26 键全拼。\n\n" +
+                    "改完会立刻写盘并重新部署一次。",
+            )
+            .setNegativeButton("取消", null)
+            .setPositiveButton("恢复") { _, _ ->
+                WanxiangPrefs.resetToDefaults()
+                applyAndDeploy()
             }
             .show()
     }
