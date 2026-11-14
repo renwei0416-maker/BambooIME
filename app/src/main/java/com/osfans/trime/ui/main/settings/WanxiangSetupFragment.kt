@@ -145,7 +145,7 @@ class WanxiangSetupFragment : Fragment() {
         title.text = "用哪种键盘"
         content.addView(
             hint(
-                "九宫格（9 键）用独立的「万象九键 Pro」方案；18 键用 18 键折叠；" +
+                "九宫格（9 键）用官方的「万象九键」方案；18 键用 18 键折叠；" +
                     "14 键目前只能用 26 键键盘模拟（主题没有 14 键布局），按键会有重复。",
             ),
         )
@@ -244,7 +244,7 @@ class WanxiangSetupFragment : Fragment() {
 
             WanxiangPrefs.wizardDone = true
             busy = false
-            toast("已应用，方案已切换为「万象${if (WanxiangPrefs.layout == WanxiangPrefs.LAYOUT_9) "九键" else "拼音"} Pro」")
+            toast("已应用，方案已切换为「万象${if (WanxiangPrefs.layout == WanxiangPrefs.LAYOUT_9) "九键" else "拼音"}」")
             runCatching { parentFragmentManager.popBackStack() }
         }
     }

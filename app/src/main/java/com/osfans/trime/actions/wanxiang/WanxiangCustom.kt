@@ -26,11 +26,11 @@ import java.util.Locale
  */
 object WanxiangCustom {
 
-    const val SCHEMA_PRO = "wanxiang_pro"
-    const val SCHEMA_T9 = "wanxiang_t9_pro"
+    const val SCHEMA_PRO = "wanxiang"
+    const val SCHEMA_T9 = "wanxiang_t9"
 
-    private const val PRO_CUSTOM = "wanxiang_pro.custom.yaml"
-    private const val T9_CUSTOM = "wanxiang_t9_pro.custom.yaml"
+    private const val PRO_CUSTOM = "wanxiang.custom.yaml"
+    private const val T9_CUSTOM = "wanxiang_t9.custom.yaml"
     private const val DEFAULT_CUSTOM = "default.custom.yaml"
 
     private const val BEGIN = "# >>> BambooIME managed（这一段由「万象拼音」设置页生成，手改会被覆盖）"
@@ -81,15 +81,20 @@ object WanxiangCustom {
         WanxiangPrefs.FUZZY_KEYS.forEach { key ->
             if (fuzzy.contains(key)) nodes += "wanxiang_algebra:/模糊音_$key"
         }
+        // 节点前缀跟着包变体走：Base 的词库没有辅码列，必须用 base/ 那一套
+        val section = if (SchemaPackStore.variant() == SchemaPackStore.VARIANT_BASE) "base" else "pro"
         nodes += if (encode == WanxiangPrefs.ENCODE_QUANPIN) {
-            "wanxiang_algebra:/pro/全拼"
+            "wanxiang_algebra:/$section/全拼"
         } else {
-            "wanxiang_algebra:/pro/$scheme"
+            "wanxiang_algebra:/$section/$scheme"
         }
-        when (aux) {
-            WanxiangPrefs.AUX_DIRECT -> nodes += "wanxiang_algebra:/pro/直接辅助"
-            WanxiangPrefs.AUX_INDIRECT -> nodes += "wanxiang_algebra:/pro/间接辅助"
-            else -> Unit
+        // 辅助码只在 Pro 词库上才有意义（Base 词库不带 `;辅码` 列）
+        if (section == "pro") {
+            when (aux) {
+                WanxiangPrefs.AUX_DIRECT -> nodes += "wanxiang_algebra:/pro/直接辅助"
+                WanxiangPrefs.AUX_INDIRECT -> nodes += "wanxiang_algebra:/pro/间接辅助"
+                else -> Unit
+            }
         }
         nodes += when (layout) {
             WanxiangPrefs.LAYOUT_18 -> "wanxiang_algebra:/18jian"

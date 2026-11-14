@@ -22,30 +22,33 @@ import java.util.Locale
  *
  * 设计口径（与用户逐条确认过）：
  *
- *  * **只内置 Pro（小鹤 flypy）**，包 id 固定 [PACKAGE_ID]，绝不占用用户自己的 `wanxiang`；
+ *  * **内置官方 Base 包**（全拼/任意双拼 + 官方九键），包 id 固定 [PACKAGE_ID]，
+ *    不占用用户自己可能已有的 `wanxiang` 目录；
  *  * **安装完就拷**：后台线程释放，不部署、不改活动包，避免「预置→部署→再下载→再部署」；
  *  * **覆盖规则是黑名单式**：只跳过 `custom/` 目录与 `*.custom.yaml`，其余同名文件全盖；
  *    并且**永不删除**目标目录里已有的文件（包里没有的一律不碰）；
- *  * 九键 Pro 需要 4 个官方 Base 的 t9 文件 + 1 个我们生成的 schema，一起叠进同一个目录；
+ *  * 九键直接用官方 `wanxiang_t9.schema.yaml`（Base 自带），不再 vendor 任何 t9 文件；
  *  * manifest 只记 version / variant / 文件数 / 字节数 / 安装时间，不做 per-file 哈希
  *    （librime 按词库校验和自行重建 `build/`，不需要我们比对）。
  */
 object SchemaPackStore {
 
     /** 内置包 id，同时也是 `Documents/BambooIME/` 下的目录名。 */
-    const val PACKAGE_ID = "wanxiang-pro"
+    const val PACKAGE_ID = "wanxiang-base"
 
-    /** 当前内置的变体。其余 8 套走 App 内下载（P3）。 */
-    const val VARIANT_FLYPY = "flypy"
+    /** 当前内置的变体：官方 Base（全拼/任意双拼 + 九个官方九键方案，不含辅码词库）。 */
+    const val VARIANT_BASE = "base"
 
-    private const val ASSET_PRO = "wanxiang-pro"
-    private const val ASSET_T9 = "wanxiang-t9"
+    private const val ASSET_BASE = "wanxiang-base"
+    /** 上一版内置的 Pro 包目录名；升级后没人清理会白占 120 MB 以上。 */
+    private const val LEGACY_PACKAGE_ID = "wanxiang-pro"
+
     private const val MANIFEST = "pkg-manifest.json"
 
     /** 内置资产集合有变化时加一，让老安装重拷一次。 */
     private const val STAMP = "1"
 
-    private const val CUSTOM_FILE = "wanxiang_pro.custom.yaml"
+    private const val CUSTOM_FILE = "wanxiang.custom.yaml"
     private const val DEFAULT_CUSTOM = "default.custom.yaml"
 
     @Volatile
@@ -53,17 +56,39 @@ object SchemaPackStore {
 
     // ---------------------------------------------------------------- 路径
 
-    /** 包目录：`Documents/BambooIME[Debug]/wanxiang-pro`。 */
+    /** 包目录：`Documents/BambooIME[Debug]/wanxiang-base`。 */
     fun dir(): File = File(DataManager.userDataBaseDir, PACKAGE_ID)
 
     fun isInstalled(): Boolean = File(dir(), MANIFEST).isFile
 
     fun isActive(): Boolean = SchemaPackageManager.activePackageId == PACKAGE_ID
 
+    /**
+     * 清掉上一版内置的 `wanxiang-pro` 目录。
+     *
+     * 只在三种条件都满足时删：①该目录里有我们写的 manifest；②manifest 的 package 字段
+     * 确实是 `wanxiang-pro`（说明是我们释放的，不是用户自己建的）；③它当前不是活动包。
+     */
+    fun cleanupLegacy() {
+        val old = File(DataManager.userDataBaseDir, LEGACY_PACKAGE_ID)
+        if (!old.isDirectory) return
+        if (SchemaPackageManager.activePackageId == LEGACY_PACKAGE_ID) {
+            Timber.d("wanxiang: legacy package is active, skip cleanup")
+            return
+        }
+        val meta = runCatching {
+            JSONObject(File(old, MANIFEST).readText())
+        }.getOrNull() ?: return
+        if (meta.optString("package") != LEGACY_PACKAGE_ID) return
+        if (old.deleteRecursively()) {
+            Timber.d("wanxiang: removed legacy ${old.name}")
+        }
+    }
+
     fun manifest(): JSONObject? =
         runCatching { JSONObject(File(dir(), MANIFEST).readText()) }.getOrNull()
 
-    fun variant(): String = manifest()?.optString("variant").orEmpty().ifEmpty { VARIANT_FLYPY }
+    fun variant(): String = manifest()?.optString("variant").orEmpty().ifEmpty { VARIANT_BASE }
 
     fun fileCount(): Int = manifest()?.optInt("files") ?: 0
 
@@ -91,6 +116,7 @@ object SchemaPackStore {
         Thread(
             {
                 try {
+                    cleanupLegacy()
                     ensureCopied(app)
                 } catch (e: Exception) {
                     Timber.w(e, "wanxiang: background copy failed")
@@ -119,8 +145,7 @@ object SchemaPackStore {
             return false
         }
         val started = System.currentTimeMillis()
-        val files = copyAssetTree(context.assets, ASSET_PRO, dir) +
-            copyAssetTree(context.assets, ASSET_T9, dir)
+        val files = copyAssetTree(context.assets, ASSET_BASE, dir)
         writeManifest(dir, stamp, files)
         // 首次释放时写一份「带托管块」的默认配置；已存在则一个字节不动。
         WanxiangCustom.writeInitialConfigIfMissing(dir)
@@ -160,7 +185,7 @@ object SchemaPackStore {
         val json =
             JSONObject()
                 .put("package", PACKAGE_ID)
-                .put("variant", VARIANT_FLYPY)
+                .put("variant", VARIANT_BASE)
                 .put("stamp", stamp)
                 .put("version", BuildConfig.BUILD_VERSION_NAME ?: "dev")
                 .put("files", files)
@@ -172,7 +197,7 @@ object SchemaPackStore {
     /**
      * 首次释放时写两份配置（已存在就不动，避免覆盖用户改过的内容）。
      *
-     *  * `wanxiang_pro.custom.yaml`：小鹤双拼 + 直接辅助码 + 每页 6 个候选（官方默认）；
+     *  * `wanxiang.custom.yaml`：全拼 + 26 键 + 每页 6 个候选（官方默认）；
      *  * `default.custom.yaml`：把九键 Pro 也列进方案表（否则用户只能看到 26 键那一个）。
      */
     // ---------------------------------------------------------------- 删除

@@ -80,7 +80,7 @@ object WanxiangPrefs {
         set(v) = ready().edit { putInt(KEY_LAYOUT, v) }
 
     var encode: String
-        get() = ready().getString(KEY_ENCODE, ENCODE_SHUANGPIN).orEmpty()
+        get() = ready().getString(KEY_ENCODE, ENCODE_QUANPIN).orEmpty()
         set(v) = ready().edit { putString(KEY_ENCODE, v) }
 
     var scheme: String
@@ -119,7 +119,7 @@ object WanxiangPrefs {
         set(v) = ready().edit { putString(KEY_APPLIED, v) }
 
     var t9PageSize: Int
-        get() = ready().getInt(KEY_T9_PAGE_SIZE, 6).coerceIn(3, 9)
+        get() = ready().getInt(KEY_T9_PAGE_SIZE, 6).coerceIn(3, 6)
         set(v) = ready().edit { putInt(KEY_T9_PAGE_SIZE, v.coerceIn(3, 9)) }
 
     var t9UserDict: Boolean
@@ -159,7 +159,7 @@ object WanxiangPrefs {
     fun resetToDefaults() {
         ready().edit {
             putInt(KEY_LAYOUT, LAYOUT_26)
-            putString(KEY_ENCODE, ENCODE_SHUANGPIN)
+            putString(KEY_ENCODE, ENCODE_QUANPIN)
             putString(KEY_SCHEME, SCHEMES.first())
             putInt(KEY_AUX, AUX_NONE)
             putInt(KEY_PAGE_SIZE, 6)

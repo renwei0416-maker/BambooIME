@@ -35,7 +35,7 @@ import java.io.File
 /**
  * 「万象拼音」设置页（P1：只管装包与切包）。
  *
- * 内置的万象 Pro（小鹤）在安装完就会被静默释放到 `Documents/BambooIME[Debug]/wanxiang-pro`，
+ * 内置的万象拼音 Base 在安装完就会被静默释放到 `Documents/BambooIME[Debug]/wanxiang-base`，
  * 这里只负责把状态显示清楚，并提供「启用 / 删除」两个动作。
  *
  * 参数设置（双拼、模糊音、候选数、语法模型等）是 P2 的事，本页暂时不碰。
@@ -63,7 +63,7 @@ class WanxiangFragment : PaddingPreferenceFragment() {
             preferenceManager.createPreferenceScreen(requireContext()).apply {
                 addBambooCategory(
                     "内置方案包",
-                    "万象拼音 Pro（小鹤双拼 + 直接辅助码），首次启动时已静默释放到用户目录",
+                    "万象拼音 Base（全拼/双拼 + 九键），首次启动时已静默释放到用户目录",
                 ) {
                     addRow(
                         title = if (installed) "已就绪" else "尚未释放",
@@ -111,7 +111,7 @@ class WanxiangFragment : PaddingPreferenceFragment() {
 
                     addRow(
                         title = "删除已释放的文件",
-                        summary = "只删 Documents 下这份 `wanxiang-pro`，保留其它方案包",
+                        summary = "只删 Documents 下这份 `wanxiang-base`，保留其它方案包",
                     ) {
                         confirmDelete()
                     }
@@ -184,7 +184,9 @@ class WanxiangFragment : PaddingPreferenceFragment() {
 
                     addRow(
                         title = "辅助码",
-                        summary = if (WanxiangPrefs.layout == WanxiangPrefs.LAYOUT_9) {
+                        summary = if (SchemaPackStore.variant() == SchemaPackStore.VARIANT_BASE) {
+                            "内置 Base 词库不含辅助码，装上 Pro 变体后才能开"
+                        } else if (WanxiangPrefs.layout == WanxiangPrefs.LAYOUT_9) {
                             "九键没有字母键，辅助码用不上（切回全键盘后可开）"
                         } else {
                             when (WanxiangPrefs.aux) {
@@ -194,6 +196,10 @@ class WanxiangFragment : PaddingPreferenceFragment() {
                             }
                         },
                     ) {
+                        if (SchemaPackStore.variant() == SchemaPackStore.VARIANT_BASE) {
+                            toast("内置 Base 词库不含辅助码；装上 Pro 变体后再来开")
+                            return@addRow
+                        }
                         if (WanxiangPrefs.layout == WanxiangPrefs.LAYOUT_9) {
                             toast("九键下辅助码无效，切回全键盘再开")
                             return@addRow
@@ -307,20 +313,20 @@ class WanxiangFragment : PaddingPreferenceFragment() {
                 addBambooCategory("说明", "装之前先知道这几件事") {
                     addRow(
                         title = "体积与耗时",
-                        summary = "包内 84.7 MB；部署后 `build/` 约 100–120 MB；首次部署 2–4 分钟。" +
+                        summary = "包内 67.3 MB；部署后 `build/` 约 70–90 MB；首次部署 1–2 分钟。" +
                             "九键（T9）需要更大的 word 表，首次会再久一点。",
                     )
 
                     addRow(
                         title = "都带了什么",
-                        summary = "官方 Pro：26 键（小鹤双拼 + 直接辅助码）、英文、混输、反查、自定义短语；" +
-                            "另有 BambooIME 补的九键 Pro（全拼，词库与 26 键共用）",
+                        summary = "官方 Base：26 键（全拼或任意双拼）、九键、英文、混输、反查、自定义短语；" +
+                            "九键用官方方案，不额外改动。要辅助码请装 Pro 变体（后续版本提供下载）。",
                     )
 
                     addRow(
                         title = "许可与署名",
                         summary = "词库与配置来自 amzxyz/rime-wanxiang（CC-BY-4.0）。" +
-                            "九键方案由本应用按官方 Base 的九键方案生成，未改动词库。",
+                            "九键用的是官方 `wanxiang_t9` 方案，未改动词库。",
                     ) {
                         runCatching {
                             startActivity(
@@ -339,9 +345,9 @@ class WanxiangFragment : PaddingPreferenceFragment() {
 
     private fun confirmEnable() {
         AlertDialog.Builder(requireContext())
-            .setTitle("启用万象拼音 Pro")
+            .setTitle("启用万象拼音")
             .setMessage(
-                "将切到 `wanxiang-pro` 并立即部署。\n\n" +
+                "将切到 `wanxiang-base` 并立即部署。\n\n" +
                     "· 词库较大，首次部署约 2–4 分钟，期间键盘可能短暂不可用\n" +
                     "· 部署完成前请不要反复切换方案",
             )
@@ -383,7 +389,7 @@ class WanxiangFragment : PaddingPreferenceFragment() {
         AlertDialog.Builder(requireContext())
             .setTitle("删除已释放的文件")
             .setMessage(
-                "只会删除 `wanxiang-pro` 这个目录（${SchemaPackStore.sizeText()}）。\n\n" +
+                "只会删除 `wanxiang-base` 这个目录（${SchemaPackStore.sizeText()}）。\n\n" +
                     "如果当前正在使用它，删掉后键盘会没有可用方案，请先切到别的包。",
             )
             .setNegativeButton("取消", null)
@@ -602,8 +608,4 @@ class WanxiangFragment : PaddingPreferenceFragment() {
         )
     }
 
-    private companion object {
-        const val SCHEMA_MAIN = "wanxiang_pro"
-        const val SCHEMA_T9 = "wanxiang_t9_pro"
-    }
 }
