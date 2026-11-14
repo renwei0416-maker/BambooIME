@@ -214,6 +214,8 @@ class WanxiangSetupFragment : Fragment() {
     // ------------------------------------------------------------ 应用
 
     private fun applyAndDeploy() {
+        // 九键/全拼的互斥项在写盘前统一收干净
+        WanxiangPrefs.sanitize()
         if (busy) return
         busy = true
         next.isEnabled = false

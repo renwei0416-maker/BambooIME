@@ -141,6 +141,21 @@ object WanxiangPrefs {
 
     fun hasPendingChanges(): Boolean = signature() != appliedSignature
 
+    /**
+     * 把互斥项收干净（改任何设置后都调一次）：
+     * - 九键没有字母键：编码固定全拼、辅助码与模糊音都用不上；
+     * - 关掉用户词典后，智能调频没有依据，一并关掉。
+     */
+    fun sanitize() {
+        if (layout == LAYOUT_9) {
+            encode = ENCODE_QUANPIN
+            aux = AUX_NONE
+            fuzzy = emptySet()
+        }
+        if (!userDict) contextual = false
+        if (!t9UserDict) t9Contextual = false
+    }
+
     fun resetToDefaults() {
         ready().edit {
             putInt(KEY_LAYOUT, LAYOUT_26)

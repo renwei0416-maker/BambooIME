@@ -113,8 +113,9 @@ object WanxiangCustom {
         appendLine("    __patch:")
         nodes.forEach { appendLine("      - $it") }
         appendLine("  menu/page_size: $pageSize")
-        if (userDict) appendLine("  translator/enable_user_dict: true")
-        if (contextual) appendLine("  translator/contextual_suggestions: true")
+        // 两个键总是显式写：官方以后改默认值时，「关」也能生效
+        appendLine("  translator/enable_user_dict: $userDict")
+        appendLine("  translator/contextual_suggestions: $contextual")
         append(END)
     }
 
@@ -135,7 +136,7 @@ object WanxiangCustom {
         appendLine(BEGIN)
         appendLine("patch:")
         appendLine("  schema_list:")
-        appendLine("    - {schema: $schema}")
+        appendLine("    - schema: $schema")
         append(END)
     }
 
@@ -205,6 +206,7 @@ object WanxiangCustom {
         val rest = mutableListOf<String>()
         val extras = mutableListOf<String>()
         var inPatch = false
+        var childIndent = -1
         var currentKey: String? = null
         var currentBlock = mutableListOf<String>()
 
@@ -221,6 +223,7 @@ object WanxiangCustom {
             if (line.startsWith("patch:") && line.trim() == "patch:") {
                 flush()
                 inPatch = true
+                childIndent = -1
                 return@forEach
             }
             if (inPatch) {
@@ -233,7 +236,9 @@ object WanxiangCustom {
                     rest += line
                     return@forEach
                 }
-                if (indent == 2) {
+                // 子键缩进取「patch 下第一条子行」的缩进：2 空格、4 空格、tab 一视同仁
+                if (childIndent < 0) childIndent = indent
+                if (indent == childIndent) {
                     flush()
                     val key = line.trim().substringBefore(':').trim()
                     currentKey = key

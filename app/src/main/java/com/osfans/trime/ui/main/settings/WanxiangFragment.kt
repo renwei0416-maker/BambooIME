@@ -183,12 +183,20 @@ class WanxiangFragment : PaddingPreferenceFragment() {
 
                     addRow(
                         title = "辅助码",
-                        summary = when (WanxiangPrefs.aux) {
-                            WanxiangPrefs.AUX_DIRECT -> "直接辅助（默认关闭，已开启）"
-                            WanxiangPrefs.AUX_INDIRECT -> "间接辅助（默认关闭，已开启）"
-                            else -> "关闭（官方默认）"
+                        summary = if (WanxiangPrefs.layout == WanxiangPrefs.LAYOUT_9) {
+                            "九键没有字母键，辅助码用不上（切回全键盘后可开）"
+                        } else {
+                            when (WanxiangPrefs.aux) {
+                                WanxiangPrefs.AUX_DIRECT -> "直接辅助（默认关闭，已开启）"
+                                WanxiangPrefs.AUX_INDIRECT -> "间接辅助（默认关闭，已开启）"
+                                else -> "关闭（官方默认）"
+                            }
                         },
                     ) {
+                        if (WanxiangPrefs.layout == WanxiangPrefs.LAYOUT_9) {
+                            toast("九键下辅助码无效，切回全键盘再开")
+                            return@addRow
+                        }
                         pickInt(
                             "辅助码",
                             listOf(
@@ -202,12 +210,18 @@ class WanxiangFragment : PaddingPreferenceFragment() {
 
                     addRow(
                         title = "模糊音",
-                        summary = if (WanxiangPrefs.fuzzy.isEmpty()) {
+                        summary = if (WanxiangPrefs.layout == WanxiangPrefs.LAYOUT_9) {
+                            "九键不跟随模糊音（切回全键盘后可设）"
+                        } else if (WanxiangPrefs.fuzzy.isEmpty()) {
                             "全部关闭（官方默认）"
                         } else {
                             WanxiangPrefs.fuzzy.sorted().joinToString("、") { WanxiangPrefs.FUZZY_LABELS[it] ?: it }
                         },
                     ) {
+                        if (WanxiangPrefs.layout == WanxiangPrefs.LAYOUT_9) {
+                            toast("九键不跟随模糊音，切回全键盘再设")
+                            return@addRow
+                        }
                         pickFuzzy()
                     }
 
@@ -233,8 +247,18 @@ class WanxiangFragment : PaddingPreferenceFragment() {
 
                     addRow(
                         title = "智能调频（上下文预测）",
-                        summary = if (WanxiangPrefs.contextual) "已开启" else "关闭（官方默认，官方注释写着效果一般）",
+                        summary = if (!WanxiangPrefs.userDict) {
+                            "依赖用户词典，先打开「用户词典」再设"
+                        } else if (WanxiangPrefs.contextual) {
+                            "已开启"
+                        } else {
+                            "关闭（官方默认，官方注释写着效果一般）"
+                        },
                     ) {
+                        if (!WanxiangPrefs.userDict) {
+                            toast("先打开「用户词典」")
+                            return@addRow
+                        }
                         pickBool("智能调频（上下文预测）", WanxiangPrefs.contextual) {
                             WanxiangPrefs.contextual = it; refresh()
                         }
@@ -246,7 +270,7 @@ class WanxiangFragment : PaddingPreferenceFragment() {
                     ) {
                         pickInt(
                             "九键候选个数",
-                            (3..9).map { it to "$it 个" },
+                            (3..6).map { it to "$it 个" },
                             WanxiangPrefs.t9PageSize,
                         ) { WanxiangPrefs.t9PageSize = it; refresh() }
                     }
@@ -416,6 +440,8 @@ class WanxiangFragment : PaddingPreferenceFragment() {
     }
 
     private fun refresh() {
+        // 每次改动后顺手把互斥项收干净（九键 → 全拼/无辅码/无模糊音；关词典 → 关调频）
+        WanxiangPrefs.sanitize()
         rebuildPreferencesKeepingScroll { buildScreen() }
     }
 
