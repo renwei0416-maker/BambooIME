@@ -30,6 +30,7 @@ import com.osfans.trime.ui.main.settings.PackageListFragment
 import com.osfans.trime.ui.main.settings.ProfileSettingsFragment
 import com.osfans.trime.ui.main.settings.VoiceInputSettingsFragment
 import com.osfans.trime.ui.main.settings.VoiceAiFragment
+import com.osfans.trime.ui.main.settings.WanxiangFragment
 import com.osfans.trime.ui.main.settings.schema.SchemaListFragment
 import com.osfans.trime.ui.main.settings.theme.ThemeSettingsFragment
 import com.osfans.trime.ui.main.settings.userdict.UserDictionaryFragment
@@ -86,6 +87,9 @@ sealed class NavigationRoute : Parcelable {
 
     @Serializable
     data object VoiceAi : NavigationRoute()
+
+    @Serializable
+    data object Wanxiang : NavigationRoute()
 
     @Serializable
     data object VirtualKeyboard : NavigationRoute()
@@ -190,6 +194,9 @@ sealed class NavigationRoute : Parcelable {
             }
             fragment<GlossaryFragment, Glossary> {
                 label = "外语学习"
+            }
+            fragment<WanxiangFragment, Wanxiang> {
+                label = "万象拼音"
             }
             fragment<VoiceAiFragment, VoiceAi> {
                 label = "语音发AI"

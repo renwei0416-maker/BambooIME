@@ -132,6 +132,9 @@ class MainFragment : PaddingPreferenceFragment() {
                 addPreference("语音发AI", "按住空格说完话，识别结果直接交给当前 AI 模式处理", R.drawable.ic_baseline_mic_24) {
                     findNavController().navigateWithAnim(NavigationRoute.VoiceAi)
                 }
+                addPreference("万象拼音", "内置万象 Pro（小鹤双拼 + 直接辅助码）与九键 Pro：释放、启用、切换", R.drawable.ic_baseline_text_fields_24) {
+                    findNavController().navigateWithAnim(NavigationRoute.Wanxiang)
+                }
                 addPreference(
                     "按键动作调用说明",
                     "全部动作名（token）的总表、写法和注意事项，供自定义键位参照",

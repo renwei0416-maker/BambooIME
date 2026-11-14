@@ -34,6 +34,11 @@ val bundleOcrModel =
 val bundleWenquxingPacks =
     (project.findProperty("bundleWenquxingPacks") as String?)?.toBoolean() ?: true
 
+// 内置万象拼音 Pro 方案包（小鹤双拼 + 直接辅助码，非 custom 部分 84.7 MB，压缩后约 30 MB）；
+// -PbundleWanxiangPro=false 出「不带万象」的精简版（设置页仍会显示入口，但会提示未内置）。
+val bundleWanxiangPro =
+    (project.findProperty("bundleWanxiangPro") as String?)?.toBoolean() ?: true
+
 android {
     namespace = "com.osfans.trime"
     compileSdk = 37
@@ -49,6 +54,11 @@ android {
             }
             if (bundleWenquxingPacks) {
                 assets.srcDir("src/main/wenquxing-assets")
+            }
+            if (bundleWanxiangPro) {
+                // 一个根目录下两个子目录：wanxiang-pro（官方 77 个文件）与
+                // wanxiang-t9（九键 Pro 需要的 5 个文件），释放时叠进同一个包目录。
+                assets.srcDir("src/main/schema-assets")
             }
         }
     }
@@ -78,6 +88,7 @@ android {
             "BUNDLED_WENQUXING_PACKS",
             "$bundleWenquxingPacks",
         )
+        buildConfigField("boolean", "BUNDLED_WANXIANG_PRO", "$bundleWanxiangPro")
     }
 
     buildTypes {

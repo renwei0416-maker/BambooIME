@@ -8,6 +8,7 @@ package com.osfans.trime.core
 import com.osfans.trime.BuildConfig
 import com.osfans.trime.actions.glossary.GlossaryDecorator
 import com.osfans.trime.data.base.DataManager
+import com.osfans.trime.data.packaging.SchemaPackStore
 import com.osfans.trime.data.opencc.OpenCCDictManager
 import com.osfans.trime.data.packaging.PackageStateManager
 import com.osfans.trime.data.packaging.SchemaPackageManager
@@ -322,6 +323,11 @@ class Rime :
 
     private fun startRime(fullCheck: Boolean? = null) {
         DataManager.sync()
+        // 内置万象 Pro：安装完就静默释放到用户目录（只拷文件，不部署、不改活动包）。
+        // 走后台线程，避免 85 MB 的拷贝把首次启动卡住。
+        runCatching {
+            SchemaPackStore.startBackgroundCopy(com.osfans.trime.TrimeApplication.getInstance())
+        }
         // Must run before `stagingDir`/`userDataDir` are resolved below: an empty
         // active package would otherwise point the whole session at the shared dir.
         SchemaPackageManager.ensureActivePackage()
