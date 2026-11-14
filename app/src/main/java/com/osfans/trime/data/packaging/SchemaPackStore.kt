@@ -8,6 +8,7 @@ package com.osfans.trime.data.packaging
 import android.content.Context
 import android.content.res.AssetManager
 import com.osfans.trime.BuildConfig
+import com.osfans.trime.actions.wanxiang.WanxiangCustom
 import com.osfans.trime.data.base.DataManager
 import org.json.JSONObject
 import timber.log.Timber
@@ -121,7 +122,8 @@ object SchemaPackStore {
         val files = copyAssetTree(context.assets, ASSET_PRO, dir) +
             copyAssetTree(context.assets, ASSET_T9, dir)
         writeManifest(dir, stamp, files)
-        writeFirstConfigIfAbsent(dir)
+        // 首次释放时写一份「带托管块」的默认配置；已存在则一个字节不动。
+        WanxiangCustom.writeInitialConfigIfMissing(dir)
         Timber.d("wanxiang: copied $files files in ${System.currentTimeMillis() - started} ms")
         return true
     }
@@ -173,40 +175,6 @@ object SchemaPackStore {
      *  * `wanxiang_pro.custom.yaml`：小鹤双拼 + 直接辅助码 + 每页 6 个候选（官方默认）；
      *  * `default.custom.yaml`：把九键 Pro 也列进方案表（否则用户只能看到 26 键那一个）。
      */
-    private fun writeFirstConfigIfAbsent(dir: File) {
-        val custom = File(dir, CUSTOM_FILE)
-        if (!custom.exists()) {
-            runCatching {
-                custom.writeText(
-                    """
-                    # 由 BambooIME 首次释放内置包时生成，之后可在「万象拼音」设置页里改。
-                    # 只写了这两个键，其余全部走官方 schema 的默认值。
-                    patch:
-                      speller/algebra:
-                        __patch:
-                          - wanxiang_algebra:/pro/小鹤双拼
-                          - wanxiang_algebra:/pro/直接辅助
-                      menu/page_size: 6
-                    """.trimIndent() + "\n",
-                )
-            }
-        }
-        val defaults = File(dir, DEFAULT_CUSTOM)
-        if (!defaults.exists()) {
-            runCatching {
-                defaults.writeText(
-                    """
-                    # 由 BambooIME 生成：26 键 Pro 与九键 Pro 都列进方案表。
-                    patch:
-                      schema_list:
-                        - schema: wanxiang_pro
-                        - schema: wanxiang_t9_pro
-                    """.trimIndent() + "\n",
-                )
-            }
-        }
-    }
-
     // ---------------------------------------------------------------- 删除
 
     /** 删除已释放的包目录（只删我们自己这份，绝不碰用户的 `wanxiang`）。 */

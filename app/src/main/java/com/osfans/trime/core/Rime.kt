@@ -8,6 +8,7 @@ package com.osfans.trime.core
 import com.osfans.trime.BuildConfig
 import com.osfans.trime.actions.glossary.GlossaryDecorator
 import com.osfans.trime.data.base.DataManager
+import com.osfans.trime.actions.wanxiang.WanxiangCustom
 import com.osfans.trime.actions.wanxiang.WanxiangPrefs
 import com.osfans.trime.data.packaging.SchemaPackStore
 import com.osfans.trime.data.opencc.OpenCCDictManager
@@ -331,6 +332,12 @@ class Rime :
         }
         runCatching {
             WanxiangPrefs.init(com.osfans.trime.TrimeApplication.getInstance())
+        }
+        // 旧版本追加写过 custom 的机器，这里把重复的 patch: 归一化（只读一次文件，坏了才重写）
+        runCatching {
+            if (SchemaPackStore.isInstalled()) {
+                WanxiangCustom.repairIfNeeded()
+            }
         }
         // Must run before `stagingDir`/`userDataDir` are resolved below: an empty
         // active package would otherwise point the whole session at the shared dir.
