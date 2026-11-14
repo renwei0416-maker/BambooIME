@@ -22,6 +22,8 @@ import com.osfans.trime.R
 import com.osfans.trime.actions.wanxiang.WanxiangCustom
 import com.osfans.trime.actions.wanxiang.WanxiangPrefs
 import com.osfans.trime.core.Rime
+import com.osfans.trime.data.packaging.SchemaPackageManager
+import com.osfans.trime.data.packaging.SchemaPackStore
 import com.osfans.trime.daemon.RimeDaemon
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -232,14 +234,9 @@ class WanxiangSetupFragment : Fragment() {
                 return@launch
             }
 
-            val schema = WanxiangCustom.activeSchema(WanxiangPrefs.layout)
-            val enabled = WanxiangCustom.enabledSchemas(WanxiangPrefs.layout)
-            rime.runOnReady {
-                runCatching {
-                    selectSchemaCrossPackage(schema)
-                    setEnabledSchemata(enabled)
-                }.onFailure { Timber.w(it, "wanxiang wizard: select schema failed") }
-            }
+            // 按包 id 激活：`selectSchemaCrossPackage` 是按方案 id 反查包的，
+            // 用户自己的包里也有同名 `wanxiang_pro` 时会被切到人家的包（踩过）。
+            SchemaPackageManager.setActivePackageId(SchemaPackStore.PACKAGE_ID)
             withContext(Dispatchers.IO) {
                 runCatching { RimeDaemon.restartRime(fullCheck = true) }
                     .onFailure { Timber.w(it, "wanxiang wizard: deploy failed") }

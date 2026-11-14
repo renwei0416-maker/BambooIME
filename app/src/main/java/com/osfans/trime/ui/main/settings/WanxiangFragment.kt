@@ -21,6 +21,7 @@ import com.osfans.trime.R
 import com.osfans.trime.actions.wanxiang.WanxiangCustom
 import com.osfans.trime.actions.wanxiang.WanxiangPrefs
 import com.osfans.trime.daemon.RimeDaemon
+import com.osfans.trime.data.packaging.SchemaPackageManager
 import com.osfans.trime.data.packaging.SchemaPackStore
 import com.osfans.trime.ui.common.BambooClick
 import com.osfans.trime.ui.common.PaddingPreferenceFragment
@@ -357,16 +358,13 @@ class WanxiangFragment : PaddingPreferenceFragment() {
                 toast("释放失败：检查 Documents 目录是否可写")
                 return@launch
             }
-            toast("正在部署，请稍候…")
-            runCatching {
-                rime.runOnReady {
-                    selectSchemaCrossPackage(SCHEMA_MAIN)
-                    setEnabledSchemata(arrayOf(SCHEMA_MAIN, SCHEMA_T9))
-                    selectSchema(SCHEMA_MAIN)
-                }
-            }.onFailure {
-                toast("切换失败：${it.message ?: it.javaClass.simpleName}")
+            val wrote = withContext(Dispatchers.IO) { WanxiangCustom.writeAll() }
+            if (!wrote) {
+                toast("写入配置失败：检查 Documents 目录是否可写")
+                return@launch
             }
+            toast("正在部署，请稍候…")
+            deployToOurPackage()
             rebuildPreferencesKeepingScroll { buildScreen() }
         }
     }
@@ -524,22 +522,24 @@ class WanxiangFragment : PaddingPreferenceFragment() {
                 toast("写入失败：检查 Documents 目录是否可写")
                 return@launch
             }
-            val schema = WanxiangCustom.activeSchema(WanxiangPrefs.layout)
-            val enabled = WanxiangCustom.enabledSchemas(WanxiangPrefs.layout)
-            runCatching {
-                rime.runOnReady {
-                    selectSchemaCrossPackage(schema)
-                    setEnabledSchemata(enabled)
-                    selectSchema(schema)
-                }
-            }.onFailure {
-                toast("切换失败：${it.message ?: it.javaClass.simpleName}")
-            }
             toast("正在部署，请稍候…")
-            runCatching { RimeDaemon.restartRime(fullCheck = true) }
-                .onFailure { toast("部署失败：${it.message}") }
+            deployToOurPackage()
             refresh()
         }
+    }
+
+    /**
+     * 切到**我们这个包**并重新部署。
+     *
+     * 注意：这里不能用 `selectSchemaCrossPackage("wanxiang_pro")` —— 那个 API 是按方案 id
+     * 反查包的，用户自己的包里也有同名 `wanxiang_pro` 时会被切到人家的包（实测踩过）。
+     * 所以一律按包 id 激活，部署则由 `restartRime(fullCheck = true)` 完成（它会读
+     * `default.custom.yaml` 里的 schema_list，我们刚刚只写了一个方案）。
+     */
+    private suspend fun deployToOurPackage() {
+        SchemaPackageManager.setActivePackageId(SchemaPackStore.PACKAGE_ID)
+        runCatching { RimeDaemon.restartRime(fullCheck = true) }
+            .onFailure { toast("部署失败：${it.message ?: it.javaClass.simpleName}") }
     }
 
     private fun confirmRestoreDefaults() {
