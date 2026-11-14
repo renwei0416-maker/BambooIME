@@ -8,6 +8,7 @@ package com.osfans.trime.core
 import com.osfans.trime.BuildConfig
 import com.osfans.trime.actions.glossary.GlossaryDecorator
 import com.osfans.trime.data.base.DataManager
+import com.osfans.trime.actions.wanxiang.WanxiangPrefs
 import com.osfans.trime.data.packaging.SchemaPackStore
 import com.osfans.trime.data.opencc.OpenCCDictManager
 import com.osfans.trime.data.packaging.PackageStateManager
@@ -327,6 +328,9 @@ class Rime :
         // 走后台线程，避免 85 MB 的拷贝把首次启动卡住。
         runCatching {
             SchemaPackStore.startBackgroundCopy(com.osfans.trime.TrimeApplication.getInstance())
+        }
+        runCatching {
+            WanxiangPrefs.init(com.osfans.trime.TrimeApplication.getInstance())
         }
         // Must run before `stagingDir`/`userDataDir` are resolved below: an empty
         // active package would otherwise point the whole session at the shared dir.
