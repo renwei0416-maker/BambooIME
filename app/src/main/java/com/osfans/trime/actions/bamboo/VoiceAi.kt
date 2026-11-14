@@ -44,13 +44,14 @@ object VoiceAi {
         val ic = service.currentInputConnection
         if (!sent) {
             // 没发 AI：原文照旧上屏（partial 被 final 替换，与以前完全一致）
-            commitRecognized(ic, source)
+            // 这条路径不经过 commitText（账本的唯一钩子），所以要自己记账，
+            // 否则「未进模式的语音上屏」用 qq/ 回退不掉。
+            if (commitRecognized(ic, source)) RevertLedger.record(source)
             return false
         }
 
         if (VoiceAiPrefs.commitSource) {
-            commitRecognized(ic, source)
-            RevertLedger.record(source)
+            if (commitRecognized(ic, source)) RevertLedger.record(source)
         } else {
             // 不同时上屏：必须清掉识别过程中留下的组合文本，
             // 否则一半在组合区、AI 结果又插在它后面，正文会串。
@@ -60,13 +61,22 @@ object VoiceAi {
         return true
     }
 
-    /** 与 [com.osfans.trime.link.SherpaSpeechClient] 原来那段相同：先组合再收尾，能替换掉 partial。 */
-    private fun commitRecognized(ic: InputConnection?, text: String) {
-        if (ic == null) return
-        runCatching {
+    /**
+     * 与 [com.osfans.trime.link.SherpaSpeechClient] 原来那段相同：先组合再收尾，能替换掉 partial。
+     *
+     * @return 是否成功落到编辑框。只有成功才应该记账，否则账本会多出一笔
+     *         「屏幕上并不存在的文字」，下次回退会连带删掉前面的正文。
+     */
+    private fun commitRecognized(ic: InputConnection?, text: String): Boolean {
+        if (ic == null) return false
+        return runCatching {
             ic.setComposingText(text, 1)
             ic.finishComposingText()
-        }.onFailure { Timber.w(it, "voice ai: commit failed") }
+            true
+        }.getOrElse { e ->
+            Timber.w(e, "voice ai: commit failed")
+            false
+        }
     }
 
     private fun clearComposing(ic: InputConnection?) {
