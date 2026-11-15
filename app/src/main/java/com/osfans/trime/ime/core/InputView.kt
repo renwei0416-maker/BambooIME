@@ -1076,6 +1076,10 @@ class InputView(
      * 卡片是输入法窗口里的独立覆盖层，底边贴在编码框上沿，浮在键盘上方、盖住 App 底部；
      * 候选栏、功能键排、键盘的位置与高度都不变，卡片里的编码框位置也不变。
      */
+    /** 提示卡是否正显示（Service 算 touchableRegion 时要看它）。 */
+    val isSchemaHintVisible: Boolean
+        get() = ::schemaHintHost.isInitialized && schemaHintHost.visibility == View.VISIBLE
+
     /**
      * 当前没有任何可用方案（`Rime.isEmpty()`）时，弹一次「打不出字」提示卡。
      *
@@ -1104,12 +1108,15 @@ class InputView(
             },
         )
         schemaHintHost.visibility = View.VISIBLE
+        // 卡片在窗口「可见区」之外，必须让系统重算 insets，否则点击会穿透到下面的 App
+        runCatching { TrimeInputMethodService.current?.updateInputViewShown() }
     }
 
     private fun dismissSchemaHint(state: Int) {
         WanxiangPrefs.hintState = state
         schemaHintHost.removeAllViews()
         schemaHintHost.visibility = View.GONE
+        runCatching { TrimeInputMethodService.current?.updateInputViewShown() }
     }
 
     private fun openUserDir() {
@@ -1682,6 +1689,12 @@ class InputView(
         // 这样高度变化不用重新通知系统算 insets，也不会出现「新长出来那截点不到」。
         if (PreeditUi.tipsTouchable) {
             rect.top = 0
+        }
+        // 「打不出字」提示卡也浮在键盘上方，不并进来就点不到（会穿透给下面的 App）
+        if (isSchemaHintVisible) {
+            val hintRect = Rect()
+            schemaHintHost.getHitRect(hintRect)
+            rect.union(hintRect)
         }
         if (ocrCardHost.visibility == View.VISIBLE) {
             val cardRect = Rect()

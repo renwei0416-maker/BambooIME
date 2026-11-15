@@ -630,7 +630,7 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
             // 触摸会穿透到下面的 App；卡片激活时改成「键盘 ∪ 卡片」的区域。
             // 提示块也浮在键盘上方，同样要并进触摸区，
             // 否则按在提示块上的拖动会穿透给下面的 App（表现为在滑编辑区）。
-            if (OcrCard.isActive || PreeditUi.tipsTouchable) {
+            if (OcrCard.isActive || PreeditUi.tipsTouchable || inputView?.isSchemaHintVisible == true) {
                 outInsets.touchableInsets = Insets.TOUCHABLE_INSETS_REGION
                 inputView?.getInputTouchRegion(outInsets.touchableRegion)
             }
