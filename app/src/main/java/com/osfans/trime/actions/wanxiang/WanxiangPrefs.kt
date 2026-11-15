@@ -36,6 +36,11 @@ object WanxiangPrefs {
     const val AUX_DIRECT = 1
     const val AUX_INDIRECT = 2
 
+    // ---- 「打不出字」时那张一次性提示卡的状态（0 未看过 / 1 选了去配置或× / 2 选了自己配置）
+    const val HINT_NONE = 0
+    const val HINT_DISMISSED = 1
+    const val HINT_SELF_CONFIG = 2
+
     /** 双拼方案（必须是 `wanxiang_algebra.yaml` 里 `pro:` 下的节点名，不含「全拼」）。 */
     val SCHEMES = listOf(
         "小鹤双拼", "自然码", "搜狗双拼", "微软双拼", "智能ABC", "紫光双拼", "拼音加加",
@@ -59,6 +64,7 @@ object WanxiangPrefs {
     private const val KEY_CONTEXTUAL = "contextual"
     private const val KEY_FUZZY = "fuzzy"
     private const val KEY_WIZARD_DONE = "wizard_done"
+    private const val KEY_HINT_STATE = "first_run_hint"
     private const val KEY_APPLIED = "applied_signature"
     private const val KEY_DOWNLOAD_BASE = "download_base"
 
@@ -133,6 +139,11 @@ object WanxiangPrefs {
     var wizardDone: Boolean
         get() = ready().getBoolean(KEY_WIZARD_DONE, false)
         set(v) = ready().edit { putBoolean(KEY_WIZARD_DONE, v) }
+
+    /** 首次「打不出字」提示卡的状态，见 `HINT_*`。非 0 即不再弹。 */
+    var hintState: Int
+        get() = ready().getInt(KEY_HINT_STATE, HINT_NONE)
+        set(v) = ready().edit { putInt(KEY_HINT_STATE, v) }
 
     /**
      * 方案包下载源前缀（可换国内镜像）。

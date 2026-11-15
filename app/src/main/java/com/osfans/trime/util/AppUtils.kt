@@ -65,6 +65,14 @@ object AppUtils {
 
     fun launchMainToKeyboard(context: Context) = launchMainToDest(context, NavigationRoute.VirtualKeyboard)
 
+    /** 「打不出字」提示卡：去万象设置向导。 */
+    fun launchMainToWanxiangWizard(context: Context) =
+        launchMainToDest(context, NavigationRoute.WanxiangSetup)
+
+    /** 「打不出字」提示卡：去方案包管理。 */
+    fun launchMainToPackageList(context: Context) =
+        launchMainToDest(context, NavigationRoute.PackageList)
+
     fun launchLogActivity(context: Context) {
         context.startActivity<LogActivity>()
     }

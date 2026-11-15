@@ -718,6 +718,13 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
         InputFeedbackManager.startInput()
         postRimeJob {
             updateRimeOption(this)
+            // 没有任何可用方案时，弹一次「打不出字」提示卡（只弹一次）
+            val empty = runCatching { isEmpty() }.getOrDefault(false)
+            if (empty) {
+                lifecycleScope.launch {
+                    runCatching { inputView?.maybeShowSchemaHint() }
+                }
+            }
         }
         val (useVirtualKeyboard, useCandidatesView) =
             inputDeviceManager.evaluateOnStartInputView(attribute, this)

@@ -10,6 +10,11 @@ import com.osfans.trime.util.BambooLog
 import com.osfans.trime.actions.handwriting.HandwritingWindow
 import com.osfans.trime.actions.ocr.OcrWindow
 import com.osfans.trime.actions.ocr.OcrCard
+import com.osfans.trime.actions.wanxiang.SchemaHintCard
+import com.osfans.trime.actions.wanxiang.WanxiangPrefs
+import com.osfans.trime.data.base.DataManager
+import com.osfans.trime.data.packaging.SchemaPackStore
+import com.osfans.trime.util.AppUtils
 import android.annotation.SuppressLint
 import android.content.res.Configuration
 import android.graphics.Outline
@@ -312,6 +317,9 @@ class InputView(
 
     /** OCR 确认卡片的挂载点：在顶栏与键盘之间，平时 GONE。 */
     private lateinit var ocrCardHost: LinearLayout
+
+    /** 「打不出字」提示卡的宿主：和拍照卡片同一种覆盖层，贴在编码框上沿。 */
+    private lateinit var schemaHintHost: LinearLayout
 
     private fun handleColor(): Int {
         val base = ContextCompat.getColor(context, R.color.lavender)
@@ -690,6 +698,13 @@ class InputView(
                 visibility = View.GONE
             }
 
+        schemaHintHost =
+            LinearLayout(context).apply {
+                id = View.generateViewId()
+                orientation = LinearLayout.VERTICAL
+                visibility = View.GONE
+            }
+
         keyboardView =
             constraintLayout {
                 id = View.generateViewId()
@@ -798,6 +813,15 @@ class InputView(
         // 不参与键盘 / 候选栏 / 编码框的约束链，所以不会改变它们的位置与高度。
         add(
             ocrCardHost,
+            lParams(matchParent, wrapContent) {
+                bottomToTop = preedit.ui.root.id
+                startOfParent()
+                endOfParent()
+            },
+        )
+
+        add(
+            schemaHintHost,
             lParams(matchParent, wrapContent) {
                 bottomToTop = preedit.ui.root.id
                 startOfParent()
@@ -1052,6 +1076,75 @@ class InputView(
      * 卡片是输入法窗口里的独立覆盖层，底边贴在编码框上沿，浮在键盘上方、盖住 App 底部；
      * 候选栏、功能键排、键盘的位置与高度都不变，卡片里的编码框位置也不变。
      */
+    /**
+     * 当前没有任何可用方案（`Rime.isEmpty()`）时，弹一次「打不出字」提示卡。
+     *
+     * 只弹一次：用户点过任何一个出口后 [WanxiangPrefs.hintState] 就不为 0，之后不再打扰。
+     */
+    fun maybeShowSchemaHint() {
+        if (WanxiangPrefs.hintState != WanxiangPrefs.HINT_NONE) return
+        if (schemaHintHost.visibility == View.VISIBLE) return
+        val hasPackage =
+            SchemaPackStore.isInstalled(SchemaPackStore.BASE_ID) ||
+                SchemaPackStore.isInstalled(SchemaPackStore.PRO_ID)
+        SchemaHintCard.bind(
+            host = schemaHintHost,
+            hasPackage = hasPackage,
+            onGoWizard = {
+                dismissSchemaHint(WanxiangPrefs.HINT_DISMISSED)
+                runCatching { AppUtils.launchMainToWanxiangWizard(context) }
+            },
+            onOpenFolder = { openUserDir() },
+            onOpenPackageList = {
+                dismissSchemaHint(WanxiangPrefs.HINT_DISMISSED)
+                runCatching { AppUtils.launchMainToPackageList(context) }
+            },
+            onSelfConfigConfirmed = {
+                dismissSchemaHint(WanxiangPrefs.HINT_SELF_CONFIG)
+            },
+        )
+        schemaHintHost.visibility = View.VISIBLE
+    }
+
+    private fun dismissSchemaHint(state: Int) {
+        WanxiangPrefs.hintState = state
+        schemaHintHost.removeAllViews()
+        schemaHintHost.visibility = View.GONE
+    }
+
+    private fun openUserDir() {
+        val dir = DataManager.userDataBaseDir
+        if (!dir.exists()) dir.mkdirs()
+        runCatching {
+            val uri =
+                androidx.core.content.FileProvider.getUriForFile(
+                    context,
+                    context.packageName + ".fileprovider",
+                    dir,
+                )
+            context.startActivity(
+                android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                    setDataAndType(uri, "resource/folder")
+                    addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                },
+            )
+        }.onFailure {
+            val manager =
+                context.getSystemService(android.content.ClipboardManager::class.java)
+            runCatching {
+                manager?.setPrimaryClip(
+                    android.content.ClipData.newPlainText("path", dir.absolutePath),
+                )
+            }
+            android.widget.Toast.makeText(
+                context,
+                "路径已复制：" + dir.absolutePath,
+                android.widget.Toast.LENGTH_LONG,
+            ).show()
+        }
+    }
+
     fun showOcrCard(text: String) {
         BambooLog.core.d(
             "card",
