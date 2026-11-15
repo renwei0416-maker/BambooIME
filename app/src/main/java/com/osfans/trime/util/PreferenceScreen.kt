@@ -6,6 +6,10 @@
 package com.osfans.trime.util
 
 import android.content.Context
+import android.text.SpannableString
+import android.text.Spanned
+import android.text.style.ForegroundColorSpan
+import androidx.annotation.ColorInt
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.preference.Preference
@@ -112,4 +116,27 @@ fun PreferenceGroup.addPreference(
             setOnPreferenceLongClickListener(onLongClick)
         },
     )
+}
+
+/** 需要醒目的入口统一用这个色（酒红），全 App 只此一处强调色。 */
+@ColorInt
+val ACCENT_RED: Int = 0xFF8E3B30.toInt()
+
+/** 把标题染成指定颜色。 */
+fun accentTitle(text: String, @ColorInt color: Int = ACCENT_RED): CharSequence =
+    SpannableString(text).apply {
+        setSpan(ForegroundColorSpan(color), 0, text.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+    }
+
+/** 标题带色的行：用于「万象拼音」「设置向导」这类要抓眼球的入口。 */
+fun PreferenceGroup.addAccentPreference(
+    title: String,
+    summary: String? = null,
+    @DrawableRes icon: Int? = null,
+    @ColorInt color: Int = ACCENT_RED,
+    onClick: (() -> Unit)? = null,
+) {
+    addPreference(BambooClick(context).apply { setup(title, summary, icon, onClick) })
+    val last = getPreference(preferenceCount - 1)
+    last.title = accentTitle(title, color)
 }

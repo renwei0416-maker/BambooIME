@@ -74,34 +74,18 @@ class WanxiangFragment : PaddingPreferenceFragment() {
                         else -> "${layoutLabel()} · ${encodeLabel()}"
                     },
                 )
-                addBambooCategory(
-                    "内置方案包",
-                    "万象拼音 Base（全拼/双拼 + 九键）",
-                ) {
-                    addRow(
-                        title = if (installed) "已就绪" else "尚未释放",
-                        summary =
-                            if (installed) {
-                                "包 $ourId　变体 ${SchemaPackStore.variantOf(ourId)}" +
-                                    "　占用 ${SchemaPackStore.sizeText(ourId)}" +
-                                    "　${SchemaPackStore.fileCount(ourId)} 个文件\n释放于" +
-                                    " ${SchemaPackStore.installedAtText(ourId)}"
-                            } else {
-                                "还没配置。点这里走向导，配好会自动释放"
-                            },
-                    ) {
-                        if (!installed) goWizard()
-                    }
-
-                    addRow(
-                        title = "打开文件夹",
-                        summary = if (ourId != null) SchemaPackStore.dir(ourId).absolutePath else "还没有可打开的目录",
-                    ) {
-                        if (ourId != null) showDirDialog() else goWizard()
-                    }
-                }
-
                 addBambooCategory("方案设置", "改完点「应用并部署」生效") {
+                    addAccentRow(
+                        title = "设置向导",
+                        summary = "键盘 → 编码 → 方案，选完自动应用",
+                    ) {
+                        runCatching {
+                            findNavController().navigate(
+                                com.osfans.trime.ui.main.NavigationRoute.WanxiangSetup,
+                            )
+                        }.onFailure { toast("打不开向导：${it.message}") }
+                    }
+
                     addRow(
                         title = "方案包与下载",
                         summary = downloadSummary(),
@@ -111,17 +95,6 @@ class WanxiangFragment : PaddingPreferenceFragment() {
                                 com.osfans.trime.ui.main.NavigationRoute.WanxiangDownload,
                             )
                         }.onFailure { toast("打不开下载页：${it.message}") }
-                    }
-
-                    addRow(
-                        title = "设置向导",
-                        summary = "键盘 → 编码 → 方案，选完自动应用",
-                    ) {
-                        runCatching {
-                            findNavController().navigate(
-                                com.osfans.trime.ui.main.NavigationRoute.WanxiangSetup,
-                            )
-                        }.onFailure { toast("打不开向导：${it.message}") }
                     }
 
                     settingRow(
@@ -651,6 +624,15 @@ class WanxiangFragment : PaddingPreferenceFragment() {
             }
         addPreference(header)
         header.block()
+    }
+
+    private fun PreferenceGroup.addAccentRow(
+        title: String,
+        summary: String,
+        onClick: () -> Unit,
+    ) {
+        addRow(title, summary, onClick)
+        getPreference(preferenceCount - 1).title = com.osfans.trime.util.accentTitle(title)
     }
 
     private fun PreferenceGroup.addRow(
