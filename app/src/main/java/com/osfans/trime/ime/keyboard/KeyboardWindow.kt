@@ -254,12 +254,40 @@ class KeyboardWindow :
      * 所以每次重建都会掉回 default；这里在它之后再补一次。
      */
     private fun restoreWanxiangKeyboard() {
-        if (!WanxiangPrefs.isReady() || !WanxiangPrefs.restoreKeyboard) return
-        val schemaId = runCatching { rime.run { statusCached }.schemaId }.getOrNull() ?: return
-        if (schemaId.isEmpty()) return
-        val target = WanxiangKeyboard.keyboardIdOf(schemaId, WanxiangPrefs.layout) ?: return
-        if (target !in presetKeyboardIds) return
-        if (target == currentKeyboardId) return
+        val log = com.osfans.trime.util.BambooLog.wx
+        if (!WanxiangPrefs.isReady()) {
+            log.d("restore", "skip: prefs not ready")
+            return
+        }
+        if (!WanxiangPrefs.restoreKeyboard) {
+            log.d("restore", "skip: switch off")
+            return
+        }
+        val schemaId = runCatching { rime.run { statusCached }.schemaId }.getOrNull()
+        if (schemaId.isNullOrEmpty()) {
+            log.d("restore", "skip: schemaId empty")
+            return
+        }
+        val layout = WanxiangPrefs.layout
+        val target = WanxiangKeyboard.keyboardIdOf(schemaId, layout)
+        if (target == null) {
+            log.d("restore", "skip: schema=$schemaId not ours")
+            return
+        }
+        if (target !in presetKeyboardIds) {
+            log.d("restore", "skip: $target not in theme (${presetKeyboardIds.size} ids)")
+            return
+        }
+        if (target == currentKeyboardId) {
+            log.d("restore", "skip: already $target")
+            return
+        }
+        log.d("restore", "schema=$schemaId layout=$layout -> $target (was $currentKeyboardId)")
+        if (com.osfans.trime.BuildConfig.DEBUG) {
+            runCatching {
+                android.widget.Toast.makeText(service, "键盘恢复 → $target", android.widget.Toast.LENGTH_SHORT).show()
+            }
+        }
         switchKeyboard(target)
     }
 
