@@ -117,6 +117,13 @@ class WanxiangSetupFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        // 两个包都不在 = 用户把目录删了，等于全新安装：把上次的选择清掉，
+        // 否则会带着旧的「九键/双拼」跑向导，看起来像设置项丢了。
+        if (!SchemaPackStore.isInstalled(SchemaPackStore.BASE_ID) &&
+            !SchemaPackStore.isInstalled(SchemaPackStore.PRO_ID)
+        ) {
+            WanxiangPrefs.resetToDefaults()
+        }
         page = 0
         render()
     }
@@ -235,14 +242,9 @@ class WanxiangSetupFragment : Fragment() {
 
     private fun renderEncode() {
         title.text = "全拼还是双拼"
+        // 选项永远显示：九键只是「选了也不生效」，不该把整页变成一句话。
         if (WanxiangPrefs.layout == WanxiangPrefs.LAYOUT_9) {
-            content.addView(
-                hint(
-                    "九键固定用全拼：九宫格每个键对应 3–4 个字母，双拼的键位在九键上无法输入。\n" +
-                        "切回全键盘后可以再来这里改双拼。",
-                ),
-            )
-            return
+            content.addView(hint("九键固定用全拼。想用双拼，在第 3 步把键盘换成 26 / 18 / 14 键。"))
         }
         content.addView(
             radio(
@@ -251,7 +253,14 @@ class WanxiangSetupFragment : Fragment() {
                     WanxiangPrefs.ENCODE_SHUANGPIN to "双拼",
                 ),
                 WanxiangPrefs.encode,
-            ) { WanxiangPrefs.encode = it; render() },
+            ) {
+                if (it == WanxiangPrefs.ENCODE_SHUANGPIN && WanxiangPrefs.layout == WanxiangPrefs.LAYOUT_9) {
+                    toast("九键固定用全拼，先在第 3 步换键盘")
+                } else {
+                    WanxiangPrefs.encode = it
+                }
+                render()
+            },
         )
     }
 

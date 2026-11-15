@@ -65,6 +65,17 @@ object SchemaPackStore {
 
     fun isActive(pkgId: String = BASE_ID): Boolean = SchemaPackageManager.activePackageId == pkgId
 
+    /**
+     * 已装但和当前 APK 带的那份不一致 → 有新版本可更新。
+     *
+     * stamp = `BUILD_VERSION_NAME/STAMP`，所以升级 APK 后 Base 会被判为可更新；
+     * Pro 的 stamp 也在装包时写入，bump 过 Variants.TAG 的新版同样会被判为可更新。
+     */
+    fun isOutdated(pkgId: String = BASE_ID): Boolean {
+        val m = manifest(pkgId) ?: return false
+        return m.optString("stamp") != currentStamp()
+    }
+
     fun manifest(pkgId: String = BASE_ID): JSONObject? =
         runCatching { JSONObject(File(dir(pkgId), MANIFEST).readText()) }.getOrNull()
 
@@ -94,11 +105,12 @@ object SchemaPackStore {
      *
      * 只拷文件：**不部署、不改活动包**。谁想用它，谁自己再写 custom + 设活动包 + 部署。
      */
-    fun ensureBaseCopied(context: Context): Boolean {
+    fun ensureBaseCopied(context: Context, force: Boolean = false): Boolean {
         if (!BuildConfig.BUNDLED_WANXIANG_PRO) return false
         val dir = dir(BASE_ID)
         val stamp = currentStamp()
-        if (File(dir, MANIFEST).isFile && manifest(BASE_ID)?.optString("stamp") == stamp) return true
+        // force=true 时无视 stamp，直接重拷（用于「更新内置包」）。custom 永远只补不改。
+        if (!force && File(dir, MANIFEST).isFile && manifest(BASE_ID)?.optString("stamp") == stamp) return true
 
         if (!dir.exists() && !dir.mkdirs()) {
             Timber.w("wanxiang: cannot create ${dir.absolutePath}")

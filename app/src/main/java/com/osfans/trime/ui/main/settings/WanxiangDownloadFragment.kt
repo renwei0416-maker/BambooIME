@@ -61,34 +61,67 @@ class WanxiangDownloadFragment : PaddingPreferenceFragment() {
 
         preferenceScreen = preferenceManager.createPreferenceScreen(requireContext()).apply {
             addBambooCategory("当前方案包", statusNote(activeId, baseInstalled, proInstalled)) {
+                val baseOutdated = SchemaPackStore.isOutdated(SchemaPackStore.BASE_ID)
                 addRow(
-                    title = if (activeId == SchemaPackStore.BASE_ID) "Base（内置）· 使用中" else "Base（内置）",
+                    title =
+                        when {
+                            activeId == SchemaPackStore.BASE_ID -> "Base（内置）· 使用中"
+                            else -> "Base（内置）"
+                        },
                     summary =
-                        if (baseInstalled) {
-                            "${SchemaPackStore.sizeText(SchemaPackStore.BASE_ID)} · 全拼/双拼 + 官方九键"
-                        } else {
-                            "还没释放；走进设置向导第 1 步才会拷到本地"
+                        when {
+                            !baseInstalled -> "还没释放；走进设置向导第 1 步才会拷到本地"
+                            baseOutdated -> "${SchemaPackStore.sizeText(SchemaPackStore.BASE_ID)} · 有新版本，点击更新"
+                            else -> "${SchemaPackStore.sizeText(SchemaPackStore.BASE_ID)} · 已是最新"
                         },
                 ) {
-                    if (activeId == SchemaPackStore.BASE_ID) toast("现在用的就是 Base") else switchTo(SchemaPackStore.BASE_ID)
+                    when {
+                        !baseInstalled -> goWizard()
+                        baseOutdated -> updateBase()
+                        activeId == SchemaPackStore.BASE_ID -> toast("现在用的就是 Base")
+                        else -> switchTo(SchemaPackStore.BASE_ID)
+                    }
                 }
                 if (proInstalled) {
+                    val proOutdated = SchemaPackStore.isOutdated(SchemaPackStore.PRO_ID)
                     addRow(
-                        title = if (activeId == SchemaPackStore.PRO_ID) "Pro · $proTitle · 使用中" else "Pro · $proTitle",
-                        summary = "${SchemaPackStore.sizeText(SchemaPackStore.PRO_ID)} · 带辅助码词库，没有九键",
+                        title =
+                            when {
+                                activeId == SchemaPackStore.PRO_ID -> "Pro · $proTitle · 使用中"
+                                proOutdated -> "Pro · $proTitle · 有新版本"
+                                else -> "Pro · $proTitle"
+                            },
+                        summary =
+                            when {
+                                proOutdated -> "${SchemaPackStore.sizeText(SchemaPackStore.PRO_ID)} · 点击重新下载当前变体"
+                                else -> "${SchemaPackStore.sizeText(SchemaPackStore.PRO_ID)} · 带辅助码词库，没有九键"
+                            },
                     ) {
-                        if (activeId == SchemaPackStore.PRO_ID) toast("现在用的就是 Pro") else switchTo(SchemaPackStore.PRO_ID)
+                        when {
+                            proOutdated -> {
+                                val v = WanxiangVariants.byId(SchemaPackStore.variantOf(SchemaPackStore.PRO_ID))
+                                if (v != null) confirmInstall(v) else switchTo(SchemaPackStore.PRO_ID)
+                            }
+                            activeId == SchemaPackStore.PRO_ID -> toast("现在用的就是 Pro")
+                            else -> switchTo(SchemaPackStore.PRO_ID)
+                        }
                     }
                 }
             }
             addBambooCategory("Pro 词库（带辅助码）", "装进 wanxiang-pro；换变体只覆盖同名文件，不删别的") {
                 WanxiangVariants.list.filter { it.hasAux }.forEach { v ->
                     val here = proInstalled && v.id == proVariant
+                    val outdated = here && SchemaPackStore.isOutdated(SchemaPackStore.PRO_ID)
                     addRow(
-                        title = if (here) "${v.title}（使用中）" else v.title,
+                        title =
+                            when {
+                                outdated -> "${v.title}（可更新）"
+                                here -> "${v.title}（使用中）"
+                                else -> v.title
+                            },
                         summary = "${WanxiangVariants.sizeText(v.bytes)} · ${v.note}",
                     ) {
-                        if (here) {
+                        if (here && !outdated) {
                             toast("这个变体正在用")
                         } else {
                             confirmInstall(v)
@@ -122,6 +155,35 @@ class WanxiangDownloadFragment : PaddingPreferenceFragment() {
                 }.onFailure { toast("打不开向导：${it.message}") }
             }
             .show()
+    }
+
+    /** 更新内置 Base：强制重拷 assets（跳过 custom/），在用时顺手部署一次。 */
+    private fun updateBase() {
+        if (busy) {
+            toast("正在处理上一个任务")
+            return
+        }
+        busy = true
+        lifecycleScope.launch {
+            toast("正在更新 Base…")
+            val ok = withContext(Dispatchers.IO) { SchemaPackStore.ensureBaseCopied(requireContext(), force = true) }
+            if (!ok) {
+                busy = false
+                toast("更新失败：内置包不可用")
+                return@launch
+            }
+            if (SchemaPackageManager.activePackageId == SchemaPackStore.BASE_ID) {
+                withContext(Dispatchers.IO) {
+                    runCatching { RimeDaemon.restartRime(fullCheck = true) }
+                        .onFailure { Timber.w(it, "wanxiang: deploy failed") }
+                }
+                toast("Base 已更新并重新部署")
+            } else {
+                toast("Base 已更新；切到 Base 时生效")
+            }
+            busy = false
+            rebuildPreferencesKeepingScroll { buildScreen() }
+        }
     }
 
     /** 切到某个包：写配置 → 设活动包 → 部署。 */

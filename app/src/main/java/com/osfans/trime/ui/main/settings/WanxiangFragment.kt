@@ -459,12 +459,13 @@ class WanxiangFragment : PaddingPreferenceFragment() {
     }
 
     private fun downloadSummary(): String {
-        val v = SchemaPackStore.variantOf(WanxiangCustom.activePackage())
+        val pkg = WanxiangCustom.activePackage()
+        val v = SchemaPackStore.variantOf(pkg)
         val title = com.osfans.trime.actions.wanxiang.WanxiangVariants.installedNote(v)
-        return if (SchemaPackStore.isInstalled(WanxiangCustom.activePackage())) {
-            "当前：$title"
-        } else {
-            "下载辅助码词库、语法模型"
+        return when {
+            !SchemaPackStore.isInstalled(pkg) -> "下载辅助码词库、语法模型"
+            SchemaPackStore.isOutdated(pkg) -> "当前：$title · 有新版本可更新"
+            else -> "当前：$title"
         }
     }
 
