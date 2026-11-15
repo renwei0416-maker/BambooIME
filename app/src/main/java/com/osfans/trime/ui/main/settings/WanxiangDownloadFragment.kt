@@ -157,6 +157,22 @@ class WanxiangDownloadFragment : PaddingPreferenceFragment() {
             .show()
     }
 
+    /** Pro 装好但还没配置：只给「去设置向导」，不写盘不切包不部署。 */
+    private fun askWizardForPro() {
+        AlertDialog.Builder(requireContext())
+            .setTitle("Pro 词库已装好")
+            .setMessage("Pro 是配「双拼 + 辅助码」用的。接下来在向导里选用哪套双拼、哪种辅助码，完成后一次部署。")
+            .setCancelable(true)
+            .setNegativeButton("稍后") { _, _ -> rebuildPreferencesKeepingScroll { buildScreen() } }
+            .setPositiveButton("去设置向导") { _, _ ->
+                runCatching {
+                    androidx.navigation.fragment.NavHostFragment.findNavController(this)
+                        .navigate(com.osfans.trime.ui.main.NavigationRoute.WanxiangSetup)
+                }.onFailure { toast("打不开向导：${it.message}") }
+            }
+            .show()
+    }
+
     /** 更新内置 Base：强制重拷 assets（跳过 custom/），在用时顺手部署一次。 */
     private fun updateBase() {
         if (busy) {
@@ -259,7 +275,16 @@ class WanxiangDownloadFragment : PaddingPreferenceFragment() {
                 toast("解包失败")
                 return@launch
             }
-            // 装进 Pro 包：按当前设置写它的 custom，然后切过去
+            // 第一次装 Pro：还没配置过就别替他配。Pro 是为「双拼 + 辅助码」来的，
+            // 而辅助码必须配一套具体双拼，给不出默认值 —— 直接把用户送去向导。
+            if (!WanxiangCustom.isConfigured(SchemaPackStore.PRO_ID)) {
+                busy = false
+                toast("Pro 词库已装好")
+                askWizardForPro()
+                return@launch
+            }
+
+            // 已经配置过（用户在设置页主动换变体）：按当前设置写 custom，然后切过去
             val wrote = withContext(Dispatchers.IO) { WanxiangCustom.writeAll(SchemaPackStore.PRO_ID) }
             Timber.d("wanxiang: write pro custom=$wrote")
             SchemaPackageManager.setActivePackageId(SchemaPackStore.PRO_ID)

@@ -66,6 +66,14 @@ object WanxiangCustom {
     private fun customFileOf(pkgId: String): String =
         if (pkgId == SchemaPackStore.PRO_ID) PRO_CUSTOM else BASE_CUSTOM
 
+    /**
+     * 这个包配置过没有：看它的 custom 文件在不在。
+     *
+     * 只装包不写 custom = 裸包，用户还没选过输入方式，不该拿默认值替他配。
+     */
+    fun isConfigured(pkgId: String = activePackage()): Boolean =
+        File(SchemaPackStore.dir(pkgId), customFileOf(pkgId)).isFile
+
     /** algebra 节点前缀：Base 用 `base/`，Pro 用 `pro/`。 */
     private fun sectionOf(pkgId: String): String =
         if (pkgId == SchemaPackStore.PRO_ID) "pro" else "base"
@@ -134,7 +142,14 @@ object WanxiangCustom {
             when (aux) {
                 WanxiangPrefs.AUX_DIRECT -> nodes += "wanxiang_algebra:/pro/直接辅助"
                 WanxiangPrefs.AUX_INDIRECT -> nodes += "wanxiang_algebra:/pro/间接辅助"
-                else -> Unit
+                // Pro 词库每个音节都带 `;辅码`（如 `ā;ek`），官方只在挂「直接辅助」时才剥。
+                // 我们允许「不用辅助码」，就得自己剥，否则纯拼音一个音节都匹配不上。
+                else -> {
+                    nodes += "derive/^([a-z◯]+)(\\d?);.*$/$1/"
+                    nodes += "derive/^([a-z◯]+)(\\d?);.*$/$1$2/"
+                    nodes += "erase/.*;.*/"
+                    nodes += "xform/◯/;/"
+                }
             }
         }
         nodes += when (layout) {
