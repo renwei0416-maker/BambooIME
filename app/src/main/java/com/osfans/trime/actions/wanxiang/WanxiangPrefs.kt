@@ -21,6 +21,7 @@ import com.osfans.trime.BuildConfig
 object WanxiangPrefs {
     private const val SP = "bamboo_wanxiang"
     private lateinit var p: SharedPreferences
+    private lateinit var app: Context
 
     // ---- 布局：26 / 18 / 14 / 9
     const val LAYOUT_26 = 26
@@ -76,7 +77,8 @@ object WanxiangPrefs {
 
     fun init(context: Context) {
         if (::p.isInitialized) return
-        p = context.applicationContext.getSharedPreferences(SP, Context.MODE_PRIVATE)
+        app = context.applicationContext
+        p = app.getSharedPreferences(SP, Context.MODE_PRIVATE)
     }
 
     private fun ready(): SharedPreferences {
@@ -150,13 +152,13 @@ object WanxiangPrefs {
             // debug 包：装了新版本就当成没提示过，方便反复测试这条提示
             if (BuildConfig.DEBUG) {
                 val stamp = ready().getString(KEY_HINT_STAMP, "").orEmpty()
-                if (stamp != BuildConfig.BUILD_VERSION_NAME) return HINT_NONE
+                if (stamp != hintStamp()) return HINT_NONE
             }
             return saved
         }
         set(v) = ready().edit {
             putInt(KEY_HINT_STATE, v)
-            putString(KEY_HINT_STAMP, BuildConfig.BUILD_VERSION_NAME)
+            putString(KEY_HINT_STAMP, hintStamp())
         }
 
     /**
@@ -209,6 +211,17 @@ object WanxiangPrefs {
         }
         if (!userDict) contextual = false
         if (!t9UserDict) t9Contextual = false
+    }
+
+    /**
+     * debug 包用「本次安装时间」当戳，release 用版本号。
+     * 这样同一个版本号下反复出新包，装一次就能重测一次提示。
+     */
+    private fun hintStamp(): String {
+        if (!BuildConfig.DEBUG) return BuildConfig.BUILD_VERSION_NAME
+        return runCatching {
+            app.packageManager.getPackageInfo(app.packageName, 0).lastUpdateTime.toString()
+        }.getOrDefault(BuildConfig.BUILD_VERSION_NAME)
     }
 
     /** 把「首次提示卡」状态清掉：切回键盘会再弹一次。 */
