@@ -153,10 +153,55 @@ fun accentTitle(
         setSpan(ForegroundColorSpan(color), 0, text.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
     }
 
+/** 强调行的底色（酒红）与文字色（白），固定值、不跟主题走。 */
+@ColorInt
+val ACCENT_ROW_BG: Int = 0xFF8E3B30.toInt()
+
+@ColorInt
+val ACCENT_ROW_TEXT: Int = 0xFFFFFFFF.toInt()
+
+/** 摘要用略透的白，保证在主色块上仍然清楚。 */
+@ColorInt
+val ACCENT_ROW_SUMMARY: Int = 0xE6FFFFFF.toInt()
+
+private fun dpOf(
+    context: Context,
+    value: Int,
+): Int = (value * context.resources.displayMetrics.density).toInt()
+
 /**
- * 标题带色的行。除了 span，还在 bind 时直接给标题 TextView 上色：
- * 有的主题布局会另建一个 TextView，只靠 span 不生效。
+ * 整块强调的行：背景铺酒红、标题与摘要改白、图标也改白。
+ * 只在 bind 时处理，不新建布局，也不依赖主题的任何颜色键。
  */
+open class AccentRow(context: Context) : BambooClick(context) {
+    override fun onBindViewHolder(holder: PreferenceViewHolder) {
+        super.onBindViewHolder(holder)
+        runCatching {
+            val ctx = holder.itemView.context
+            val radius = dpOf(ctx, 8).toFloat()
+            val fill =
+                android.graphics.drawable.GradientDrawable().apply {
+                    shape = android.graphics.drawable.GradientDrawable.RECTANGLE
+                    setColor(ACCENT_ROW_BG)
+                    cornerRadius = radius
+                }
+            holder.itemView.background =
+                android.graphics.drawable.RippleDrawable(
+                    android.content.res.ColorStateList.valueOf(0x33FFFFFF),
+                    fill,
+                    null,
+                )
+            holder.itemView.findViewById<android.widget.TextView>(android.R.id.title)
+                ?.setTextColor(ACCENT_ROW_TEXT)
+            holder.itemView.findViewById<android.widget.TextView>(android.R.id.summary)
+                ?.setTextColor(ACCENT_ROW_SUMMARY)
+            holder.itemView.findViewById<android.widget.ImageView>(android.R.id.icon)
+                ?.setColorFilter(ACCENT_ROW_TEXT, android.graphics.PorterDuff.Mode.SRC_IN)
+        }
+    }
+}
+
+/** 标题带红的行（保留给需要「只红字」的场合）。 */
 open class AccentClick(context: Context) : BambooClick(context) {
     override fun onBindViewHolder(holder: PreferenceViewHolder) {
         super.onBindViewHolder(holder)
@@ -167,7 +212,7 @@ open class AccentClick(context: Context) : BambooClick(context) {
     }
 }
 
-/** 标题带色的行：用于「万象拼音」「设置向导」这类要抓眼球的入口。 */
+/** 整块酒红的行：用于「万象拼音」「设置向导」这类要抓眼球的入口。 */
 fun PreferenceGroup.addAccentPreference(
     title: String,
     summary: String? = null,
@@ -175,9 +220,8 @@ fun PreferenceGroup.addAccentPreference(
     onClick: (() -> Unit)? = null,
 ) {
     addPreference(
-        AccentClick(context).apply {
+        AccentRow(context).apply {
             setup(title, summary, icon, onClick)
-            this.title = accentTitle(title, accentColorFor(context))
         },
     )
 }
