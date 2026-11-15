@@ -358,10 +358,8 @@ class WanxiangSetupFragment : Fragment() {
         next.isEnabled = false
         next.text = "正在应用…"
 
-        // 辅助码只有 Pro 词库带；九键只能是 Base
-        val usePro = WanxiangPrefs.aux != WanxiangPrefs.AUX_NONE &&
-            WanxiangPrefs.layout != WanxiangPrefs.LAYOUT_9
-        val pkgId = if (usePro) SchemaPackStore.PRO_ID else SchemaPackStore.BASE_ID
+        // 辅助码是选包的唯一开关（Pro 没有「不用辅助码」这一档；九键只能 Base）
+        val pkgId = WanxiangCustom.targetPackage()
 
         viewLifecycleOwner.lifecycleScope.launch {
             if (pkgId == SchemaPackStore.BASE_ID) {

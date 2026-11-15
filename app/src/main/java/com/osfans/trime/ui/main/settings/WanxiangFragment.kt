@@ -416,9 +416,16 @@ class WanxiangFragment : PaddingPreferenceFragment() {
      * 不做这个检查的后果：用户自己的包是活动包时，设置会写进内置包的 custom，
      * 屏幕上什么都不会变，用户只会觉得「改了没用」。
      */
+    /**
+     * 能不能改：两个包一个都没装才拦人。
+     *
+     * 这里不判断「当前活动包」—— 落盘目标是 `WanxiangCustom.targetPackage()`，
+     * 由辅助码决定；「应用并部署」时再按目标解包 / 切包。
+     */
     private fun ensureWritable(): Boolean {
-        val ourId = WanxiangCustom.currentPackage()
-        if (ourId == null || !SchemaPackStore.isInstalled(ourId)) {
+        val anyInstalled = SchemaPackStore.isInstalled(SchemaPackStore.BASE_ID) ||
+            SchemaPackStore.isInstalled(SchemaPackStore.PRO_ID)
+        if (!anyInstalled) {
             goWizard()
             return false
         }
@@ -562,14 +569,32 @@ class WanxiangFragment : PaddingPreferenceFragment() {
 
     private fun applyAndDeploy() {
         lifecycleScope.launch {
+            val target = WanxiangCustom.targetPackage()
+
+            // 目标是 Base 而没解包：直接解（67 MB，几秒），解完再配。
+            if (target == SchemaPackStore.BASE_ID && !SchemaPackStore.isInstalled(SchemaPackStore.BASE_ID)) {
+                toast("正在释放内置方案包…")
+                val copied = withContext(Dispatchers.IO) { SchemaPackStore.ensureBaseCopied(requireContext()) }
+                if (!copied) {
+                    toast("释放内置包失败：检查 Documents 目录是否可写")
+                    return@launch
+                }
+            }
+
+            // 目标是 Pro 而没装：不能替用户下载，提示去下载。
+            if (target == SchemaPackStore.PRO_ID && !SchemaPackStore.isInstalled(SchemaPackStore.PRO_ID)) {
+                toast("还没装 Pro 词库：先去「方案包与下载」装一个带辅助码的")
+                return@launch
+            }
+
             toast("正在写入配置…")
-            val ok = withContext(Dispatchers.IO) { WanxiangCustom.writeAll(WanxiangCustom.activePackage()) }
+            val ok = withContext(Dispatchers.IO) { WanxiangCustom.writeAll(target) }
             if (!ok) {
                 toast("写入失败：检查 Documents 目录是否可写")
                 return@launch
             }
             toast("正在部署，请稍候…")
-            deployToOurPackage()
+            deployToOurPackage(target)
             refresh()
         }
     }
@@ -582,8 +607,8 @@ class WanxiangFragment : PaddingPreferenceFragment() {
      * 所以一律按包 id 激活，部署则由 `restartRime(fullCheck = true)` 完成（它会读
      * `default.custom.yaml` 里的 schema_list，我们刚刚只写了一个方案）。
      */
-    private suspend fun deployToOurPackage() {
-        SchemaPackageManager.setActivePackageId(WanxiangCustom.activePackage())
+    private suspend fun deployToOurPackage(pkgId: String = WanxiangCustom.targetPackage()) {
+        SchemaPackageManager.setActivePackageId(pkgId)
         runCatching { RimeDaemon.restartRime(fullCheck = true) }
             .onFailure { toast("部署失败：${it.message ?: it.javaClass.simpleName}") }
     }

@@ -55,6 +55,18 @@ object WanxiangCustom {
             SchemaPackStore.BASE_ID
         }
 
+    /**
+     * 这次配置该落到哪个包 —— 唯一判据。
+     *
+     * 辅助码是「选包」的开关：要辅助码就是 Pro（Pro 没有「不用辅助码」这一档），
+     * 不要辅助码就是 Base（Base 词库本来就没有辅码列）。九键只能用 Base。
+     */
+    fun targetPackage(): String {
+        val wantsAux = WanxiangPrefs.aux != WanxiangPrefs.AUX_NONE
+        val slotFitsPro = WanxiangPrefs.layout != WanxiangPrefs.LAYOUT_9
+        return if (wantsAux && slotFitsPro) SchemaPackStore.PRO_ID else SchemaPackStore.BASE_ID
+    }
+
     /** 包 + 键盘形态 → 该包的方案 id。Pro 没有九键，永远是 26 键那个。 */
     fun schemaOf(pkgId: String, layout: Int): String = when {
         pkgId == SchemaPackStore.PRO_ID -> SCHEMA_PRO_26
@@ -142,14 +154,9 @@ object WanxiangCustom {
             when (aux) {
                 WanxiangPrefs.AUX_DIRECT -> nodes += "wanxiang_algebra:/pro/直接辅助"
                 WanxiangPrefs.AUX_INDIRECT -> nodes += "wanxiang_algebra:/pro/间接辅助"
-                // Pro 词库每个音节都带 `;辅码`（如 `ā;ek`），官方只在挂「直接辅助」时才剥。
-                // 我们允许「不用辅助码」，就得自己剥，否则纯拼音一个音节都匹配不上。
-                else -> {
-                    nodes += "derive/^([a-z◯]+)(\\d?);.*$/$1/"
-                    nodes += "derive/^([a-z◯]+)(\\d?);.*$/$1$2/"
-                    nodes += "erase/.*;.*/"
-                    nodes += "xform/◯/;/"
-                }
+                // Pro 词库每个音节都带 `;辅码`（如 `ā;ek`），只有挂「直接辅助」/「间接辅助」
+                // 时才会被剥掉。所以 Pro 不存在「不用辅助码」这一档 —— 不用辅助码就配 Base。
+                else -> Unit
             }
         }
         nodes += when (layout) {
