@@ -27,12 +27,44 @@ import java.util.Locale
  */
 object WanxiangCustom {
 
-    const val SCHEMA_PRO = "wanxiang"
-    const val SCHEMA_T9 = "wanxiang_t9"
+    /** Base 包（内置）的 26 键方案 id。 */
+    const val SCHEMA_BASE_26 = "wanxiang"
 
-    private const val PRO_CUSTOM = "wanxiang.custom.yaml"
-    private const val T9_CUSTOM = "wanxiang_t9.custom.yaml"
+    /** Base 包（内置）的九键方案 id（官方自带，Pro 没有九键）。 */
+    const val SCHEMA_BASE_T9 = "wanxiang_t9"
+
+    /** Pro 包（下载）的 26 键方案 id。 */
+    const val SCHEMA_PRO_26 = "wanxiang_pro"
+
+    private const val BASE_CUSTOM = "wanxiang.custom.yaml"
+    private const val PRO_CUSTOM = "wanxiang_pro.custom.yaml"
     private const val DEFAULT_CUSTOM = "default.custom.yaml"
+
+    /** 当前该往哪个包写：活动包是 Pro 就写 Pro，否则按 Base。 */
+    fun activePackage(): String =
+        if (SchemaPackStore.isActive(SchemaPackStore.PRO_ID)) {
+            SchemaPackStore.PRO_ID
+        } else {
+            SchemaPackStore.BASE_ID
+        }
+
+    /** 包 + 键盘形态 → 该包的方案 id。Pro 没有九键，永远是 26 键那个。 */
+    fun schemaOf(pkgId: String, layout: Int): String = when {
+        pkgId == SchemaPackStore.PRO_ID -> SCHEMA_PRO_26
+        layout == WanxiangPrefs.LAYOUT_9 -> SCHEMA_BASE_T9
+        else -> SCHEMA_BASE_26
+    }
+
+    /** 包里那份「主 custom」的文件名。 */
+    private fun customFileOf(pkgId: String): String =
+        if (pkgId == SchemaPackStore.PRO_ID) PRO_CUSTOM else BASE_CUSTOM
+
+    /** algebra 节点前缀：Base 用 `base/`，Pro 用 `pro/`。 */
+    private fun sectionOf(pkgId: String): String =
+        if (pkgId == SchemaPackStore.PRO_ID) "pro" else "base"
+
+    /** 包里装的是不是 Pro（决定辅助码能不能写）。 */
+    fun isPro(pkgId: String): Boolean = pkgId == SchemaPackStore.PRO_ID
 
     private const val BEGIN = "# >>> BambooIME managed（这一段由「万象拼音」设置页生成，手改会被覆盖）"
     private const val END = "# <<< BambooIME managed"
@@ -49,12 +81,11 @@ object WanxiangCustom {
             "schema_list",
         )
 
-    /** 按布局决定用哪个方案。 */
-    fun activeSchema(layout: Int): String =
-        if (layout == WanxiangPrefs.LAYOUT_9) SCHEMA_T9 else SCHEMA_PRO
+    /** 按包 + 布局决定用哪个方案。 */
+    fun activeSchema(pkgId: String, layout: Int): String = schemaOf(pkgId, layout)
 
-    /** 按布局决定要启用哪些方案：**一次只有一个**。 */
-    fun enabledSchemas(layout: Int): Array<String> = arrayOf(activeSchema(layout))
+    /** 要启用哪些方案：**一次只有一个**。 */
+    fun enabledSchemas(pkgId: String, layout: Int): Array<String> = arrayOf(schemaOf(pkgId, layout))
 
     // ------------------------------------------------------------ algebra
 
@@ -63,7 +94,8 @@ object WanxiangCustom {
      *
      * 键位映射必须放最后（9/14/18/26 都是「字母级别」的折叠，放在前面会把源码改掉）。
      */
-    fun algebraNodes(): List<String> = algebraNodes(
+    fun algebraNodes(pkgId: String = activePackage()): List<String> = algebraNodes(
+        pkgId = pkgId,
         fuzzy = WanxiangPrefs.fuzzy,
         encode = WanxiangPrefs.encode,
         scheme = WanxiangPrefs.scheme,
@@ -72,6 +104,7 @@ object WanxiangCustom {
     )
 
     private fun algebraNodes(
+        pkgId: String,
         fuzzy: Set<String>,
         encode: String,
         scheme: String,
@@ -82,8 +115,8 @@ object WanxiangCustom {
         WanxiangPrefs.FUZZY_KEYS.forEach { key ->
             if (fuzzy.contains(key)) nodes += "wanxiang_algebra:/模糊音_$key"
         }
-        // 节点前缀跟着包变体走：Base 的词库没有辅码列，必须用 base/ 那一套
-        val section = if (SchemaPackStore.variant() == SchemaPackStore.VARIANT_BASE) "base" else "pro"
+        // 节点前缀跟着包走：Base 的词库没有辅码列，必须用 base/ 那一套
+        val section = sectionOf(pkgId)
         nodes += if (encode == WanxiangPrefs.ENCODE_QUANPIN) {
             "wanxiang_algebra:/$section/全拼"
         } else {
@@ -107,11 +140,15 @@ object WanxiangCustom {
 
     // ------------------------------------------------------------ 渲染
 
-    private fun renderProBlock(
+    /**
+     * 只写两样：`speller/algebra` 与 `menu/page_size`。
+     *
+     * 用户词典、智能调频一律不写，交给方案自己的默认值 —— 官方 Base 的 custom 也只写这两样，
+     * 少写一个键就少一处和上游打架的地方。
+     */
+    private fun renderCustomBlock(
         nodes: List<String>,
         pageSize: Int,
-        userDict: Boolean,
-        contextual: Boolean,
     ): String = buildString {
         appendLine(BEGIN)
         appendLine("patch:")
@@ -119,22 +156,6 @@ object WanxiangCustom {
         appendLine("    __patch:")
         nodes.forEach { appendLine("      - $it") }
         appendLine("  menu/page_size: $pageSize")
-        // 两个键总是显式写：官方以后改默认值时，「关」也能生效
-        appendLine("  translator/enable_user_dict: $userDict")
-        appendLine("  translator/contextual_suggestions: $contextual")
-        append(END)
-    }
-
-    private fun renderT9Block(
-        pageSize: Int,
-        userDict: Boolean,
-        contextual: Boolean,
-    ): String = buildString {
-        appendLine(BEGIN)
-        appendLine("patch:")
-        appendLine("  menu/page_size: $pageSize")
-        appendLine("  translator/enable_user_dict: $userDict")
-        appendLine("  translator/contextual_suggestions: $contextual")
         append(END)
     }
 
@@ -299,44 +320,39 @@ object WanxiangCustom {
      */
     fun writeInitialConfigIfMissing(
         dir: File,
-        schema: String = SCHEMA_PRO,
+        pkgId: String = SchemaPackStore.BASE_ID,
     ) {
         runCatching {
             dir.mkdirs()
-            val pro = File(dir, PRO_CUSTOM)
-            if (!pro.exists()) {
+            val main = File(dir, customFileOf(pkgId))
+            if (!main.exists()) {
                 writeManaged(
-                    pro,
-                    renderProBlock(
+                    main,
+                    renderCustomBlock(
                         nodes = algebraNodes(
+                            pkgId = pkgId,
                             fuzzy = emptySet(),
-                            encode = WanxiangPrefs.ENCODE_SHUANGPIN,
-                            scheme = "小鹤双拼",
+                            encode = WanxiangPrefs.ENCODE_QUANPIN,
+                            scheme = WanxiangPrefs.SCHEMES.first(),
                             aux = WanxiangPrefs.AUX_NONE,
                             layout = WanxiangPrefs.LAYOUT_26,
                         ),
                         pageSize = 6,
-                        userDict = false,
-                        contextual = false,
                     ),
                 )
             }
-            val t9 = File(dir, T9_CUSTOM)
-            if (!t9.exists()) {
-                writeManaged(t9, renderT9Block(pageSize = 6, userDict = true, contextual = false))
-            }
             val defaults = File(dir, DEFAULT_CUSTOM)
             if (!defaults.exists()) {
-                writeManaged(defaults, renderSchemaListBlock(schema))
+                writeManaged(defaults, renderSchemaListBlock(schemaOf(pkgId, WanxiangPrefs.LAYOUT_26)))
             }
         }.onFailure { Timber.w(it, "wanxiang: writeInitialConfigIfMissing failed") }
     }
 
     /** 生成 `schema_list`（只放 [enabledSchemas] 里的那一个）。 */
-    private fun writeSchemaList(): Boolean {
-        val file = File(SchemaPackStore.dir(), DEFAULT_CUSTOM)
+    private fun writeSchemaList(pkgId: String): Boolean {
+        val file = File(SchemaPackStore.dir(pkgId), DEFAULT_CUSTOM)
         return runCatching {
-            writeManaged(file, renderSchemaListBlock(activeSchema(WanxiangPrefs.layout)))
+            writeManaged(file, renderSchemaListBlock(schemaOf(pkgId, WanxiangPrefs.layout)))
             true
         }.onFailure { Timber.w(it, "wanxiang: write $DEFAULT_CUSTOM failed") }
             .getOrDefault(false)
@@ -347,34 +363,20 @@ object WanxiangCustom {
      *
      * 注意：九键时也照样写 26 键那份 custom —— 幂等、无害，切回全键盘时直接就是对的。
      */
-    fun writeAll(): Boolean {
-        if (!SchemaPackStore.isInstalled()) return false
-        val dir = SchemaPackStore.dir()
-        var ok = true
-        ok = runCatching {
-            writeManaged(
-                File(dir, PRO_CUSTOM),
-                renderProBlock(
-                    nodes = algebraNodes(),
-                    pageSize = WanxiangPrefs.pageSize,
-                    userDict = WanxiangPrefs.userDict,
-                    contextual = WanxiangPrefs.contextual,
-                ),
-            )
-        }.onFailure { Timber.w(it, "wanxiang: write $PRO_CUSTOM failed") }
-            .isSuccess && ok
-        ok = runCatching {
-            writeManaged(
-                File(dir, T9_CUSTOM),
-                renderT9Block(
-                    pageSize = WanxiangPrefs.t9PageSize,
-                    userDict = WanxiangPrefs.t9UserDict,
-                    contextual = WanxiangPrefs.t9Contextual,
-                ),
-            )
-        }.onFailure { Timber.w(it, "wanxiang: write $T9_CUSTOM failed") }
-            .isSuccess && ok
-        ok = writeSchemaList() && ok
+    fun writeAll(pkgId: String = activePackage()): Boolean {
+        if (!SchemaPackStore.isInstalled(pkgId)) return false
+        val dir = SchemaPackStore.dir(pkgId)
+        val ok =
+            runCatching {
+                writeManaged(
+                    File(dir, customFileOf(pkgId)),
+                    renderCustomBlock(
+                        nodes = algebraNodes(pkgId),
+                        pageSize = WanxiangPrefs.pageSize,
+                    ),
+                )
+            }.onFailure { Timber.w(it, "wanxiang: write custom of $pkgId failed") }
+                .isSuccess && writeSchemaList(pkgId)
 
         if (ok) WanxiangPrefs.appliedSignature = WanxiangPrefs.signature()
         return ok
@@ -387,27 +389,29 @@ object WanxiangCustom {
      * @return 是否真的修过
      */
     fun repairIfNeeded(): Boolean {
-        if (!SchemaPackStore.isInstalled()) return false
-        val dir = SchemaPackStore.dir()
-        val broken = runCatching {
-            listOf(PRO_CUSTOM, T9_CUSTOM, DEFAULT_CUSTOM).any { name ->
-                val f = File(dir, name)
-                if (!f.isFile) {
-                    false
-                } else {
-                    val text = f.readText()
-                    countTopLevelPatches(text) > 1
+        var fixed = false
+        listOf(SchemaPackStore.BASE_ID, SchemaPackStore.PRO_ID)
+            .filter { SchemaPackStore.isInstalled(it) }
+            .forEach { pkgId ->
+                val dir = SchemaPackStore.dir(pkgId)
+                val broken = runCatching {
+                    listOf(customFileOf(pkgId), DEFAULT_CUSTOM).any { name ->
+                        val f = File(dir, name)
+                        if (!f.isFile) false else countTopLevelPatches(f.readText()) > 1
+                    }
+                }.getOrDefault(false)
+                if (broken) {
+                    Timber.w("wanxiang: $pkgId 发现重复 patch:，开始归一化")
+                    if (runCatching { writeAll(pkgId) }.getOrDefault(false)) fixed = true
                 }
             }
-        }.getOrDefault(false)
-        if (!broken) return false
-        Timber.w("wanxiang: 发现重复 patch:，开始归一化")
-        return runCatching { writeAll() }.getOrDefault(false)
+        return fixed
     }
 
     /** 读回设备上实际的 custom（给「当前生效配置」预览用）。 */
-    fun readProCustom(): String =
-        runCatching { File(SchemaPackStore.dir(), PRO_CUSTOM).readText() }.getOrDefault("")
+    fun readProCustom(pkgId: String = activePackage()): String =
+        runCatching { File(SchemaPackStore.dir(pkgId), customFileOf(pkgId)).readText() }
+            .getOrDefault("")
 
     /** 当前生效方案的简要摘要（预览页用）。 */
     fun summary(): String = buildString {
@@ -433,15 +437,13 @@ object WanxiangCustom {
                 else -> "关闭"
             },
         ).append('\n')
-        append("用户词典/调频：")
-            .append(if (WanxiangPrefs.userDict) "开" else "关").append('\n')
-        append("智能调频：").append(if (WanxiangPrefs.contextual) "开" else "关").append('\n')
         append("候选数：").append(WanxiangPrefs.pageSize).append('\n')
-        append("启用方案：").append(activeSchema(WanxiangPrefs.layout))
+        append("方案包：").append(if (isPro(activePackage())) "Pro（下载）" else "Base（内置）")
+            .append('\n')
+        append("启用方案：").append(activeSchema(activePackage(), WanxiangPrefs.layout))
     }
 
     /** manifest 里的版本号；找不到就返回空（下载功能用）。 */
-    fun packVersion(): String =
-        runCatching { JSONObject(File(SchemaPackStore.dir(), "pkg-manifest.json").readText()) }
-            .getOrNull()?.optString("version").orEmpty()
+    fun packVersion(pkgId: String = activePackage()): String =
+        SchemaPackStore.manifest(pkgId)?.optString("version").orEmpty()
 }

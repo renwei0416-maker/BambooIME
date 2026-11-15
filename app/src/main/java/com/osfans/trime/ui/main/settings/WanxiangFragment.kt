@@ -57,9 +57,10 @@ class WanxiangFragment : PaddingPreferenceFragment() {
     }
 
     private fun buildScreen() {
-        val installed = SchemaPackStore.isInstalled()
-        val active = SchemaPackStore.isActive()
         val activeId = SchemaPackageManager.activePackageId
+        val ourId = WanxiangCustom.activePackage()
+        val installed = SchemaPackStore.isInstalled(ourId)
+        val active = SchemaPackStore.isActive(ourId)
         preferenceScreen =
             preferenceManager.createPreferenceScreen(requireContext()).apply {
                 // 顶部状态行：让用户随时知道「现在生效的是哪个包」，避免改了不生效还不知道
@@ -88,8 +89,10 @@ class WanxiangFragment : PaddingPreferenceFragment() {
                         title = if (installed) "已就绪" else "尚未释放",
                         summary =
                             if (installed) {
-                                "变体 ${SchemaPackStore.variant()}　占用 ${SchemaPackStore.sizeText()}" +
-                                    "　${SchemaPackStore.fileCount()} 个文件\n释放于 ${SchemaPackStore.installedAtText()}"
+                                "包 $ourId　变体 ${SchemaPackStore.variantOf(ourId)}" +
+                                    "　占用 ${SchemaPackStore.sizeText(ourId)}" +
+                                    "　${SchemaPackStore.fileCount(ourId)} 个文件\n释放于" +
+                                    " ${SchemaPackStore.installedAtText(ourId)}"
                             } else {
                                 "安装包内已内置，但还没拷到用户目录（可能被手工删过），点这里重新释放"
                             },
@@ -123,7 +126,7 @@ class WanxiangFragment : PaddingPreferenceFragment() {
 
                     addRow(
                         title = "打开文件夹",
-                        summary = SchemaPackStore.dir().absolutePath,
+                        summary = SchemaPackStore.dir(ourId).absolutePath,
                     ) {
                         showDirDialog()
                     }
@@ -208,7 +211,7 @@ class WanxiangFragment : PaddingPreferenceFragment() {
 
                     settingRow(
                         title = "辅助码",
-                        summary = if (SchemaPackStore.variant() == SchemaPackStore.VARIANT_BASE) {
+                        summary = if (!WanxiangCustom.isPro(ourId)) {
                             "需要先装带辅助码的词库"
                         } else if (WanxiangPrefs.layout == WanxiangPrefs.LAYOUT_9) {
                             "九键没有字母键，辅助码用不上（切回全键盘后可开）"
@@ -220,7 +223,7 @@ class WanxiangFragment : PaddingPreferenceFragment() {
                             }
                         },
                     ) {
-                        if (SchemaPackStore.variant() == SchemaPackStore.VARIANT_BASE) {
+                        if (!WanxiangCustom.isPro(ourId)) {
                             toast("先在「方案包与下载」里装带辅助码的词库")
                             return@settingRow
                         }
@@ -383,12 +386,14 @@ class WanxiangFragment : PaddingPreferenceFragment() {
     private fun enable() {
         val context = requireContext()
         lifecycleScope.launch {
-            val ready = withContext(Dispatchers.IO) { SchemaPackStore.ensureCopied(context) }
+            val ready = withContext(Dispatchers.IO) { SchemaPackStore.ensureBaseCopied(context) }
             if (!ready) {
                 toast("释放失败：检查 Documents 目录是否可写")
                 return@launch
             }
-            val wrote = withContext(Dispatchers.IO) { WanxiangCustom.writeAll() }
+            val wrote = withContext(Dispatchers.IO) {
+                WanxiangCustom.writeAll(WanxiangCustom.activePackage())
+            }
             if (!wrote) {
                 toast("写入配置失败：检查 Documents 目录是否可写")
                 return@launch
@@ -403,22 +408,23 @@ class WanxiangFragment : PaddingPreferenceFragment() {
         val context = requireContext()
         lifecycleScope.launch {
             toast("正在释放内置包…")
-            val ok = withContext(Dispatchers.IO) { SchemaPackStore.ensureCopied(context) }
+            val ok = withContext(Dispatchers.IO) { SchemaPackStore.ensureBaseCopied(context) }
             toast(if (ok) "已就绪" else "释放失败：检查 Documents 目录是否可写")
             rebuildPreferencesKeepingScroll { buildScreen() }
         }
     }
 
     private fun confirmDelete() {
+        val ourId = WanxiangCustom.activePackage()
         AlertDialog.Builder(requireContext())
             .setTitle("删除已释放的文件")
             .setMessage(
-                "只会删除 `wanxiang-base` 这个目录（${SchemaPackStore.sizeText()}）。\n\n" +
+                "只会删除 `$ourId` 这个目录（${SchemaPackStore.sizeText(ourId)}）。\n\n" +
                     "如果当前正在使用它，删掉后键盘会没有可用方案，请先切到别的包。",
             )
             .setNegativeButton("取消", null)
             .setPositiveButton("删除") { _, _ ->
-                val ok = SchemaPackStore.deleteFiles()
+                val ok = SchemaPackStore.deleteFiles(ourId)
                 toast(if (ok) "已删除" else "删除失败，可能正在被占用")
                 rebuildPreferencesKeepingScroll { buildScreen() }
             }
@@ -426,7 +432,7 @@ class WanxiangFragment : PaddingPreferenceFragment() {
     }
 
     private fun showDirDialog() {
-        val dir: File = SchemaPackStore.dir()
+        val dir: File = SchemaPackStore.dir(WanxiangCustom.activePackage())
         if (!dir.exists()) dir.mkdirs()
         AlertDialog.Builder(requireContext())
             .setTitle("方案包目录")
@@ -467,24 +473,25 @@ class WanxiangFragment : PaddingPreferenceFragment() {
      * 屏幕上什么都不会变，用户只会觉得「改了没用」。
      */
     private fun ensureWritable(): Boolean {
-        if (!SchemaPackStore.isInstalled()) {
+        val ourId = WanxiangCustom.activePackage()
+        if (!SchemaPackStore.isInstalled(ourId)) {
             toast("内置方案包还没释放，正在准备…")
             releaseThenRefresh()
             return false
         }
-        if (!SchemaPackStore.isActive()) {
+        if (!SchemaPackStore.isActive(ourId)) {
             val current = SchemaPackageManager.activePackageId.ifBlank { "未选择" }
             AlertDialog.Builder(requireContext())
                 .setTitle("先切到内置方案包")
                 .setMessage(
-                    "这些设置会写进内置包（`wanxiang-base`）的 custom，" +
+                    "这些设置会写进 `$ourId` 的 custom，" +
                         "但你现在用的是 $current，改了不会生效。\n\n要切过去吗？",
                 )
                 .setNegativeButton("取消", null)
                 .setPositiveButton("切过去并部署") { _, _ ->
                     lifecycleScope.launch {
                         val ready =
-                            withContext(Dispatchers.IO) { SchemaPackStore.ensureCopied(requireContext()) }
+                            withContext(Dispatchers.IO) { SchemaPackStore.ensureBaseCopied(requireContext()) }
                         if (!ready) {
                             toast("释放失败：检查 Documents 目录是否可写")
                             return@launch
@@ -518,9 +525,13 @@ class WanxiangFragment : PaddingPreferenceFragment() {
     }
 
     private fun downloadSummary(): String {
-        val v = SchemaPackStore.variant()
+        val v = SchemaPackStore.variantOf(WanxiangCustom.activePackage())
         val title = com.osfans.trime.actions.wanxiang.WanxiangVariants.installedNote(v)
-        return if (SchemaPackStore.isInstalled()) "当前：$title" else "下载辅助码词库、语法模型"
+        return if (SchemaPackStore.isInstalled(WanxiangCustom.activePackage())) {
+            "当前：$title"
+        } else {
+            "下载辅助码词库、语法模型"
+        }
     }
 
     private fun encodeLabel(): String =
@@ -617,7 +628,7 @@ class WanxiangFragment : PaddingPreferenceFragment() {
     private fun applyAndDeploy() {
         lifecycleScope.launch {
             toast("正在写入配置…")
-            val ok = withContext(Dispatchers.IO) { WanxiangCustom.writeAll() }
+            val ok = withContext(Dispatchers.IO) { WanxiangCustom.writeAll(WanxiangCustom.activePackage()) }
             if (!ok) {
                 toast("写入失败：检查 Documents 目录是否可写")
                 return@launch
@@ -637,7 +648,7 @@ class WanxiangFragment : PaddingPreferenceFragment() {
      * `default.custom.yaml` 里的 schema_list，我们刚刚只写了一个方案）。
      */
     private suspend fun deployToOurPackage() {
-        SchemaPackageManager.setActivePackageId(SchemaPackStore.PACKAGE_ID)
+        SchemaPackageManager.setActivePackageId(WanxiangCustom.activePackage())
         runCatching { RimeDaemon.restartRime(fullCheck = true) }
             .onFailure { toast("部署失败：${it.message ?: it.javaClass.simpleName}") }
     }

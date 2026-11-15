@@ -18,25 +18,30 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * 万象拼音 Pro 方案包：内置在 APK 的 assets 里，安装完就静默释放到用户目录。
+ * 万象拼音的**两个**方案包。
  *
- * 设计口径（与用户逐条确认过）：
+ *  * [BASE_ID]：内置在 APK 的 assets 里（官方 Base —— 全拼/任意双拼 + 官方九键），
+ *    安装完静默释放到用户目录；**九键只用 Base**，Pro 没有九键。
+ *  * [PRO_ID]：用户从下载页装（官方 `*-fuzhu` 变体，带辅助码词库），九个变体共用
+ *    这一个目录、互相覆盖同名文件。
  *
- *  * **内置官方 Base 包**（全拼/任意双拼 + 官方九键），包 id 固定 [PACKAGE_ID]，
- *    不占用用户自己可能已有的 `wanxiang` 目录；
- *  * **安装完就拷**：后台线程释放，不部署、不改活动包，避免「预置→部署→再下载→再部署」；
- *  * **覆盖规则是黑名单式**：只跳过 `custom/` 目录与 `*.custom.yaml`，其余同名文件全盖；
- *    并且**永不删除**目标目录里已有的文件（包里没有的一律不碰）；
- *  * 九键直接用官方 `wanxiang_t9.schema.yaml`（Base 自带），不再 vendor 任何 t9 文件；
- *  * manifest 只记 version / variant / 文件数 / 字节数 / 安装时间，不做 per-file 哈希
- *    （librime 按词库校验和自行重建 `build/`，不需要我们比对）。
+ * 两条包各自独立目录、各自一份 `build/`，互不覆盖；切换 = 改活动包 + 部署一次。
+ *
+ * 覆盖规则是黑名单式：只跳过 `custom/` 目录与 `*.custom.yaml`，其余同名文件全盖，
+ * 并且**永不删除**目标目录里已有的文件（包里没有的一律不碰）。
+ *
+ * manifest 只记 version / variant / 文件数 / 字节数 / 安装时间，不做 per-file 哈希
+ * （librime 按词库校验和自行重建 `build/`）。
  */
 object SchemaPackStore {
 
     /** 内置包 id，同时也是 `Documents/BambooIME/` 下的目录名。 */
-    const val PACKAGE_ID = "wanxiang-base"
+    const val BASE_ID = "wanxiang-base"
 
-    /** 当前内置的变体：官方 Base（全拼/任意双拼 + 九个官方九键方案，不含辅码词库）。 */
+    /** 下载包的 id / 目录名。九个 fuzhu 变体都装进这里。 */
+    const val PRO_ID = "wanxiang-pro"
+
+    /** 内置资产对应的变体名。 */
     const val VARIANT_BASE = "base"
 
     private const val ASSET_BASE = "wanxiang-base"
@@ -45,53 +50,55 @@ object SchemaPackStore {
     /** 内置资产集合有变化时加一，让老安装重拷一次。 */
     private const val STAMP = "1"
 
-    private const val CUSTOM_FILE = "wanxiang.custom.yaml"
-    private const val DEFAULT_CUSTOM = "default.custom.yaml"
-
     @Volatile
     private var copying = false
 
+    /** 这个 id 是不是我们管的包（用于「活动包不是我们的」判定）。 */
+    fun isOurs(pkgId: String): Boolean = pkgId == BASE_ID || pkgId == PRO_ID
+
     // ---------------------------------------------------------------- 路径
 
-    /** 包目录：`Documents/BambooIME[Debug]/wanxiang-base`。 */
-    fun dir(): File = File(DataManager.userDataBaseDir, PACKAGE_ID)
+    /** 包目录：`Documents/BambooIME[Debug]/<pkgId>`。 */
+    fun dir(pkgId: String = BASE_ID): File = File(DataManager.userDataBaseDir, pkgId)
 
-    fun isInstalled(): Boolean = File(dir(), MANIFEST).isFile
+    fun isInstalled(pkgId: String = BASE_ID): Boolean = File(dir(pkgId), MANIFEST).isFile
 
-    fun isActive(): Boolean = SchemaPackageManager.activePackageId == PACKAGE_ID
+    fun isActive(pkgId: String = BASE_ID): Boolean = SchemaPackageManager.activePackageId == pkgId
 
-    fun manifest(): JSONObject? =
-        runCatching { JSONObject(File(dir(), MANIFEST).readText()) }.getOrNull()
+    fun manifest(pkgId: String = BASE_ID): JSONObject? =
+        runCatching { JSONObject(File(dir(pkgId), MANIFEST).readText()) }.getOrNull()
 
-    fun variant(): String = manifest()?.optString("variant").orEmpty().ifEmpty { VARIANT_BASE }
+    /** 变体名：内置 Base 是 `base`，下载的是对应 fuzhu id（`flypy`/`zrm`…）。 */
+    fun variantOf(pkgId: String = BASE_ID): String =
+        manifest(pkgId)?.optString("variant").orEmpty()
+            .ifEmpty { if (pkgId == PRO_ID) "pro" else VARIANT_BASE }
 
-    fun fileCount(): Int = manifest()?.optInt("files") ?: 0
+    fun fileCount(pkgId: String = BASE_ID): Int = manifest(pkgId)?.optInt("files") ?: 0
 
-    fun sizeText(): String {
-        val bytes = manifest()?.optLong("bytes") ?: 0L
+    fun sizeText(pkgId: String = BASE_ID): String {
+        val bytes = manifest(pkgId)?.optLong("bytes") ?: 0L
         if (bytes <= 0L) return "—"
         return String.format(Locale.US, "%.1f MB", bytes / 1048576.0)
     }
 
-    fun installedAtText(): String =
-        manifest()?.optString("installedAt").orEmpty().ifEmpty { "—" }
+    fun installedAtText(pkgId: String = BASE_ID): String =
+        manifest(pkgId)?.optString("installedAt").orEmpty().ifEmpty { "—" }
 
     // ---------------------------------------------------------------- 释放
 
-    /**
-     * 同步释放（阻塞）。返回 true 表示包已就绪（这次拷了或者本来就在）。
-     *
-     * 「启用」按钮在后台还没拷完时会调它兜底，保证不会拿到半份包。
-     */
     /** 当前这份资产对应的版本戳；下载安装的变体也用它，只有内容变了才会补。 */
     fun currentStamp(): String = "${BuildConfig.BUILD_VERSION_NAME}/$STAMP"
 
-    fun ensureCopied(context: Context): Boolean {
+    /**
+     * 同步释放内置 Base（阻塞）。返回 true 表示包已就绪（这次拷了或者本来就在）。
+     *
+     * 只拷文件：**不部署、不改活动包**。谁想用它，谁自己再写 custom + 设活动包 + 部署。
+     */
+    fun ensureBaseCopied(context: Context): Boolean {
         if (!BuildConfig.BUNDLED_WANXIANG_PRO) return false
-        val dir = dir()
-        val stamp = "${BuildConfig.BUILD_VERSION_NAME ?: "dev"}/$STAMP"
-        val marker = File(dir, MANIFEST)
-        if (marker.isFile && manifest()?.optString("stamp") == stamp) return true
+        val dir = dir(BASE_ID)
+        val stamp = currentStamp()
+        if (File(dir, MANIFEST).isFile && manifest(BASE_ID)?.optString("stamp") == stamp) return true
 
         if (!dir.exists() && !dir.mkdirs()) {
             Timber.w("wanxiang: cannot create ${dir.absolutePath}")
@@ -99,9 +106,9 @@ object SchemaPackStore {
         }
         val started = System.currentTimeMillis()
         val files = copyAssetTree(context.assets, ASSET_BASE, dir)
-        writeManifest(dir, stamp, files)
+        writeManifest(dir, BASE_ID, stamp, files, VARIANT_BASE)
         // 首次释放时写一份「带托管块」的默认配置；已存在则一个字节不动。
-        WanxiangCustom.writeInitialConfigIfMissing(dir)
+        WanxiangCustom.writeInitialConfigIfMissing(dir, BASE_ID)
         Timber.d("wanxiang: copied $files files in ${System.currentTimeMillis() - started} ms")
         return true
     }
@@ -128,20 +135,19 @@ object SchemaPackStore {
         return n
     }
 
-    /**
-     * 写 manifest。变体名由调用方给：内置释放是 `base`，从下载页装的 `*-fuzhu` 是各自 id。
-     */
+    /** 写 manifest。变体名由调用方给：内置释放是 `base`，下载装的是各自 fuzhu id。 */
     internal fun writeManifest(
         dir: File,
+        pkgId: String,
         stamp: String,
         files: Int,
-        variantId: String = VARIANT_BASE,
+        variantId: String,
     ) {
         var bytes = 0L
         dir.walkTopDown().forEach { if (it.isFile) bytes += it.length() }
         val json =
             JSONObject()
-                .put("package", PACKAGE_ID)
+                .put("package", pkgId)
                 .put("variant", variantId)
                 .put("stamp", stamp)
                 .put("version", BuildConfig.BUILD_VERSION_NAME ?: "dev")
@@ -151,17 +157,12 @@ object SchemaPackStore {
         runCatching { File(dir, MANIFEST).writeText(json.toString(2)) }
     }
 
-    /**
-     * 首次释放时写两份配置（已存在就不动，避免覆盖用户改过的内容）。
-     *
-     *  * `wanxiang.custom.yaml`：全拼 + 26 键 + 每页 6 个候选（官方默认）；
-     *  * `default.custom.yaml`：把九键 Pro 也列进方案表（否则用户只能看到 26 键那一个）。
-     */
     // ---------------------------------------------------------------- 删除
 
-    /** 删除已释放的包目录（只删我们自己这份，绝不碰用户的 `wanxiang`）。 */
-    fun deleteFiles(): Boolean {
-        val dir = dir()
+    /** 删除某个包的目录（只删我们自己这两个 id，绝不碰用户的 `wanxiang`）。 */
+    fun deleteFiles(pkgId: String = BASE_ID): Boolean {
+        if (!isOurs(pkgId)) return false
+        val dir = dir(pkgId)
         if (!dir.exists()) return true
         return runCatching { dir.deleteRecursively() }.getOrDefault(false)
     }

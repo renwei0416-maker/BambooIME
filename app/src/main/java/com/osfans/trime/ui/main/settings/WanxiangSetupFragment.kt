@@ -59,10 +59,8 @@ class WanxiangSetupFragment : Fragment() {
 
     private var page = 0
     private var busy = false
-    private var releaseStarted = false
-    private var releaseOk = false
 
-    private val pages = 5
+    private val pages = 6
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -126,7 +124,17 @@ class WanxiangSetupFragment : Fragment() {
     private fun onNext() {
         if (busy) return
         if (page < pages - 1) {
-            page++
+            page ++
+            // 九键只能是全拼、也不带辅助码 → 直接进收尾；全拼跳过双拼页
+            if (page == 3 && (WanxiangPrefs.layout == WanxiangPrefs.LAYOUT_9 ||
+                    WanxiangPrefs.encode == WanxiangPrefs.ENCODE_QUANPIN)
+            ) {
+                page = 4
+            }
+            if (page == 4 && WanxiangPrefs.layout == WanxiangPrefs.LAYOUT_9) {
+                WanxiangPrefs.aux = WanxiangPrefs.AUX_NONE
+                page = 5
+            }
             render()
             return
         }
@@ -144,9 +152,10 @@ class WanxiangSetupFragment : Fragment() {
 
         when (page) {
             0 -> renderGate()
-            1 -> renderLayout()
-            2 -> renderEncode()
-            3 -> renderExtras()
+            1 -> renderEncode()
+            2 -> renderLayout()
+            3 -> renderScheme()
+            4 -> renderAux()
             else -> renderConfirm()
         }
     }
@@ -161,7 +170,6 @@ class WanxiangSetupFragment : Fragment() {
             bigButton("我是新用户，帮我一分钟配好") {
                 page = 1
                 render()
-                startBackgroundRelease()
             },
         )
         content.addView(
@@ -224,7 +232,6 @@ class WanxiangSetupFragment : Fragment() {
                 WanxiangPrefs.layout,
             ) { WanxiangPrefs.layout = it; render() },
         )
-        content.addView(releaseStatusView())
     }
 
     private fun renderEncode() {
@@ -248,74 +255,73 @@ class WanxiangSetupFragment : Fragment() {
             ) { WanxiangPrefs.encode = it; render() },
         )
         if (WanxiangPrefs.encode == WanxiangPrefs.ENCODE_SHUANGPIN) {
-            content.addView(
-                hint(
-                    "小提示：双拼下打单音节字要打两下（啊 = aa、哦 = oo），这是双拼本身的规则，" +
-                        "全拼没有这个限制。",
-                ),
-            )
-            content.addView(sectionLabel("用哪套双拼"))
-            content.addView(
-                radio(
-                    WanxiangPrefs.SCHEMES.map { it to it },
-                    WanxiangPrefs.scheme,
-                ) { WanxiangPrefs.scheme = it; render() },
-            )
+            content.addView(hint("双拼下打单音节字要打两下（啊 = aa、哦 = oo），这是双拼本身的规则。"))
         }
     }
 
-    private fun renderExtras() {
-        title.text = "顺手调两个"
-        content.addView(sectionLabel("候选个数"))
+    private fun renderScheme() {
+        title.text = "用哪套双拼"
         content.addView(
             radio(
-                listOf(3, 4, 5, 6).map { it to "$it 个" },
-                WanxiangPrefs.pageSize,
-            ) { WanxiangPrefs.pageSize = it; render() },
+                WanxiangPrefs.SCHEMES.map { it to it },
+                WanxiangPrefs.scheme,
+            ) { WanxiangPrefs.scheme = it; render() },
         )
-        content.addView(sectionLabel("用户词典（记住你常打的词）"))
+    }
+
+    private fun renderAux() {
+        title.text = "用辅助码吗"
+        val proReady = SchemaPackStore.isInstalled(SchemaPackStore.PRO_ID)
+        content.addView(
+            hint(
+                if (proReady) {
+                    "辅助码配 Pro 词库（已装）。选它会切到 Pro，首次部署 2–4 分钟。"
+                } else {
+                    "辅助码配 Pro 词库（约 30 MB，还没装）。要用就先下载，回来再完成。"
+                },
+            ),
+        )
         content.addView(
             radio(
-                listOf(false to "不开", true to "开"),
-                WanxiangPrefs.userDict,
-            ) { WanxiangPrefs.userDict = it; render() },
+                listOf(
+                    WanxiangPrefs.AUX_NONE to "不用（Base，词库小、部署快）",
+                    WanxiangPrefs.AUX_DIRECT to "直接辅助码（拼音后跟部首声母）",
+                    WanxiangPrefs.AUX_INDIRECT to "间接辅助码（用 / 分隔）",
+                ),
+                WanxiangPrefs.aux,
+            ) { WanxiangPrefs.aux = it; render() },
         )
+        if (WanxiangPrefs.aux != WanxiangPrefs.AUX_NONE && !proReady) {
+            content.addView(
+                bigButton("去下载 Pro 词库") {
+                    runCatching { findNavController().navigateWithAnim(NavigationRoute.WanxiangDownload) }
+                        .onFailure { toast("跳转失败，请返回上一页从菜单进入") }
+                },
+            )
+            content.addView(
+                bigButton("先不用辅助码") {
+                    WanxiangPrefs.aux = WanxiangPrefs.AUX_NONE
+                    render()
+                },
+            )
+        }
     }
 
     private fun renderConfirm() {
+        val usePro = WanxiangPrefs.aux != WanxiangPrefs.AUX_NONE &&
+            WanxiangPrefs.layout != WanxiangPrefs.LAYOUT_9
+        val pkgId = if (usePro) SchemaPackStore.PRO_ID else SchemaPackStore.BASE_ID
         title.text = "确认并应用"
-        content.addView(hint(WanxiangCustom.summary()))
+        content.addView(hint(if (usePro) "将使用 Pro（带辅助码词库）" else "将使用 Base（内置）"))
         content.addView(
             hint(
-                "将写入这些设置：\n\n" + WanxiangCustom.algebraNodes().joinToString("\n") { "  - $it" } +
-                    "\n  menu/page_size: ${WanxiangPrefs.pageSize}\n" +
-                    "  translator/enable_user_dict: ${WanxiangPrefs.userDict}\n\n" +
-                    "点「完成并应用」后会重新部署一次（约 1–2 分钟）。",
+                "会写进 ${SchemaPackStore.dir(pkgId).name}/：\n\n" +
+                    WanxiangCustom.algebraNodes(pkgId).joinToString("\n") { "  - $it" } +
+                    "\n  menu/page_size: ${WanxiangPrefs.pageSize}\n\n" +
+                    "点「完成并应用」后部署一次（1–4 分钟）。",
             ),
         )
-        content.addView(releaseStatusView())
     }
-
-    // ------------------------------------------------------------ 解包
-
-    private fun startBackgroundRelease() {
-        if (releaseStarted) return
-        releaseStarted = true
-        viewLifecycleOwner.lifecycleScope.launch {
-            // 第 1 页选完键盘就开始解包，走到第 5 页时基本已经好了
-            releaseOk = withContext(Dispatchers.IO) { SchemaPackStore.ensureCopied(requireContext()) }
-            Timber.d("wanxiang wizard: release=$releaseOk")
-            if (page == 1 || page == 4) render()
-        }
-    }
-
-    private fun releaseStatusView(): TextView = hint(
-        when {
-            releaseOk -> "内置方案包已就绪，继续往下就行。"
-            releaseStarted -> "正在后台准备方案包（67 MB），不用等它，继续往下点就好。"
-            else -> "点「下一步」会开始在后台准备方案包（67 MB）。"
-        },
-    )
 
     override fun onDestroy() {
         RimeDaemon.destroySession(javaClass.name)
@@ -332,29 +338,38 @@ class WanxiangSetupFragment : Fragment() {
         next.isEnabled = false
         next.text = "正在应用…"
 
+        // 辅助码只有 Pro 词库带；九键只能是 Base
+        val usePro = WanxiangPrefs.aux != WanxiangPrefs.AUX_NONE &&
+            WanxiangPrefs.layout != WanxiangPrefs.LAYOUT_9
+        val pkgId = if (usePro) SchemaPackStore.PRO_ID else SchemaPackStore.BASE_ID
+
         viewLifecycleOwner.lifecycleScope.launch {
-            val ready = withContext(Dispatchers.IO) { SchemaPackStore.ensureCopied(requireContext()) }
-            if (!ready) {
-                busy = false
-                next.isEnabled = true
-                next.text = "完成并应用"
-                toast("释放方案包失败：检查 Documents 目录是否可写")
+            if (pkgId == SchemaPackStore.BASE_ID) {
+                val ready = withContext(Dispatchers.IO) {
+                    SchemaPackStore.ensureBaseCopied(requireContext())
+                }
+                if (!ready) {
+                    resetApplyButton()
+                    toast("释放内置包失败：检查 Documents 目录是否可写")
+                    return@launch
+                }
+            } else if (!SchemaPackStore.isInstalled(SchemaPackStore.PRO_ID)) {
+                resetApplyButton()
+                toast("还没装 Pro 词库：先去「方案包与下载」装一个带辅助码的")
                 return@launch
             }
 
-            val ok = withContext(Dispatchers.IO) { WanxiangCustom.writeAll() }
-            Timber.d("wanxiang wizard: writeAll=$ok")
+            val ok = withContext(Dispatchers.IO) { WanxiangCustom.writeAll(pkgId) }
+            Timber.d("wanxiang wizard: pkg=$pkgId writeAll=$ok")
             if (!ok) {
-                busy = false
-                next.isEnabled = true
-                next.text = "完成并应用"
+                resetApplyButton()
                 toast("写入配置失败：检查 Documents 目录是否可写")
                 return@launch
             }
 
             // 按包 id 激活：`selectSchemaCrossPackage` 是按方案 id 反查包的，
             // 用户自己的包里也有同名方案时会被切到人家的包（踩过）。
-            SchemaPackageManager.setActivePackageId(SchemaPackStore.PACKAGE_ID)
+            SchemaPackageManager.setActivePackageId(pkgId)
             withContext(Dispatchers.IO) {
                 runCatching { RimeDaemon.restartRime(fullCheck = true) }
                     .onFailure { Timber.w(it, "wanxiang wizard: deploy failed") }
@@ -368,6 +383,12 @@ class WanxiangSetupFragment : Fragment() {
     }
 
     // ------------------------------------------------------------ 小工具
+
+    private fun resetApplyButton() {
+        busy = false
+        next.isEnabled = true
+        next.text = "完成并应用"
+    }
 
     private fun bigButton(label: String, onClick: () -> Unit): Button = Button(requireContext()).apply {
         text = label

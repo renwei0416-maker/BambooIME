@@ -12,6 +12,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.preference.PreferenceGroup
 import androidx.preference.PreferenceScreen
 import com.osfans.trime.R
+import com.osfans.trime.actions.wanxiang.WanxiangCustom
 import com.osfans.trime.actions.wanxiang.WanxiangInstaller
 import com.osfans.trime.actions.wanxiang.WanxiangPrefs
 import com.osfans.trime.actions.wanxiang.WanxiangVariants
@@ -52,19 +53,43 @@ class WanxiangDownloadFragment : PaddingPreferenceFragment() {
     }
 
     private fun buildScreen() {
-        val current = SchemaPackStore.variant()
-        val installed = SchemaPackStore.isInstalled()
+        val baseInstalled = SchemaPackStore.isInstalled(SchemaPackStore.BASE_ID)
+        val proInstalled = SchemaPackStore.isInstalled(SchemaPackStore.PRO_ID)
+        val activeId = SchemaPackageManager.activePackageId
+        val proVariant = SchemaPackStore.variantOf(SchemaPackStore.PRO_ID)
+        val proTitle = WanxiangVariants.byId(proVariant)?.title ?: "已装"
 
         preferenceScreen = preferenceManager.createPreferenceScreen(requireContext()).apply {
-            addBambooCategory("方案包", installedNote(installed, current)) {
-                WanxiangVariants.list.forEach { v ->
-                    val here = installed && v.id == current
+            addBambooCategory("当前方案包", statusNote(activeId, baseInstalled, proInstalled)) {
+                addRow(
+                    title = if (activeId == SchemaPackStore.BASE_ID) "Base（内置）· 使用中" else "Base（内置）",
+                    summary =
+                        if (baseInstalled) {
+                            "${SchemaPackStore.sizeText(SchemaPackStore.BASE_ID)} · 全拼/双拼 + 官方九键"
+                        } else {
+                            "还没释放；走进设置向导第 1 步才会拷到本地"
+                        },
+                ) {
+                    if (activeId == SchemaPackStore.BASE_ID) toast("现在用的就是 Base") else switchTo(SchemaPackStore.BASE_ID)
+                }
+                if (proInstalled) {
+                    addRow(
+                        title = if (activeId == SchemaPackStore.PRO_ID) "Pro · $proTitle · 使用中" else "Pro · $proTitle",
+                        summary = "${SchemaPackStore.sizeText(SchemaPackStore.PRO_ID)} · 带辅助码词库，没有九键",
+                    ) {
+                        if (activeId == SchemaPackStore.PRO_ID) toast("现在用的就是 Pro") else switchTo(SchemaPackStore.PRO_ID)
+                    }
+                }
+            }
+            addBambooCategory("Pro 词库（带辅助码）", "装进 wanxiang-pro；换变体只覆盖同名文件，不删别的") {
+                WanxiangVariants.list.filter { it.hasAux }.forEach { v ->
+                    val here = proInstalled && v.id == proVariant
                     addRow(
                         title = if (here) "${v.title}（使用中）" else v.title,
                         summary = "${WanxiangVariants.sizeText(v.bytes)} · ${v.note}",
                     ) {
                         if (here) {
-                            toast("这个包正在用")
+                            toast("这个变体正在用")
                         } else {
                             confirmInstall(v)
                         }
@@ -77,8 +102,46 @@ class WanxiangDownloadFragment : PaddingPreferenceFragment() {
         }
     }
 
-    private fun installedNote(installed: Boolean, variant: String): String =
-        if (!installed) "内置包还没释放" else "当前：${WanxiangVariants.installedNote(variant)}"
+    private fun statusNote(activeId: String, baseInstalled: Boolean, proInstalled: Boolean): String =
+        when {
+            activeId == SchemaPackStore.BASE_ID -> "当前生效：Base（内置）"
+            activeId == SchemaPackStore.PRO_ID -> "当前生效：Pro（下载）"
+            !baseInstalled && !proInstalled -> "两个包都还没装"
+            else -> "当前生效的是别的方案包"
+        }
+
+    /** 切到某个包：写配置 → 设活动包 → 部署。 */
+    private fun switchTo(pkgId: String) {
+        if (busy) {
+            toast("正在处理上一个任务")
+            return
+        }
+        busy = true
+        lifecycleScope.launch {
+            if (pkgId == SchemaPackStore.BASE_ID) {
+                val ok = withContext(Dispatchers.IO) { SchemaPackStore.ensureBaseCopied(requireContext()) }
+                if (!ok) {
+                    busy = false
+                    toast("释放内置包失败：检查 Documents 目录是否可写")
+                    return@launch
+                }
+            }
+            val wrote = withContext(Dispatchers.IO) { WanxiangCustom.writeAll(pkgId) }
+            if (!wrote) {
+                busy = false
+                toast("写入配置失败")
+                return@launch
+            }
+            SchemaPackageManager.setActivePackageId(pkgId)
+            toast("已切换，正在部署…")
+            withContext(Dispatchers.IO) {
+                runCatching { RimeDaemon.restartRime(fullCheck = true) }
+                    .onFailure { Timber.w(it, "wanxiang: deploy failed") }
+            }
+            busy = false
+            rebuildPreferencesKeepingScroll { buildScreen() }
+        }
+    }
 
     // ---------------------------------------------------------------- 方案包
 
@@ -114,7 +177,7 @@ class WanxiangDownloadFragment : PaddingPreferenceFragment() {
                 toast("下载失败，检查网络后重试")
                 return@launch
             }
-            val dir = SchemaPackStore.dir()
+            val dir = SchemaPackStore.dir(SchemaPackStore.PRO_ID)
             dir.mkdirs()
             val count = WanxiangInstaller.install(zip, dir, v.id)
             zip.delete()
@@ -123,10 +186,11 @@ class WanxiangDownloadFragment : PaddingPreferenceFragment() {
                 toast("解包失败")
                 return@launch
             }
-            // 变体换了，配置里的节点前缀（base/ ↔ pro/）也要跟着换
-            withContext(Dispatchers.IO) { runCatching { com.osfans.trime.actions.wanxiang.WanxiangCustom.writeAll() } }
-            SchemaPackageManager.setActivePackageId(SchemaPackStore.PACKAGE_ID)
-            toast("已切换，正在部署…")
+            // 装进 Pro 包：按当前设置写它的 custom，然后切过去
+            val wrote = withContext(Dispatchers.IO) { WanxiangCustom.writeAll(SchemaPackStore.PRO_ID) }
+            Timber.d("wanxiang: write pro custom=$wrote")
+            SchemaPackageManager.setActivePackageId(SchemaPackStore.PRO_ID)
+            toast("已装进 Pro 并切换，正在部署…")
             runCatching { RimeDaemon.restartRime(fullCheck = true) }
                 .onFailure { Timber.w(it, "wanxiang: deploy failed") }
             busy = false
@@ -153,7 +217,9 @@ class WanxiangDownloadFragment : PaddingPreferenceFragment() {
 
     // ---------------------------------------------------------------- 语法模型
 
-    private fun gramFile(): File = File(SchemaPackStore.dir(), WanxiangVariants.GRAM_FILE)
+    /** 语法模型跟当前生效的万象包走（librime 只从活动包目录读）。 */
+    private fun gramFile(): File =
+        File(SchemaPackStore.dir(WanxiangCustom.activePackage()), WanxiangVariants.GRAM_FILE)
 
     private fun gramTitle(): String =
         if (gramFile().isFile) "语法模型（已下载）" else "下载语法模型"

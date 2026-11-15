@@ -325,18 +325,11 @@ class Rime :
 
     private fun startRime(fullCheck: Boolean? = null) {
         DataManager.sync()
-        // 内置万象 Pro：安装完就静默释放到用户目录（只拷文件，不部署、不改活动包）。
-        // 走后台线程，避免 85 MB 的拷贝把首次启动卡住。
-        runCatching {
-            }
+        // 万象：启动时**不释放方案包**（67 MB 的拷贝只在向导里按需触发）。
+        // 这里只做两件事：初始化偏好、把历史上「重复 patch:」的坏 custom 归一化。
         runCatching {
             WanxiangPrefs.init(com.osfans.trime.TrimeApplication.getInstance())
-        }
-        // 旧版本追加写过 custom 的机器，这里把重复的 patch: 归一化（只读一次文件，坏了才重写）
-        runCatching {
-            if (SchemaPackStore.isInstalled()) {
-                WanxiangCustom.repairIfNeeded()
-            }
+            WanxiangCustom.repairIfNeeded()
         }
         // Must run before `stagingDir`/`userDataDir` are resolved below: an empty
         // active package would otherwise point the whole session at the shared dir.

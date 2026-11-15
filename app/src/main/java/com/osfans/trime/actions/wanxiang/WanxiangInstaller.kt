@@ -104,6 +104,7 @@ object WanxiangInstaller {
             if (count > 0) {
                 SchemaPackStore.writeManifest(
                     dir = dir,
+                    pkgId = SchemaPackStore.PRO_ID,
                     stamp = SchemaPackStore.currentStamp(),
                     files = count,
                     variantId = variantId,
