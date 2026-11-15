@@ -106,7 +106,7 @@ class WanxiangDownloadFragment : PaddingPreferenceFragment() {
             val ok = WanxiangInstaller.download(url, zip) { done, total ->
                 if (total > 0) {
                     val pct = (done * 100 / total).toInt()
-                    activity?.runOnUiThread { updateFirstSummary("下载中 $pct%") }
+                    activity?.runOnUiThread { updateRow(v.title, "下载中 $pct%") }
                 }
             }
             if (!ok) {
@@ -134,11 +134,20 @@ class WanxiangDownloadFragment : PaddingPreferenceFragment() {
         }
     }
 
-    private fun updateFirstSummary(text: String) {
+    /** 把进度写到标题以 [prefix] 开头的那一行上。 */
+    private fun updateRow(prefix: String, text: String) {
         runCatching {
-            val group = preferenceScreen?.getPreference(0) as? PreferenceGroup ?: return
-            val first = group.getPreference(1) as? BambooClick ?: return
-            first.summary = text
+            val root = preferenceScreen ?: return
+            for (i in 0 until root.preferenceCount) {
+                val group = root.getPreference(i) as? PreferenceGroup ?: continue
+                for (j in 0 until group.preferenceCount) {
+                    val row = group.getPreference(j) as? BambooClick ?: continue
+                    if (row.title?.toString()?.startsWith(prefix) == true) {
+                        row.summary = text
+                        return
+                    }
+                }
+            }
         }
     }
 
@@ -190,7 +199,7 @@ class WanxiangDownloadFragment : PaddingPreferenceFragment() {
             val ok = WanxiangInstaller.download(WanxiangVariants.gramUrl(), dest) { done, total ->
                 if (total > 0) {
                     val pct = (done * 100 / total).toInt()
-                    activity?.runOnUiThread { updateFirstSummary("下载中 $pct%") }
+                    activity?.runOnUiThread { updateRow("下载语法模型", "下载中 $pct%") }
                 }
             }
             busy = false
