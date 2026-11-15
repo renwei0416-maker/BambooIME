@@ -7,6 +7,7 @@ package com.osfans.trime.actions.wanxiang
 
 import com.osfans.trime.data.packaging.CustomSignature
 import com.osfans.trime.data.packaging.SchemaPackStore
+import com.osfans.trime.data.packaging.SchemaPackageManager
 import org.json.JSONObject
 import timber.log.Timber
 import java.io.File
@@ -41,6 +42,12 @@ object WanxiangCustom {
     private const val DEFAULT_CUSTOM = "default.custom.yaml"
 
     /** 当前该往哪个包写：活动包是 Pro 就写 Pro，否则按 Base。 */
+    /** 当前活动包**如果**是我们的 Base/Pro 就返回它，否则 null（分项设置只在这种情况可写）。 */
+    fun currentPackage(): String? {
+        val id = SchemaPackageManager.activePackageId
+        return if (id == SchemaPackStore.BASE_ID || id == SchemaPackStore.PRO_ID) id else null
+    }
+
     fun activePackage(): String =
         if (SchemaPackStore.isActive(SchemaPackStore.PRO_ID)) {
             SchemaPackStore.PRO_ID

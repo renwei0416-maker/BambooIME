@@ -110,6 +110,20 @@ class WanxiangDownloadFragment : PaddingPreferenceFragment() {
             else -> "当前生效的是别的方案包"
         }
 
+    private fun goWizard() {
+        AlertDialog.Builder(requireContext())
+            .setTitle("先配好万象拼音")
+            .setMessage("Base 还没释放。走向导配一次，之后这里就能直接切。")
+            .setNegativeButton("取消", null)
+            .setPositiveButton("去设置向导") { _, _ ->
+                runCatching {
+                    androidx.navigation.fragment.NavHostFragment.findNavController(this)
+                        .navigate(com.osfans.trime.ui.main.NavigationRoute.WanxiangSetup)
+                }.onFailure { toast("打不开向导：${it.message}") }
+            }
+            .show()
+    }
+
     /** 切到某个包：写配置 → 设活动包 → 部署。 */
     private fun switchTo(pkgId: String) {
         if (busy) {
@@ -118,13 +132,10 @@ class WanxiangDownloadFragment : PaddingPreferenceFragment() {
         }
         busy = true
         lifecycleScope.launch {
-            if (pkgId == SchemaPackStore.BASE_ID) {
-                val ok = withContext(Dispatchers.IO) { SchemaPackStore.ensureBaseCopied(requireContext()) }
-                if (!ok) {
-                    busy = false
-                    toast("释放内置包失败：检查 Documents 目录是否可写")
-                    return@launch
-                }
+            if (pkgId == SchemaPackStore.BASE_ID && !SchemaPackStore.isInstalled(SchemaPackStore.BASE_ID)) {
+                busy = false
+                goWizard()
+                return@launch
             }
             val wrote = withContext(Dispatchers.IO) { WanxiangCustom.writeAll(pkgId) }
             if (!wrote) {

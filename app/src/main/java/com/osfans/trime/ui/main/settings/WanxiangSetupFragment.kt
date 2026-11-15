@@ -217,8 +217,7 @@ class WanxiangSetupFragment : Fragment() {
         title.text = "用哪种键盘"
         content.addView(
             hint(
-                "九宫格（9 键）用的是官方「万象九键」方案，固定全拼。\n\n" +
-                    "键盘布局本身要在键盘弹窗里切（9 键选「T9」，18 键选「18」），自动切会放到后面的主题设置里做。",
+                "九宫格（9 键）用的是官方「万象九键」方案，固定全拼。",
             ),
         )
         content.addView(
@@ -248,15 +247,12 @@ class WanxiangSetupFragment : Fragment() {
         content.addView(
             radio(
                 listOf(
-                    WanxiangPrefs.ENCODE_QUANPIN to "全拼 — 直接打拼音，不用记键位",
-                    WanxiangPrefs.ENCODE_SHUANGPIN to "双拼 — 两键一字，需要记键位",
+                    WanxiangPrefs.ENCODE_QUANPIN to "全拼",
+                    WanxiangPrefs.ENCODE_SHUANGPIN to "双拼",
                 ),
                 WanxiangPrefs.encode,
             ) { WanxiangPrefs.encode = it; render() },
         )
-        if (WanxiangPrefs.encode == WanxiangPrefs.ENCODE_SHUANGPIN) {
-            content.addView(hint("双拼下打单音节字要打两下（啊 = aa、哦 = oo），这是双拼本身的规则。"))
-        }
     }
 
     private fun renderScheme() {
@@ -284,9 +280,9 @@ class WanxiangSetupFragment : Fragment() {
         content.addView(
             radio(
                 listOf(
-                    WanxiangPrefs.AUX_NONE to "不用（Base，词库小、部署快）",
-                    WanxiangPrefs.AUX_DIRECT to "直接辅助码（拼音后跟部首声母）",
-                    WanxiangPrefs.AUX_INDIRECT to "间接辅助码（用 / 分隔）",
+                    WanxiangPrefs.AUX_NONE to "不用",
+                    WanxiangPrefs.AUX_DIRECT to "直接辅助码",
+                    WanxiangPrefs.AUX_INDIRECT to "间接辅助码",
                 ),
                 WanxiangPrefs.aux,
             ) { WanxiangPrefs.aux = it; render() },

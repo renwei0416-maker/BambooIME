@@ -58,32 +58,25 @@ class WanxiangFragment : PaddingPreferenceFragment() {
 
     private fun buildScreen() {
         val activeId = SchemaPackageManager.activePackageId
-        val ourId = WanxiangCustom.activePackage()
-        val installed = SchemaPackStore.isInstalled(ourId)
-        val active = SchemaPackStore.isActive(ourId)
+        val ourId = WanxiangCustom.currentPackage()
+        val installed = ourId != null && SchemaPackStore.isInstalled(ourId)
         preferenceScreen =
             preferenceManager.createPreferenceScreen(requireContext()).apply {
-                // 顶部状态行：让用户随时知道「现在生效的是哪个包」，避免改了不生效还不知道
                 addRow(
                     title = when {
-                        !installed -> "尚未安装内置方案包"
-                        active -> "当前生效：wanxiang-base（内置）"
-                        activeId.isBlank() -> "当前没有活动方案包"
-                        else -> "当前生效：$activeId（不是内置包）"
+                        ourId == null -> "当前不在万象包上"
+                        !installed -> "万象包文件不在了"
+                        else -> "当前生效：$ourId"
                     },
                     summary = when {
-                        !installed ->
-                            "安装包里已内置 67 MB，点下面的「启用这个方案包」释放并启用，约 1 分钟"
-                        active ->
-                            "${layoutLabel()} · ${encodeLabel()}，下面「方案设置」改的就是它"
-                        else ->
-                            "下面「方案设置」只会写进内置包，不会影响你现在用的这个包；" +
-                                "想改内置包的设置，先点「启用这个方案包」切过去"
+                        ourId == null -> "下面这些设置要先走向导配好才能用"
+                        !installed -> "目录被删过，先走向导重新配一次"
+                        else -> "${layoutLabel()} · ${encodeLabel()}"
                     },
                 )
                 addBambooCategory(
                     "内置方案包",
-                    "万象拼音 Base（全拼/双拼 + 九键）。装好后在后台静默释放，不需要你手动解压",
+                    "万象拼音 Base（全拼/双拼 + 九键）",
                 ) {
                     addRow(
                         title = if (installed) "已就绪" else "尚未释放",
@@ -94,43 +87,18 @@ class WanxiangFragment : PaddingPreferenceFragment() {
                                     "　${SchemaPackStore.fileCount(ourId)} 个文件\n释放于" +
                                     " ${SchemaPackStore.installedAtText(ourId)}"
                             } else {
-                                "安装包内已内置，但还没拷到用户目录（可能被手工删过），点这里重新释放"
+                                "还没配置。点这里走向导，配好会自动释放"
                             },
                     ) {
-                        if (!installed) releaseThenRefresh()
-                    }
-
-                    addRow(
-                        title = "启用这个方案包",
-                        summary =
-                            if (active) {
-                                "当前已经在使用它了。要换别的包请到「方案包管理」里选。"
-                            } else {
-                                "会切到这个包并立即部署一次。词库较大，首次约 2–4 分钟，" +
-                                    "期间键盘可能短暂不可用。"
-                            },
-                    ) {
-                        if (active) {
-                            toast("已经在使用它了")
-                        } else {
-                            confirmEnable()
-                        }
-                    }
-
-                    addRow(
-                        title = "检查并补齐文件",
-                        summary = "升级 APK 后如果这个包没有被自动刷新，点它会重新释放一遍（不动你改过的 *.custom.yaml）",
-                    ) {
-                        releaseThenRefresh()
+                        if (!installed) goWizard()
                     }
 
                     addRow(
                         title = "打开文件夹",
-                        summary = SchemaPackStore.dir(ourId).absolutePath,
+                        summary = if (ourId != null) SchemaPackStore.dir(ourId).absolutePath else "还没有可打开的目录",
                     ) {
-                        showDirDialog()
+                        if (ourId != null) showDirDialog() else goWizard()
                     }
-
                 }
 
                 addBambooCategory("方案设置", "改完点「应用并部署」生效") {
@@ -211,7 +179,7 @@ class WanxiangFragment : PaddingPreferenceFragment() {
 
                     settingRow(
                         title = "辅助码",
-                        summary = if (!WanxiangCustom.isPro(ourId)) {
+                        summary = if (ourId == null || !WanxiangCustom.isPro(ourId)) {
                             "需要先装带辅助码的词库"
                         } else if (WanxiangPrefs.layout == WanxiangPrefs.LAYOUT_9) {
                             "九键没有字母键，辅助码用不上（切回全键盘后可开）"
@@ -219,11 +187,11 @@ class WanxiangFragment : PaddingPreferenceFragment() {
                             when (WanxiangPrefs.aux) {
                                 WanxiangPrefs.AUX_DIRECT -> "直接辅助"
                                 WanxiangPrefs.AUX_INDIRECT -> "间接辅助"
-                                else -> "关闭（官方默认）"
+                                else -> "关闭"
                             }
                         },
                     ) {
-                        if (!WanxiangCustom.isPro(ourId)) {
+                        if (ourId == null || !WanxiangCustom.isPro(ourId)) {
                             toast("先在「方案包与下载」里装带辅助码的词库")
                             return@settingRow
                         }
@@ -391,9 +359,12 @@ class WanxiangFragment : PaddingPreferenceFragment() {
                 toast("释放失败：检查 Documents 目录是否可写")
                 return@launch
             }
-            val wrote = withContext(Dispatchers.IO) {
-                WanxiangCustom.writeAll(WanxiangCustom.activePackage())
+            val target = WanxiangCustom.currentPackage()
+            if (target == null) {
+                goWizard()
+                return@launch
             }
+            val wrote = withContext(Dispatchers.IO) { WanxiangCustom.writeAll(target) }
             if (!wrote) {
                 toast("写入配置失败：检查 Documents 目录是否可写")
                 return@launch
@@ -473,38 +444,28 @@ class WanxiangFragment : PaddingPreferenceFragment() {
      * 屏幕上什么都不会变，用户只会觉得「改了没用」。
      */
     private fun ensureWritable(): Boolean {
-        val ourId = WanxiangCustom.activePackage()
-        if (!SchemaPackStore.isInstalled(ourId)) {
-            toast("内置方案包还没释放，正在准备…")
-            releaseThenRefresh()
-            return false
-        }
-        if (!SchemaPackStore.isActive(ourId)) {
-            val current = SchemaPackageManager.activePackageId.ifBlank { "未选择" }
-            AlertDialog.Builder(requireContext())
-                .setTitle("先切到内置方案包")
-                .setMessage(
-                    "这些设置会写进 `$ourId` 的 custom，" +
-                        "但你现在用的是 $current，改了不会生效。\n\n要切过去吗？",
-                )
-                .setNegativeButton("取消", null)
-                .setPositiveButton("切过去并部署") { _, _ ->
-                    lifecycleScope.launch {
-                        val ready =
-                            withContext(Dispatchers.IO) { SchemaPackStore.ensureBaseCopied(requireContext()) }
-                        if (!ready) {
-                            toast("释放失败：检查 Documents 目录是否可写")
-                            return@launch
-                        }
-                        toast("正在部署，请稍候…")
-                        deployToOurPackage()
-                        rebuildPreferencesKeepingScroll { buildScreen() }
-                    }
-                }
-                .show()
+        val ourId = WanxiangCustom.currentPackage()
+        if (ourId == null || !SchemaPackStore.isInstalled(ourId)) {
+            goWizard()
             return false
         }
         return true
+    }
+
+    /** 没配好就引导去向导；这里绝不解包、不切包。 */
+    private fun goWizard() {
+        AlertDialog.Builder(requireContext())
+            .setTitle("先配好万象拼音")
+            .setMessage("这些设置要先走向导配一次，配好之后回来就能改。")
+            .setNegativeButton("取消", null)
+            .setPositiveButton("去设置向导") { _, _ ->
+                runCatching {
+                    findNavController().navigate(
+                        com.osfans.trime.ui.main.NavigationRoute.WanxiangSetup,
+                    )
+                }.onFailure { toast("打不开向导：${it.message}") }
+            }
+            .show()
     }
 
     /**
