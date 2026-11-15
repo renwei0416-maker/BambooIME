@@ -42,6 +42,7 @@ import splitties.views.dsl.core.frameLayout
 import splitties.views.dsl.core.lParams
 import splitties.views.dsl.core.matchParent
 import timber.log.Timber
+import com.osfans.trime.util.BambooLog
 
 class KeyboardWindow :
     BoardWindow.NoBarBoardWindow(),
@@ -260,41 +261,33 @@ class KeyboardWindow :
         WanxiangKeyboard.rememberLayout(keyboardId)
     }
 
-    private fun restoreWanxiangKeyboard() {
-        val log = com.osfans.trime.util.BambooLog.wx
-        if (!WanxiangPrefs.isReady()) {
-            log.d("restore", "skip: prefs not ready")
-            return
-        }
-        if (!WanxiangPrefs.restoreKeyboard) {
-            log.d("restore", "skip: switch off")
-            return
-        }
-        val schemaId = runCatching { rime.run { statusCached }.schemaId }.getOrNull()
-        if (schemaId.isNullOrEmpty()) {
-            log.d("restore", "skip: schemaId empty")
-            return
-        }
+    /**
+     * 按设置里记的形态算出该用哪个键盘；不该干预时返回 null。
+     *
+     * 注意：这里只做计算、不切换，调用方自行决定在哪一步切，
+     * 避免「先切默认、再纠正」造成两次异步切换互相覆盖（26/18 来回跳的根因）。
+     */
+    private fun wanxiangKeyboardIdOrNull(): String? {
+        if (!WanxiangPrefs.isReady() || !WanxiangPrefs.restoreKeyboard) return null
+        val schemaId = runCatching { rime.run { statusCached }.schemaId }.getOrNull() ?: return null
+        if (schemaId.isEmpty()) return null
         val layout = WanxiangPrefs.layout
-        val target = WanxiangKeyboard.keyboardIdOf(schemaId, layout)
-        if (target == null) {
-            log.d("restore", "skip: schema=$schemaId not ours")
-            return
-        }
+        val target = WanxiangKeyboard.keyboardIdOf(schemaId, layout) ?: return null
         if (target !in presetKeyboardIds) {
-            log.d("restore", "skip: $target not in theme (${presetKeyboardIds.size} ids)")
-            return
+            BambooLog.wx.d("restore", "skip: $target not in theme (${presetKeyboardIds.size} ids)")
+            return null
         }
+        return target
+    }
+
+    /** onAttached 用：这一步没有别的切换在排队，可以直接切。 */
+    private fun restoreWanxiangKeyboard() {
+        val target = wanxiangKeyboardIdOrNull() ?: return
         if (target == currentKeyboardId) {
-            log.d("restore", "skip: already $target")
+            BambooLog.wx.d("restore", "skip: already $target")
             return
         }
-        log.d("restore", "schema=$schemaId layout=$layout -> $target (was $currentKeyboardId)")
-        if (com.osfans.trime.BuildConfig.DEBUG) {
-            runCatching {
-                android.widget.Toast.makeText(service, "键盘恢复 → $target", android.widget.Toast.LENGTH_SHORT).show()
-            }
-        }
+        BambooLog.wx.d("restore", "attach -> $target (was $currentKeyboardId)")
         switchKeyboard(target, fromUser = false)
     }
 
@@ -512,7 +505,10 @@ class KeyboardWindow :
                     }
                 }
             }
-        switchKeyboard(targetKeyboard)
+        // 我们自己的方案下，直接把「设置里记的形态」当成目标，避免先切 default 再纠正
+        val wanxiangTarget = wanxiangKeyboardIdOrNull()
+        val effectiveTarget = if (wanxiangTarget != null) wanxiangTarget else targetKeyboard
+        switchKeyboard(effectiveTarget)
         val isAsciiMode = rime.run { statusCached }.isAsciiMode
         if (targetKeyboard == ".ascii" || targetKeyboard == "number") {
             if (tempAsciiMode == null) {
@@ -536,9 +532,6 @@ class KeyboardWindow :
                 }
             }
         }
-        // 上面那句 switchKeyboard(targetKeyboard) 会把键盘重置成 default，
-        // 所以恢复我们自己的形态必须放在它之后。
-        restoreWanxiangKeyboard()
     }
 
     private fun dispatchCapsState(setShift: (Boolean, Boolean) -> Unit) {
@@ -567,8 +560,7 @@ class KeyboardWindow :
     }
 
     override fun onRimeSchemaUpdated(schema: SchemaItem) {
-        switchKeyboard(".default")
-        restoreWanxiangKeyboard()
+        switchKeyboard(wanxiangKeyboardIdOrNull() ?: ".default")
     }
 
     override fun onRimeOptionUpdated(value: RimeMessage.OptionMessage.Data) {
