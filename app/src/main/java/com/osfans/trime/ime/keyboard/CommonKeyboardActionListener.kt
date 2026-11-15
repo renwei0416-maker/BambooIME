@@ -106,7 +106,7 @@ class CommonKeyboardActionListener {
                 scope = service.lifecycleScope,
                 context = context,
                 afterConfirm = { api.commitComposition() },
-                onSelectKeyboard = { id -> keyboardWindow.switchKeyboard(id) },
+                onSelectKeyboard = { id -> keyboardWindow.switchKeyboard(id, fromUser = true) },
             )
         }
     }
@@ -286,7 +286,7 @@ class CommonKeyboardActionListener {
                             if (KeyboardWindow.currentKeyboard.isDynamicMode) {
                                 KeyboardWindow.dynamicController?.reset()
                             }
-                            keyboardWindow.switchKeyboard(action.select)
+                            keyboardWindow.switchKeyboard(action.select, fromUser = true)
                         }
 
                         KeyEvent.KEYCODE_LANGUAGE_SWITCH -> handleLanguageSwitch(action)

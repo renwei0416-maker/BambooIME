@@ -29,6 +29,28 @@ object WanxiangKeyboard {
      * @param schemaId 当前方案 id
      * @param layout [WanxiangPrefs.layout]
      */
+    /** 键盘 id -> 形态（用户手动切换时用来回写 prefs）。 */
+    private val LAYOUT_OF_KEYBOARD = mapOf(
+        "default" to WanxiangPrefs.LAYOUT_26,
+        "wanxiang_18key" to WanxiangPrefs.LAYOUT_18,
+        "wanxiang_14key" to WanxiangPrefs.LAYOUT_14,
+        "wanxiang_t9" to WanxiangPrefs.LAYOUT_9,
+    )
+
+    /**
+     * 用户主动切到某个键盘后，把形态记进 prefs。
+     *
+     * 不这样的话，prefs 里永远是他上次在设置页选的那个，
+     * 「进输入框恢复键盘」就会把他手动切的键盘拽回去。
+     */
+    fun rememberLayout(keyboardId: String) {
+        if (!WanxiangPrefs.isReady()) return
+        val layout = LAYOUT_OF_KEYBOARD[keyboardId] ?: return
+        if (WanxiangPrefs.layout == layout) return
+        WanxiangPrefs.layout = layout
+        com.osfans.trime.util.BambooLog.wx.d("restore", "remember layout=$layout by $keyboardId")
+    }
+
     fun keyboardIdOf(schemaId: String, layout: Int): String? {
         if (!owns(schemaId)) return null
         return when (layout) {

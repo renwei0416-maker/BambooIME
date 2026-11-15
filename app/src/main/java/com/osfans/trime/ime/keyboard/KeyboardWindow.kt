@@ -253,6 +253,13 @@ class KeyboardWindow :
      * `smartMatchKeyboard()` 认不出 18/14/26 键的区别（都是同一个方案 id），
      * 所以每次重建都会掉回 default；这里在它之后再补一次。
      */
+    /** 用户主动切键盘后，把形态写回 prefs（只在我们自己的方案下生效）。 */
+    private fun syncWanxiangLayout(keyboardId: String) {
+        val schemaId = runCatching { rime.run { statusCached }.schemaId }.getOrNull()
+        if (schemaId.isNullOrEmpty() || !WanxiangKeyboard.owns(schemaId)) return
+        WanxiangKeyboard.rememberLayout(keyboardId)
+    }
+
     private fun restoreWanxiangKeyboard() {
         val log = com.osfans.trime.util.BambooLog.wx
         if (!WanxiangPrefs.isReady()) {
@@ -288,7 +295,7 @@ class KeyboardWindow :
                 android.widget.Toast.makeText(service, "键盘恢复 → $target", android.widget.Toast.LENGTH_SHORT).show()
             }
         }
-        switchKeyboard(target)
+        switchKeyboard(target, fromUser = false)
     }
 
     private fun smartMatchKeyboard(): String {
@@ -393,7 +400,7 @@ class KeyboardWindow :
         currentKeyboardView?.updateSidebarController(newController)
     }
 
-    fun switchKeyboard(to: String) {
+    fun switchKeyboard(to: String, fromUser: Boolean = false) {
         val target = evalKeyboard(to)
         ContextCompat.getMainExecutor(service).execute {
             if (cachedKeyboards.containsKey(target)) {
@@ -428,8 +435,10 @@ class KeyboardWindow :
                 lastKeyboardId = target
                 currentKeyboard?.refreshKeyBehaviors(targetConfig)
                 currentKeyboardView?.invalidateAllKeys()
+                if (fromUser) syncWanxiangLayout(target)
                 return@execute
             }
+            if (fromUser) syncWanxiangLayout(target)
             cachedKeyboards.remove(target)
             currentKeyboardView?.onDetach()
             currentKeyboard?.lastAsciiMode = rime.run { statusCached }.isAsciiMode
