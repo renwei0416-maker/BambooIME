@@ -10,6 +10,8 @@ import android.view.inputmethod.EditorInfo
 import android.widget.FrameLayout
 import androidx.annotation.Keep
 import androidx.core.content.ContextCompat
+import com.osfans.trime.actions.wanxiang.WanxiangKeyboard
+import com.osfans.trime.actions.wanxiang.WanxiangPrefs
 import com.osfans.trime.R
 import com.osfans.trime.core.RimeMessage
 import com.osfans.trime.core.SchemaItem
@@ -243,6 +245,22 @@ class KeyboardWindow :
                 add(it, lParams(matchParent, matchParent))
             }
         }
+    }
+
+    /**
+     * 把我们自己的方案按用户选过的键盘形态恢复回来。
+     *
+     * `smartMatchKeyboard()` 认不出 18/14/26 键的区别（都是同一个方案 id），
+     * 所以每次重建都会掉回 default；这里在它之后再补一次。
+     */
+    private fun restoreWanxiangKeyboard() {
+        if (!WanxiangPrefs.isReady() || !WanxiangPrefs.restoreKeyboard) return
+        val schemaId = runCatching { rime.run { statusCached }.schemaId }.getOrNull() ?: return
+        if (schemaId.isEmpty()) return
+        val target = WanxiangKeyboard.keyboardIdOf(schemaId, WanxiangPrefs.layout) ?: return
+        if (target !in presetKeyboardIds) return
+        if (target == currentKeyboardId) return
+        switchKeyboard(target)
     }
 
     private fun smartMatchKeyboard(): String {
@@ -510,6 +528,7 @@ class KeyboardWindow :
 
     override fun onRimeSchemaUpdated(schema: SchemaItem) {
         switchKeyboard(".default")
+        restoreWanxiangKeyboard()
     }
 
     override fun onRimeOptionUpdated(value: RimeMessage.OptionMessage.Data) {
@@ -566,6 +585,7 @@ class KeyboardWindow :
                 onBackClick = { switchKeyboard(".previous") },
             )
         }
+        restoreWanxiangKeyboard()
     }
 
     override fun onDetached() {

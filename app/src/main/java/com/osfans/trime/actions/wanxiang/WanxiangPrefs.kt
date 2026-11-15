@@ -58,6 +58,7 @@ object WanxiangPrefs {
     )
 
     private const val KEY_LAYOUT = "layout"
+    private const val KEY_RESTORE_KEYBOARD = "restore_keyboard"
     private const val KEY_ENCODE = "encode"
     private const val KEY_SCHEME = "scheme"
     private const val KEY_AUX = "aux"
@@ -80,6 +81,9 @@ object WanxiangPrefs {
         app = context.applicationContext
         p = app.getSharedPreferences(SP, Context.MODE_PRIVATE)
     }
+
+    /** 初始化完成没有。引擎线程回调里用，没初始化就什么都别做。 */
+    fun isReady(): Boolean = ::p.isInitialized
 
     private fun ready(): SharedPreferences {
         check(::p.isInitialized) { "WanxiangPrefs.init() 未调用" }
@@ -109,6 +113,15 @@ object WanxiangPrefs {
     var layout: Int
         get() = ready().getInt(KEY_LAYOUT, LAYOUT_26)
         set(v) = ready().edit { putInt(KEY_LAYOUT, v) }
+
+    /**
+     * 进输入框时是否按 [layout] 把键盘形态恢复回来（默认开）。
+     *
+     * 关掉之后完全不管键盘，用户手动切了就保持手动的。
+     */
+    var restoreKeyboard: Boolean
+        get() = ready().getBoolean(KEY_RESTORE_KEYBOARD, true)
+        set(v) = ready().edit { putBoolean(KEY_RESTORE_KEYBOARD, v) }
 
     var encode: String
         get() = ready().getString(KEY_ENCODE, ENCODE_QUANPIN).orEmpty()
@@ -232,6 +245,7 @@ object WanxiangPrefs {
     fun resetToDefaults() {
         ready().edit {
             putInt(KEY_LAYOUT, LAYOUT_26)
+            putBoolean(KEY_RESTORE_KEYBOARD, true)
             putString(KEY_ENCODE, ENCODE_QUANPIN)
             putString(KEY_SCHEME, SCHEMES.first())
             putInt(KEY_AUX, AUX_NONE)

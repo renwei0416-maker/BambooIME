@@ -125,6 +125,16 @@ class WanxiangFragment : PaddingPreferenceFragment() {
                     }
 
                     settingRow(
+                        title = "进输入框时恢复键盘",
+                        summary = if (WanxiangPrefs.restoreKeyboard) "开：每次弹出键盘都按上面的形态切换" else "关：不干预，手动切了就保持手动",
+                    ) {
+                        pickBool("进输入框时恢复键盘", WanxiangPrefs.restoreKeyboard) {
+                            WanxiangPrefs.restoreKeyboard = it
+                            refresh()
+                        }
+                    }
+
+                    settingRow(
                         title = "编码方式",
                         summary = if (WanxiangPrefs.layout == WanxiangPrefs.LAYOUT_9) {
                             "九键固定全拼"
