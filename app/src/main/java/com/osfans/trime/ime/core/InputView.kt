@@ -9,6 +9,7 @@ import com.osfans.trime.actions.bamboo.AiPanelWindow
 import com.osfans.trime.util.BambooLog
 import com.osfans.trime.actions.handwriting.HandwritingWindow
 import com.osfans.trime.actions.ocr.OcrWindow
+import com.osfans.trime.actions.wanxiang.KeyPanelWindow
 import com.osfans.trime.actions.ocr.OcrCard
 import com.osfans.trime.actions.wanxiang.SchemaHintCard
 import com.osfans.trime.actions.wanxiang.WanxiangPrefs
@@ -1044,6 +1045,8 @@ class InputView(
             // 刚才停在 AI 模式面板上：窗口重建后也要接回来，别掉回字母键盘。
             // 面板自己不保存状态，onAttached 里会按当前模式重画。
             val wantAiPanel = AiPanelWindow.active
+            // 刚才停在「键盘与方案」面板上：窗口重建后同样接回来。
+            val wantKeyPanel = KeyPanelWindow.active && !wantAiPanel
             // 卡片与面板互斥：卡片在的时候底下必须是键盘（卡片是浮在键盘上方的覆盖层），
             // 所以卡片优先——不能拿「面板没挂」当条件，否则切 App 会把面板顶到卡片底下。
             if (!wantHandwriting && cardText != null) {
@@ -1056,6 +1059,10 @@ class InputView(
                 windowManager.attachWindow(AiPanelWindow.instance)
             } else if (wantHandwriting && !windowManager.isAttached(HandwritingWindow.instance)) {
                 windowManager.attachWindow(HandwritingWindow.instance)
+            } else if (!wantHandwriting && !wantOcr && !wantAiPanel && wantKeyPanel &&
+                !windowManager.isAttached(KeyPanelWindow.instance)
+            ) {
+                windowManager.attachWindow(KeyPanelWindow.instance)
             } else if (!wantHandwriting && !wantOcr && !wantAiPanel) {
                 windowManager.attachWindow(KeyboardWindow)
             }

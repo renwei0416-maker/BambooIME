@@ -59,6 +59,8 @@ object WanxiangPrefs {
 
     private const val KEY_LAYOUT = "layout"
     private const val KEY_RESTORE_KEYBOARD = "restore_keyboard"
+    private const val KEY_PANEL_LONG_PRESS = "panel_long_press"
+    private const val KEY_PANEL_ACTIONS = "panel_actions"
     private const val KEY_ENCODE = "encode"
     private const val KEY_SCHEME = "scheme"
     private const val KEY_AUX = "aux"
@@ -122,6 +124,16 @@ object WanxiangPrefs {
     var restoreKeyboard: Boolean
         get() = ready().getBoolean(KEY_RESTORE_KEYBOARD, true)
         set(v) = ready().edit { putBoolean(KEY_RESTORE_KEYBOARD, v) }
+
+    /** 长按切换键是否打开我们的「键盘与方案」面板（默认开）。 */
+    var panelOnLongPress: Boolean
+        get() = ready().getBoolean(KEY_PANEL_LONG_PRESS, true)
+        set(v) = ready().edit { putBoolean(KEY_PANEL_LONG_PRESS, v) }
+
+    /** 面板里是否显示「手写 / 拍照 / AI / 剪贴板」这一行（默认开）。 */
+    var panelShowActions: Boolean
+        get() = ready().getBoolean(KEY_PANEL_ACTIONS, true)
+        set(v) = ready().edit { putBoolean(KEY_PANEL_ACTIONS, v) }
 
     var encode: String
         get() = ready().getString(KEY_ENCODE, ENCODE_QUANPIN).orEmpty()

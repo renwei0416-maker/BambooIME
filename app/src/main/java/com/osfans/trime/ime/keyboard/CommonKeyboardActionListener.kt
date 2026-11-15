@@ -32,6 +32,7 @@ import com.osfans.trime.data.theme.KeyActionManager
 import com.osfans.trime.actions.handwriting.HandwritingWindow
 import com.osfans.trime.actions.bamboo.AiPanelWindow
 import com.osfans.trime.actions.ocr.OcrWindow
+import com.osfans.trime.actions.wanxiang.KeyPanelWindow
 import com.osfans.trime.data.theme.ThemeManager
 import com.osfans.trime.ime.bar.InputBarDelegate
 import com.osfans.trime.ime.clipboard.ClipboardWindow
@@ -73,6 +74,7 @@ class CommonKeyboardActionListener {
     private val handwritingWindow: HandwritingWindow get() = HandwritingWindow.instance
     private val ocrWindow: OcrWindow get() = OcrWindow.instance
     private val aiPanelWindow: AiPanelWindow get() = AiPanelWindow.instance
+    private val keyPanelWindow: KeyPanelWindow get() = KeyPanelWindow.instance
     private val inputBarDelegate: InputBarDelegate by di.instance()
 
     private val prefs = AppPrefs.defaultInstance()
@@ -227,6 +229,18 @@ class CommonKeyboardActionListener {
                         windowManager.attachWindow(keyboardWindow)
                     } else {
                         windowManager.attachWindow(ocrWindow)
+                    }
+                    return
+                }
+
+                // 键盘与方案面板：同样要建视图，放在通用 token 分发之前
+                if (action.code == 0 &&
+                    KeyPanelWindow.isToken(action.getText(KeyboardWindow.currentKeyboard))
+                ) {
+                    if (windowManager.isAttached(keyPanelWindow)) {
+                        windowManager.attachWindow(keyboardWindow)
+                    } else {
+                        windowManager.attachWindow(keyPanelWindow)
                     }
                     return
                 }

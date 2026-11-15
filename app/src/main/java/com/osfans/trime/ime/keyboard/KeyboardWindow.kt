@@ -77,6 +77,17 @@ class KeyboardWindow :
     private lateinit var keyboardView: FrameLayout
 
     companion object : ResidentWindow.Key {
+        /**
+         * 最近一次挂上的键盘窗口。
+         *
+         * 给「键盘与方案」面板用：那里需要调 [switchKeyboard]，但 `by di.instance()` 拿到的是
+         * `LazyDelegate`，且缓存的是**建类那一刻**的依赖世代（换主题后失效过）。挂载时记一份，
+         * 面板直接读，既是最新的、也不用碰依赖注入。
+         */
+        @Volatile
+        var instance: KeyboardWindow? = null
+            private set
+
         lateinit var currentKeyboard: Keyboard
         var sidebarController: SidebarInputController? = null
             private set
@@ -103,6 +114,12 @@ class KeyboardWindow :
     private val cachedKeyboards = mutableMapOf<String, Pair<Keyboard, KeyboardView>>()
     private val currentKeyboard: Keyboard? get() = cachedKeyboards[currentKeyboardId]?.first
     internal val currentKeyboardView: KeyboardView? get() = cachedKeyboards[currentKeyboardId]?.second
+
+    /** 当前键盘 id：键盘与方案面板要标出「现在用的是哪个」。 */
+    val currentId: String get() = currentKeyboardId
+
+    /** 主题里注册的键盘 id：面板判断某个键盘在当前主题里存不存在。 */
+    val presetIds: Collection<String> get() = presetKeyboardIds
 
     private val keyboardActionListener = commonKeyboardActionListener.listener
 
@@ -594,6 +611,7 @@ class KeyboardWindow :
     }
 
     override fun onAttached() {
+        instance = this
         expandKeypressAreaPref.registerOnChangeListener(onExpandKeypressAreaChangeListener)
         if (sidebarController == null && currentKeyboard?.isSidebarMode == true) {
             val newController = SidebarInputController(rime, currentKeyboard!!.sidebarLayout)

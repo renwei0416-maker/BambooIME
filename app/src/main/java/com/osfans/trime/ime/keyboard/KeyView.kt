@@ -22,6 +22,8 @@ import android.view.KeyEvent
 import com.mikepenz.iconics.IconicsDrawable
 import com.mikepenz.iconics.utils.sizePx
 import com.osfans.trime.actions.bamboo.BambooTokens
+import com.osfans.trime.actions.wanxiang.KeyPanelWindow
+import com.osfans.trime.actions.wanxiang.WanxiangPrefs
 import com.osfans.trime.daemon.RimeDaemon
 import com.osfans.trime.data.prefs.AppPrefs
 import com.osfans.trime.data.theme.ColorManager
@@ -214,6 +216,15 @@ class KeyView(
             val longPressAction = key.getAction(KeyBehavior.LONG_CLICK)
             if (isVoiceLongPressAction(longPressAction)) {
                 asrkbVoiceHoldController.start()
+            } else if (key.popup.isNotEmpty() &&
+                WanxiangPrefs.panelOnLongPress &&
+                (key.getAction(KeyBehavior.CLICK)?.code == KeyEvent.KEYCODE_SWITCH_CHARSET ||
+                    longPressAction?.code == KeyEvent.KEYCODE_SWITCH_CHARSET)
+            ) {
+                // 长按切换键：打开我们自己的「键盘与方案」面板（点一下把该做的都做完）。
+                // 单击仍然走 onClick 的 ModeSwitch，不受影响。
+                dismissPopupPreview()
+                KeyPanelWindow.open()
             } else if (key.popup.isNotEmpty()) {
                 dismissPopupPreview()
                 showPopupKeyboard()

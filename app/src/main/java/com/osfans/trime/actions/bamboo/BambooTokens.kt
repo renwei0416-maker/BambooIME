@@ -43,6 +43,15 @@ object BambooTokens {
      */
     const val AI_PANEL = "BambooAiPanel"
 
+    /**
+     * 键盘与方案面板（[com.osfans.trime.actions.wanxiang.KeyPanelWindow]）。
+     *
+     * 与 [AI_PANEL] 一样：它是 code==0 的纯文本 token，由
+     * `CommonKeyboardActionListener` 在通用分发之前拦下来建视图，
+     * 不会走到 [BambooActions.handleToken]。
+     */
+    const val KEY_PANEL = "BambooKeyPanel"
+
     /** 所有 token 的公共前缀；[match] 只认这个前缀，避免误吞用户真打出来的文字。 */
     const val PREFIX = "Bamboo"
 
@@ -87,7 +96,7 @@ object BambooTokens {
     val fixed: List<String> =
         listOf(
             REVERT, CLEAR, DELETE_LINE, DELETE_WORD, AI_SEND, AI_CLIP, AI_OFF, AI_PANEL,
-            SETTINGS, QUOTE, QUOTE_SINGLE, TIP, VOICE_AI,
+            KEY_PANEL, SETTINGS, QUOTE, QUOTE_SINGLE, TIP, VOICE_AI,
         ) + TIP_SLOTS
 
     /** 设置页「动作名一览」用的说明表；与 [fixed] 同源，不会漏项。 */
@@ -101,6 +110,7 @@ object BambooTokens {
             AI_CLIP to "用当前 AI 模式发送剪贴板（等价 jt;）",
             AI_OFF to "退出 AI 模式（等价 tc;）",
             AI_PANEL to "打开「AI 模式」面板（点按钮选模式 / 再点一次退出）",
+            KEY_PANEL to "打开「键盘与方案」面板（切键盘形态 / Base·Pro / 手写·拍照·AI·剪贴板）",
             SETTINGS to "打开「回退与AI」设置页",
             QUOTE to "提交左双引号“（开启「符号补全」时自动补右半边并居中）",
             QUOTE_SINGLE to "提交左单引号‘（同上）",
