@@ -76,6 +76,26 @@ object WanxiangPrefs {
         return p
     }
 
+    /** 整份快照。向导用它做「取消了就还原」。 */
+    fun snapshotAll(): Map<String, *> = HashMap(ready().all)
+
+    /** 用快照整体覆盖（清空后写回）。 */
+    fun restoreAll(map: Map<String, *>) {
+        ready().edit {
+            clear()
+            map.forEach { (k, v) ->
+                when (v) {
+                    is String -> putString(k, v)
+                    is Int -> putInt(k, v)
+                    is Long -> putLong(k, v)
+                    is Float -> putFloat(k, v)
+                    is Boolean -> putBoolean(k, v)
+                    is Set<*> -> putStringSet(k, v.map { it.toString() }.toSet())
+                }
+            }
+        }
+    }
+
     var layout: Int
         get() = ready().getInt(KEY_LAYOUT, LAYOUT_26)
         set(v) = ready().edit { putInt(KEY_LAYOUT, v) }

@@ -51,6 +51,13 @@ import timber.log.Timber
  */
 class WanxiangSetupFragment : Fragment() {
 
+    /** 进向导前的设置快照，取消时还原。 */
+    private var backup: Map<String, *> = emptyMap<String, Any>()
+
+    /** 是否已经点过「完成并应用」。 */
+    private var applied = false
+
+
     private lateinit var content: LinearLayout
     private lateinit var title: TextView
     private lateinit var progress: TextView
@@ -117,15 +124,19 @@ class WanxiangSetupFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        // 两个包都不在 = 用户把目录删了，等于全新安装：把上次的选择清掉，
-        // 否则会带着旧的「九键/双拼」跑向导，看起来像设置项丢了。
-        if (!SchemaPackStore.isInstalled(SchemaPackStore.BASE_ID) &&
-            !SchemaPackStore.isInstalled(SchemaPackStore.PRO_ID)
-        ) {
-            WanxiangPrefs.resetToDefaults()
-        }
+        // 向导不记忆上一次：每次进来都是同一套初始值（26 键 / 全拼 / 无辅助码）。
+        // 先留一份快照，若最后没点「完成并应用」就原样还原，避免显示值和实际文件不一致。
+        backup = WanxiangPrefs.snapshotAll()
+        applied = false
+        WanxiangPrefs.resetToDefaults()
         page = 0
         render()
+    }
+
+    override fun onDestroyView() {
+        // 没应用就退出：把进入向导前的设置还原回去。
+        if (!applied) runCatching { WanxiangPrefs.restoreAll(backup) }
+        super.onDestroyView()
     }
 
     private fun onNext() {
@@ -385,6 +396,7 @@ class WanxiangSetupFragment : Fragment() {
             }
 
             WanxiangPrefs.wizardDone = true
+            applied = true
             busy = false
             toast("已应用。键盘布局记得自己在键盘弹窗里切一下")
             runCatching { parentFragmentManager.popBackStack() }
