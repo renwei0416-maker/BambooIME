@@ -42,7 +42,7 @@ object LogSwitches {
     const val GLOSSARY = false
 
     /** 方案包：释放、覆盖、写 custom、部署 */
-    const val WANXIANG = true // 临时：排查键盘恢复，排查完改回 false
+    const val WANXIANG = false // 临时：排查键盘恢复，排查完改回 false
 
     /** 语音：sherpa / asrkb / 语音发 AI */
     const val VOICE = false
