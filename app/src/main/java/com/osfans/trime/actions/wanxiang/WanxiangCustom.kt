@@ -5,6 +5,7 @@
 
 package com.osfans.trime.actions.wanxiang
 
+import com.osfans.trime.data.packaging.CustomSignature
 import com.osfans.trime.data.packaging.SchemaPackStore
 import org.json.JSONObject
 import timber.log.Timber
@@ -166,8 +167,10 @@ object WanxiangCustom {
         check(patches == 1) {
             "wanxiang: ${file.name} 归一化后仍有 $patches 个 patch:，拒绝写入"
         }
-        file.writeText(text)
-        Timber.d("wanxiang: wrote ${file.name} (${text.length} chars, patch=$patches)")
+        // 只有 default.custom.yaml 需要 rime 的 customization 签名块
+        val signed = if (file.name == DEFAULT_CUSTOM) CustomSignature.apply(text) else text
+        file.writeText(signed)
+        Timber.d("wanxiang: wrote ${file.name} (${signed.length} chars, patch=$patches)")
     }
 
     private fun hasMarkers(text: String): Boolean {

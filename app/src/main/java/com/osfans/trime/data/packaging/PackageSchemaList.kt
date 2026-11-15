@@ -45,7 +45,9 @@ object PackageSchemaList {
             val old = if (file.exists()) file.readText() else ""
             if (file.exists()) backup(file, old)
             val merged = withSchemaList(old, render(schemaIds))
-            file.writeText(merged)
+            // 补 rime 的 customization 签名块（见 CustomSignature 的说明）
+            val signed = CustomSignature.apply(merged)
+            file.writeText(signed)
             Timber.i("PackageSchemaList: %s -> %s", packageId, schemaIds.joinToString(","))
             true
         } catch (e: Exception) {
