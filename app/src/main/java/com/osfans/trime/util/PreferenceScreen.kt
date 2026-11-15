@@ -118,25 +118,66 @@ fun PreferenceGroup.addPreference(
     )
 }
 
-/** 需要醒目的入口统一用这个色（酒红），全 App 只此一处强调色。 */
+/**
+ * 需要醒目的入口统一用酒红，全 App 只此一处强调色。
+ * 浅底用本色，深底自动换亮一档 —— 同一个色值在深色主题上会暗到看不出来。
+ */
 @ColorInt
 val ACCENT_RED: Int = 0xFF8E3B30.toInt()
 
-/** 把标题染成指定颜色。 */
-fun accentTitle(text: String, @ColorInt color: Int = ACCENT_RED): CharSequence =
+/** 深色背景上用的酒红（亮两档，仍属酒红）。 */
+@ColorInt
+val ACCENT_RED_ON_DARK: Int = 0xFFD9695A.toInt()
+
+private fun luminance(@ColorInt c: Int): Float {
+    val f = { v: Int -> v / 255f }
+    val r = f((c shr 16) and 0xFF)
+    val g = f((c shr 8) and 0xFF)
+    val b = f(c and 0xFF)
+    return 0.299f * r + 0.587f * g + 0.114f * b
+}
+
+/** 按当前背景亮度选一个看得清的酒红。 */
+@ColorInt
+fun accentColorFor(context: Context): Int {
+    val bg = runCatching { context.styledColor(android.R.attr.colorBackground) }.getOrNull()
+    return if (bg == null || luminance(bg) >= 0.5f) ACCENT_RED else ACCENT_RED_ON_DARK
+}
+
+/** 把标题染成指定颜色（另一条腿见 [AccentClick]，两条一起上更稳）。 */
+fun accentTitle(
+    text: String,
+    @ColorInt color: Int = ACCENT_RED,
+): CharSequence =
     SpannableString(text).apply {
         setSpan(ForegroundColorSpan(color), 0, text.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
     }
+
+/**
+ * 标题带色的行。除了 span，还在 bind 时直接给标题 TextView 上色：
+ * 有的主题布局会另建一个 TextView，只靠 span 不生效。
+ */
+open class AccentClick(context: Context) : BambooClick(context) {
+    override fun onBindViewHolder(holder: PreferenceViewHolder) {
+        super.onBindViewHolder(holder)
+        runCatching {
+            val color = accentColorFor(holder.itemView.context)
+            holder.itemView.findViewById<android.widget.TextView>(android.R.id.title)?.setTextColor(color)
+        }
+    }
+}
 
 /** 标题带色的行：用于「万象拼音」「设置向导」这类要抓眼球的入口。 */
 fun PreferenceGroup.addAccentPreference(
     title: String,
     summary: String? = null,
     @DrawableRes icon: Int? = null,
-    @ColorInt color: Int = ACCENT_RED,
     onClick: (() -> Unit)? = null,
 ) {
-    addPreference(BambooClick(context).apply { setup(title, summary, icon, onClick) })
-    val last = getPreference(preferenceCount - 1)
-    last.title = accentTitle(title, color)
+    addPreference(
+        AccentClick(context).apply {
+            setup(title, summary, icon, onClick)
+            this.title = accentTitle(title, accentColorFor(context))
+        },
+    )
 }
