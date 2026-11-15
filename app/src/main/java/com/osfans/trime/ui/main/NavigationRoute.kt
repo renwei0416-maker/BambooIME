@@ -27,6 +27,7 @@ import com.osfans.trime.ui.main.settings.InputStatsFragment
 import com.osfans.trime.ui.main.settings.KeyboardSettingsFragment
 import com.osfans.trime.ui.main.settings.OcrSettingsFragment
 import com.osfans.trime.ui.main.settings.PackageListFragment
+import com.osfans.trime.ui.main.settings.PanelQuickFragment
 import com.osfans.trime.ui.main.settings.ProfileSettingsFragment
 import com.osfans.trime.ui.main.settings.VoiceInputSettingsFragment
 import com.osfans.trime.ui.main.settings.VoiceAiFragment
@@ -89,6 +90,9 @@ sealed class NavigationRoute : Parcelable {
 
     @Serializable
     data object VoiceAi : NavigationRoute()
+
+    @Serializable
+    data object PanelQuick : NavigationRoute()
 
     @Serializable
     data object Wanxiang : NavigationRoute()
@@ -203,6 +207,10 @@ sealed class NavigationRoute : Parcelable {
             fragment<GlossaryFragment, Glossary> {
                 label = "外语学习"
             }
+            fragment<PanelQuickFragment, PanelQuick> {
+                label = "面板与快捷"
+            }
+
             fragment<WanxiangFragment, Wanxiang> {
                 label = "万象拼音"
             }

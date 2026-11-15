@@ -12,6 +12,7 @@ import android.view.inputmethod.InputConnection
 import android.widget.Toast
 import androidx.lifecycle.lifecycleScope
 import com.osfans.trime.actions.glossary.GlossaryDecorator
+import com.osfans.trime.actions.glossary.GlossaryPrefs
 import com.osfans.trime.actions.tips.TipBlocks
 import com.osfans.trime.actions.wenquxing.WenquxingPrefs
 import com.osfans.trime.actions.wenquxing.WenquxingTips
@@ -133,6 +134,27 @@ object BambooActions {
         return true
     }
 
+    /**
+     * `tc;` 的完整语义：**一键收工**。
+     *
+     * 退出 `armed`（AI 模式或文曲星，二选一，天然唯一），并顺带关掉「外语学习」常驻开关。
+     * 返回实际关掉了哪些名字（空 = 什么都没开）。
+     */
+    fun exitAll(): List<String> {
+        val names = mutableListOf<String>()
+        armed?.let { names += if (it.key == TIPS_KEY) "文曲星" else it.name }
+        if (GlossaryPrefs.enabled) {
+            GlossaryPrefs.enabled = false
+            names += "外语学习"
+        }
+        if (names.isNotEmpty()) {
+            armed = null
+            lastSendTapAt = 0
+            WenquxingTips.clear()
+        }
+        return names
+    }
+
     /** 退出当前模式（AI 或文曲星都算）。返回 true = 原本确实在模式里。 */
     fun exitArmedMode(): Boolean {
         val current = armed ?: return false
@@ -202,6 +224,22 @@ object BambooActions {
         keyCode: Int,
         metaState: Int,
     ): Boolean {
+        // 「外语学习」开关码（默认 wy;）属于「输入增强」，与「回退与AI」总开关无关，
+        // 所以必须放在下面那行总开关判断之前。
+        run {
+            val gCode = GlossaryPrefs.code
+            val ch = charOf(keyCode)
+            if (gCode.length >= 2 && ch != null) {
+                val raw = api.getRawInput()
+                if (raw.isNotEmpty() && matches(gCode, ch, raw)) {
+                    api.clearComposition()
+                    GlossaryPrefs.enabled = !GlossaryPrefs.enabled
+                    toast(if (GlossaryPrefs.enabled) "已开启外语学习" else "已关闭外语学习")
+                    Timber.d("bamboo: glossary code -> %s", GlossaryPrefs.enabled)
+                    return true
+                }
+            }
+        }
         if (!BambooPrefs.enabled) return false
         val ctrl = metaState and KeyEvent.META_CTRL_ON != 0
         val alt = metaState and KeyEvent.META_ALT_ON != 0
@@ -235,17 +273,23 @@ object BambooActions {
 
         // ---- 拼写非空：先匹配触发码（前缀 + 终结键）----
         if (raw.isNotEmpty()) {
-            // 1) 退出码：只在模式里有效
-            if (mode != null && (BambooPrefs.aiEnabled || mode.key == TIPS_KEY)) {
+            // 1) 退出码（默认 tc;）：一键收工 —— 退出 AI 模式 / 文曲星，并关掉外语学习。
+            //    armed 只有一个槽，所以「退哪个」天然唯一；外语学习是常驻开关，顺带关掉。
+            run {
                 val exitCode = BambooPrefs.aiExitCode
-                if (exitCode.length >= 2 && matches(exitCode, ch, raw)) {
-                    val wasTips = mode.key == TIPS_KEY
+                val modeOk = mode != null && (BambooPrefs.aiEnabled || mode.key == TIPS_KEY)
+                val glossaryOn = GlossaryPrefs.enabled
+                if (exitCode.length >= 2 && (modeOk || glossaryOn) && matches(exitCode, ch, raw)) {
                     api.clearComposition()
-                    armed = null
-                    lastSendTapAt = 0
-                    WenquxingTips.clear()
-                    toast(if (wasTips) "已退出文曲星" else "已退出 AI 模式")
-                    Timber.d("bamboo: ai disarmed by exit code")
+                    val names = exitAll()
+                    toast(
+                        if (names.isEmpty()) {
+                            "当前没有开启任何模式"
+                        } else {
+                            "已退出：" + names.joinToString("、")
+                        },
+                    )
+                    Timber.d("bamboo: exit code -> %s", names.joinToString(","))
                     return true
                 }
             }
@@ -463,17 +507,20 @@ object BambooActions {
             }
 
             BambooTokens.AI_OFF -> {
-                val current = armed
-                if (current == null) {
-                    toast("本来就不在 AI 模式")
-                } else {
-                    // 与退出码 tc; 完全一致：退出哪个模式就提示哪个
-                    val wasTips = current.key == TIPS_KEY
-                    armed = null
-                    lastSendTapAt = 0
-                    WenquxingTips.clear()
-                    toast(if (wasTips) "已退出文曲星" else "已退出 AI 模式")
-                }
+                val names = exitAll()
+                toast(
+                    if (names.isEmpty()) {
+                        "当前没有开启任何模式"
+                    } else {
+                        "已退出：" + names.joinToString("、")
+                    },
+                )
+                return true
+            }
+
+            BambooTokens.GLOSSARY -> {
+                GlossaryPrefs.enabled = !GlossaryPrefs.enabled
+                toast(if (GlossaryPrefs.enabled) "已开启外语学习" else "已关闭外语学习")
                 return true
             }
 

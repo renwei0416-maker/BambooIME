@@ -136,7 +136,10 @@ class MainFragment : PaddingPreferenceFragment() {
                 addPreference("外观", "设置界面是否跟随键盘主题配色、深浅色与取色自检", R.drawable.ic_baseline_color_lens_24) {
                     findNavController().navigateWithAnim(NavigationRoute.BambooAppearance)
                 }
-                addPreference("外接键盘", "接硬件键盘时的浮动候选条（个数、横排/竖排）与状态条", R.drawable.ic_baseline_keyboard_24) {
+                addPreference("面板与快捷", "功能面板、长按切换键的行为与快捷码", R.drawable.ic_baseline_tune_24) {
+                findNavController().navigateWithAnim(NavigationRoute.PanelQuick)
+            }
+addPreference("外接键盘", "接硬件键盘时的浮动候选条（个数、横排/竖排）与状态条", R.drawable.ic_baseline_keyboard_24) {
                     findNavController().navigateWithAnim(NavigationRoute.HardwareKeyboard)
                 }
                 addPreference("文曲星", "诗词提示：候选/剪贴板/光标前文本命中名句、唐诗宋词时在编码后给出摘要", R.drawable.ic_baseline_book_24) {

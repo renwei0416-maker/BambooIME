@@ -15,13 +15,16 @@ import android.view.View
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.widget.ImageView
+import android.widget.FrameLayout
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.widget.TextViewCompat
 import com.mikepenz.iconics.IconicsDrawable
 import com.mikepenz.iconics.utils.sizePx
 import com.osfans.trime.actions.bamboo.AiPanelWindow
+import com.osfans.trime.actions.glossary.GlossaryPrefs
 import com.osfans.trime.actions.handwriting.HandwritingWindow
 import com.osfans.trime.actions.ocr.OcrWindow
 import com.osfans.trime.actions.ocr.ThemeContrast
@@ -177,17 +180,25 @@ class KeyPanelWindow : BoardWindow.NoBarBoardWindow() {
             LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { marginEnd = dp(4) },
         )
 
-        header.addView(
-            smallButton("收起") { leaveToKeyboard() },
-            LinearLayout.LayoutParams(WRAP_CONTENT, dp(26)),
-        )
         root.addView(header, LinearLayout.LayoutParams(MATCH_PARENT, dp(34)))
 
-        // 主区：4 列 × 3 行，**不滚动**——用户要求一屏看到所有入口
+        // 主区：4 列 × 3 行，正常一屏放得下；以后加东西再往上滑，不用改布局
         bodyBox = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        val scroll =
+            ScrollView(context).apply {
+                isFillViewport = true
+                overScrollMode = View.OVER_SCROLL_NEVER
+                addView(bodyBox, FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+            }
         root.addView(
-            bodyBox,
-            LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(2) },
+            scroll,
+            LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f).apply { topMargin = dp(2) },
+        )
+
+        // 底部「收起」：单手够得着，酒红底（跟「功能模式」面板一致）
+        root.addView(
+            bottomBar("收起") { leaveToKeyboard() },
+            LinearLayout.LayoutParams(MATCH_PARENT, dp(44)).apply { topMargin = dp(4) },
         )
         return root
     }
@@ -257,7 +268,15 @@ class KeyPanelWindow : BoardWindow.NoBarBoardWindow() {
             listOf(
                 Cell("ahw", "手写", "", "cmd_draw", Kind.ACTION, "handwriting"),
                 Cell("aocr", "拍照", "", "cmd_camera", Kind.ACTION, "ocr"),
-                Cell("aai", "AI 模式", "", "cmd_robot", Kind.ACTION, "ai"),
+                Cell("aai", "功能模式", "", "cmd_robot", Kind.ACTION, "ai"),
+                Cell(
+                    "agl",
+                    "外语学习",
+                    if (GlossaryPrefs.enabled) "开" else "关",
+                    "cmd_translate",
+                    Kind.ACTION,
+                    "glossary",
+                ),
                 Cell("aclip", "剪贴板", "", "cmd_clipboard_text", Kind.ACTION, "clipboard"),
             )
 
@@ -398,6 +417,11 @@ class KeyPanelWindow : BoardWindow.NoBarBoardWindow() {
                     "ocr" -> windowManager.attachWindow(OcrWindow.instance)
                     "ai" -> windowManager.attachWindow(AiPanelWindow.instance)
                     "clipboard" -> windowManager.attachWindow(ClipboardWindow())
+                    "glossary" -> {
+                        GlossaryPrefs.enabled = !GlossaryPrefs.enabled
+                        toast(if (GlossaryPrefs.enabled) "已开启外语学习" else "已关闭外语学习")
+                        rebuild()
+                    }
                     else -> toast("还没接这个入口")
                 }
             }
@@ -479,6 +503,47 @@ class KeyPanelWindow : BoardWindow.NoBarBoardWindow() {
         runCatching { Toast.makeText(context, msg, Toast.LENGTH_SHORT).show() }
             .onFailure { Timber.w(it, "key panel: toast failed") }
     }
+
+    /** 底部动作条：酒红底、居中、图标在左文字在右。 */
+    private fun bottomBar(
+        label: String,
+        onClick: () -> Unit,
+    ): View =
+        LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            isClickable = true
+            isFocusable = true
+            background =
+                GradientDrawable().apply {
+                    setColor(0xFF8E3B30.toInt())
+                    cornerRadius = dp(9).toFloat()
+                }
+            addView(
+                ImageView(context).apply {
+                    val d =
+                        runCatching {
+                            IconicsDrawable(context, "cmd_chevron_down").apply {
+                                sizePx = dp(18)
+                                colorFilter = PorterDuffColorFilter(0xFFF6F2EA.toInt(), PorterDuff.Mode.SRC_IN)
+                            }
+                        }.getOrNull()
+                    if (d != null) setImageDrawable(d) else visibility = View.GONE
+                },
+                LinearLayout.LayoutParams(dp(18), dp(18)),
+            )
+            addView(
+                TextView(context).apply {
+                    text = label
+                    setTextColor(0xFFF6F2EA.toInt())
+                    textSize = 13f
+                    includeFontPadding = false
+                    setPadding(dp(6), 0, 0, 0)
+                },
+                LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT),
+            )
+            setOnClickListener { onClick() }
+        }
 
     private fun smallButton(
         label: String,

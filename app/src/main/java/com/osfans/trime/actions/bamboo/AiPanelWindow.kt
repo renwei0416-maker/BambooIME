@@ -24,6 +24,7 @@ import android.widget.Toast
 import androidx.core.widget.TextViewCompat
 import com.mikepenz.iconics.IconicsDrawable
 import com.mikepenz.iconics.utils.sizePx
+import com.osfans.trime.actions.glossary.GlossaryPrefs
 import com.osfans.trime.actions.wenquxing.WenquxingPrefs
 import com.osfans.trime.data.theme.ColorManager
 import com.osfans.trime.actions.ocr.ThemeContrast
@@ -60,6 +61,7 @@ class AiPanelWindow : BoardWindow.NoBarBoardWindow() {
     private var gridBox: LinearLayout? = null
     private var statusView: TextView? = null
     private var exitButton: ExitButton? = null
+    private var glossaryRow: View? = null
 
     private var colorBack = 0xFF202420.toInt()
     private var colorKeyBg = 0xFF2B302B.toInt()
@@ -137,7 +139,7 @@ class AiPanelWindow : BoardWindow.NoBarBoardWindow() {
             }
         header.addView(
             TextView(context).apply {
-                text = "AI 模式"
+                text = "功能模式"
                 setTextColor(colorKeyText)
                 textSize = 14f
                 typeface = Typeface.DEFAULT_BOLD
@@ -171,18 +173,6 @@ class AiPanelWindow : BoardWindow.NoBarBoardWindow() {
                     leaveToKeyboard()
                 }
             }
-        header.addView(
-            exitButton,
-            LinearLayout.LayoutParams(WRAP_CONTENT, dp(30)).apply { marginEnd = dp(4) },
-        )
-
-        header.addView(
-            smallButton("收起") {
-                BambooLog.ai.d("aipanel", "collapse -> keyboard")
-                leaveToKeyboard()
-            },
-            LinearLayout.LayoutParams(WRAP_CONTENT, dp(30)),
-        )
         root.addView(header, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
 
         // 模式网格（可上下滑：模式多了也不裁）
@@ -196,6 +186,28 @@ class AiPanelWindow : BoardWindow.NoBarBoardWindow() {
         root.addView(
             scroll,
             LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f).apply { topMargin = dp(2) },
+        )
+
+        // 退出当前模式：单独一整行（模式格子会越来越多，混在顶栏里挤不下）。
+        root.addView(
+            exitButton,
+            LinearLayout.LayoutParams(MATCH_PARENT, dp(38)).apply { topMargin = dp(4) },
+        )
+
+        // 「外语学习」是常驻开关（不是模式），单独一整行，点了就切换。
+        glossaryRow = glossaryToggleRow()
+        root.addView(
+            glossaryRow,
+            LinearLayout.LayoutParams(MATCH_PARENT, dp(38)).apply { topMargin = dp(4) },
+        )
+
+        // 底部「收起」：和「键盘与方案」一致，截图那套太小的右上角按钮不用了。
+        root.addView(
+            bottomBar("收起") {
+                BambooLog.ai.d("aipanel", "collapse -> keyboard")
+                leaveToKeyboard()
+            },
+            LinearLayout.LayoutParams(MATCH_PARENT, dp(44)).apply { topMargin = dp(4) },
         )
 
         return root
@@ -229,6 +241,7 @@ class AiPanelWindow : BoardWindow.NoBarBoardWindow() {
         statusView?.text =
             if (armedName != null) "当前：$armedName" else "当前：未进入模式"
         exitButton?.applyState(armedName != null)
+        refreshGlossaryRow()
 
         box.removeAllViews()
 
@@ -444,6 +457,47 @@ class AiPanelWindow : BoardWindow.NoBarBoardWindow() {
         }.onFailure { Timber.w(it, "ai panel: toast failed") }
     }
 
+    /** 底部动作条：酒红底、居中、图标在左文字在右（两个面板统一）。 */
+    private fun bottomBar(
+        label: String,
+        onClick: () -> Unit,
+    ): View =
+        LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            isClickable = true
+            isFocusable = true
+            background =
+                GradientDrawable().apply {
+                    setColor(0xFF8E3B30.toInt())
+                    cornerRadius = dp(9).toFloat()
+                }
+            addView(
+                ImageView(context).apply {
+                    val d =
+                        runCatching {
+                            IconicsDrawable(context, "cmd_chevron_down").apply {
+                                sizePx = dp(18)
+                                colorFilter = PorterDuffColorFilter(0xFFF6F2EA.toInt(), PorterDuff.Mode.SRC_IN)
+                            }
+                        }.getOrNull()
+                    if (d != null) setImageDrawable(d) else visibility = View.GONE
+                },
+                LinearLayout.LayoutParams(dp(18), dp(18)),
+            )
+            addView(
+                TextView(context).apply {
+                    text = label
+                    setTextColor(0xFFF6F2EA.toInt())
+                    textSize = 13f
+                    includeFontPadding = false
+                    setPadding(dp(6), 0, 0, 0)
+                },
+                LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT),
+            )
+            setOnClickListener { onClick() }
+        }
+
     private fun smallButton(
         label: String,
         onTap: () -> Unit,
@@ -463,6 +517,65 @@ class AiPanelWindow : BoardWindow.NoBarBoardWindow() {
             isClickable = true
             setOnClickListener { onTap() }
         }
+
+    /** 「外语学习」开关行：整行一个按钮，右侧写开/关。 */
+    private fun glossaryToggleRow(): View =
+        LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(12), 0, dp(12), 0)
+            background =
+                GradientDrawable().apply {
+                    setColor(colorKeyBg)
+                    cornerRadius = dp(9).toFloat()
+                }
+            addView(
+                ImageView(context).apply {
+                    val d =
+                        runCatching {
+                            IconicsDrawable(context, "cmd_translate").apply {
+                                sizePx = dp(18)
+                                colorFilter = PorterDuffColorFilter(colorKeyText, PorterDuff.Mode.SRC_IN)
+                            }
+                        }.getOrNull()
+                    if (d != null) setImageDrawable(d) else visibility = View.GONE
+                },
+                LinearLayout.LayoutParams(dp(18), dp(18)),
+            )
+            addView(
+                TextView(context).apply {
+                    text = "外语学习"
+                    setTextColor(colorKeyText)
+                    textSize = 13f
+                    includeFontPadding = false
+                    setPadding(dp(8), 0, 0, 0)
+                },
+                LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f),
+            )
+            addView(
+                TextView(context).apply {
+                    tag = "state"
+                    setTextColor(colorSub)
+                    textSize = 12f
+                    includeFontPadding = false
+                },
+                LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT),
+            )
+            setOnClickListener {
+                GlossaryPrefs.enabled = !GlossaryPrefs.enabled
+                toast(if (GlossaryPrefs.enabled) "已开启外语学习" else "已关闭外语学习")
+                BambooLog.ai.d("aipanel", "glossary -> " + GlossaryPrefs.enabled)
+                refreshGlossaryRow()
+            }
+        }
+
+    private fun refreshGlossaryRow() {
+        val row = glossaryRow ?: return
+        (row as? android.view.ViewGroup)?.let { g ->
+            (g.getChildAt(g.childCount - 1) as? TextView)?.text =
+                if (GlossaryPrefs.enabled) "开" else "关"
+        }
+    }
 
     private fun leaveToKeyboard() {
         active = false
@@ -497,7 +610,7 @@ class AiPanelWindow : BoardWindow.NoBarBoardWindow() {
         /** 主题 preset 里写的文本（`text = "BambooAiPanel"`）。 */
         const val TOKEN = "BambooAiPanel"
 
-        private const val COLUMNS = 3
+        private const val COLUMNS = 4
 
         /** 「退出当前模式」固定暗红（不跟主题走，避免浅色主题下看起来像禁用）。 */
         private const val EXIT_BG = 0xFF8E3B30.toInt()

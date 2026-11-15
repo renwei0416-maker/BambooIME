@@ -52,6 +52,14 @@ object BambooTokens {
      */
     const val KEY_PANEL = "BambooKeyPanel"
 
+    /**
+     * 开关「外语学习」（等价敲 `wy;`）。
+     *
+     * 它是常驻开关、不占 AI 模式那个槽，所以可以和文曲星、AI 模式同时开着；
+     * 提示块显示时文曲星命中优先，外语学习让位。
+     */
+    const val GLOSSARY = "BambooGlossary"
+
     /** 所有 token 的公共前缀；[match] 只认这个前缀，避免误吞用户真打出来的文字。 */
     const val PREFIX = "Bamboo"
 
@@ -96,7 +104,7 @@ object BambooTokens {
     val fixed: List<String> =
         listOf(
             REVERT, CLEAR, DELETE_LINE, DELETE_WORD, AI_SEND, AI_CLIP, AI_OFF, AI_PANEL,
-            KEY_PANEL, SETTINGS, QUOTE, QUOTE_SINGLE, TIP, VOICE_AI,
+            KEY_PANEL, GLOSSARY, SETTINGS, QUOTE, QUOTE_SINGLE, TIP, VOICE_AI,
         ) + TIP_SLOTS
 
     /** 设置页「动作名一览」用的说明表；与 [fixed] 同源，不会漏项。 */
@@ -110,6 +118,7 @@ object BambooTokens {
             AI_CLIP to "用当前 AI 模式发送剪贴板（等价 jt;）",
             AI_OFF to "退出 AI 模式（等价 tc;）",
             AI_PANEL to "打开「AI 模式」面板（点按钮选模式 / 再点一次退出）",
+            GLOSSARY to "开关「外语学习」（等价敲 wy;）；可与文曲星、AI 模式同时开着",
             KEY_PANEL to "打开「键盘与方案」面板（切键盘形态 / Base·Pro / 手写·拍照·AI·剪贴板）",
             SETTINGS to "打开「回退与AI」设置页",
             QUOTE to "提交左双引号“（开启「符号补全」时自动补右半边并居中）",

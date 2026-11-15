@@ -71,6 +71,11 @@ object GlossaryPrefs {
         get() = p().getBoolean("enabled", false)
         set(v) = p().edit().putBoolean("enabled", v).apply()
 
+    /** 开关码：打出这个码并终结即开关外语学习（默认 `wy;`）。与「回退与AI」总开关无关。 */
+    var code: String
+        get() = p().getString("switch_code", "wy;") ?: "wy;"
+        set(v) = p().edit().putString("switch_code", v.trim().ifEmpty { "wy;" }).apply()
+
     /** 学习条最多显示几条（1–6）。 */
     var tipsMax: Int
         get() = p().getInt("tips_max", 4).coerceIn(1, 6)

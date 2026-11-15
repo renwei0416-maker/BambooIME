@@ -134,26 +134,7 @@ class WanxiangFragment : PaddingPreferenceFragment() {
                         }
                     }
 
-                    settingRow(
-                        title = "长按切换键打开面板",
-                        summary = "长按中英切换键弹出「键盘与方案」；关掉则用主题原来的弹窗",
-                    ) {
-                        pickBool("长按切换键打开面板", WanxiangPrefs.panelOnLongPress) {
-                            WanxiangPrefs.panelOnLongPress = it
-                            refresh()
-                        }
-                    }
-
-                    settingRow(
-                        title = "面板显示功能入口",
-                        summary = "面板第三排放手写、拍照、AI、剪贴板；关掉只留键盘与方案",
-                    ) {
-                        pickBool("面板显示功能入口", WanxiangPrefs.panelShowActions) {
-                            WanxiangPrefs.panelShowActions = it
-                            refresh()
-                        }
-                    }
-                    settingRow(
+                                        settingRow(
                         title = "编码方式",
                         summary = if (WanxiangPrefs.layout == WanxiangPrefs.LAYOUT_9) {
                             "九键固定全拼"
