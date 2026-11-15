@@ -40,9 +40,6 @@ object SchemaPackStore {
     const val VARIANT_BASE = "base"
 
     private const val ASSET_BASE = "wanxiang-base"
-    /** 上一版内置的 Pro 包目录名；升级后没人清理会白占 120 MB 以上。 */
-    private const val LEGACY_PACKAGE_ID = "wanxiang-pro"
-
     private const val MANIFEST = "pkg-manifest.json"
 
     /** 内置资产集合有变化时加一，让老安装重拷一次。 */
@@ -63,28 +60,6 @@ object SchemaPackStore {
 
     fun isActive(): Boolean = SchemaPackageManager.activePackageId == PACKAGE_ID
 
-    /**
-     * 清掉上一版内置的 `wanxiang-pro` 目录。
-     *
-     * 只在三种条件都满足时删：①该目录里有我们写的 manifest；②manifest 的 package 字段
-     * 确实是 `wanxiang-pro`（说明是我们释放的，不是用户自己建的）；③它当前不是活动包。
-     */
-    fun cleanupLegacy() {
-        val old = File(DataManager.userDataBaseDir, LEGACY_PACKAGE_ID)
-        if (!old.isDirectory) return
-        if (SchemaPackageManager.activePackageId == LEGACY_PACKAGE_ID) {
-            Timber.d("wanxiang: legacy package is active, skip cleanup")
-            return
-        }
-        val meta = runCatching {
-            JSONObject(File(old, MANIFEST).readText())
-        }.getOrNull() ?: return
-        if (meta.optString("package") != LEGACY_PACKAGE_ID) return
-        if (old.deleteRecursively()) {
-            Timber.d("wanxiang: removed legacy ${old.name}")
-        }
-    }
-
     fun manifest(): JSONObject? =
         runCatching { JSONObject(File(dir(), MANIFEST).readText()) }.getOrNull()
 
@@ -104,34 +79,13 @@ object SchemaPackStore {
     // ---------------------------------------------------------------- 释放
 
     /**
-     * 启动时只做「清理旧版本残留」，**不解包**。
-     *
-     * 内置包只在用户明确要用的时候才释放（向导第 1 步、或点「启用这个方案包」），
-     * 否则用户一装 App 就被塞 67 MB 文件、还占着磁盘，是很讨厌的行为。
-     */
-    fun cleanupLegacyInBackground(context: Context) {
-        if (!BuildConfig.BUNDLED_WANXIANG_PRO) return
-        if (copying) return
-        copying = true
-        Thread(
-            {
-                try {
-                    cleanupLegacy()
-                } catch (e: Exception) {
-                    Timber.w(e, "wanxiang: legacy cleanup failed")
-                } finally {
-                    copying = false
-                }
-            },
-            "wanxiang-cleanup",
-        ).apply { isDaemon = true }.start()
-    }
-
-    /**
      * 同步释放（阻塞）。返回 true 表示包已就绪（这次拷了或者本来就在）。
      *
      * 「启用」按钮在后台还没拷完时会调它兜底，保证不会拿到半份包。
      */
+    /** 当前这份资产对应的版本戳；下载安装的变体也用它，只有内容变了才会补。 */
+    fun currentStamp(): String = "${BuildConfig.BUILD_VERSION_NAME}/$STAMP"
+
     fun ensureCopied(context: Context): Boolean {
         if (!BuildConfig.BUNDLED_WANXIANG_PRO) return false
         val dir = dir()
@@ -174,17 +128,21 @@ object SchemaPackStore {
         return n
     }
 
-    private fun writeManifest(
+    /**
+     * 写 manifest。变体名由调用方给：内置释放是 `base`，从下载页装的 `*-fuzhu` 是各自 id。
+     */
+    internal fun writeManifest(
         dir: File,
         stamp: String,
         files: Int,
+        variantId: String = VARIANT_BASE,
     ) {
         var bytes = 0L
         dir.walkTopDown().forEach { if (it.isFile) bytes += it.length() }
         val json =
             JSONObject()
                 .put("package", PACKAGE_ID)
-                .put("variant", VARIANT_BASE)
+                .put("variant", variantId)
                 .put("stamp", stamp)
                 .put("version", BuildConfig.BUILD_VERSION_NAME ?: "dev")
                 .put("files", files)

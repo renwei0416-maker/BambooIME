@@ -155,10 +155,7 @@ class WanxiangSetupFragment : Fragment() {
     private fun renderGate() {
         title.text = "先确认一下"
         content.addView(
-            hint(
-                "这个向导会给新用户配好「万象拼音」：内置全拼/双拼 + 九键，共 67 MB，不用另外下载。\n" +
-                    "已经自己放好方案包、或想继续用自己的方案的话，走下面的「老用户」就行，向导不会动你的任何文件。",
-            ),
+            hint("给新用户一分钟配好万象拼音（全拼/双拼 + 九键，67 MB 已内置）。自己放好了方案包的走老用户。"),
         )
         content.addView(
             bigButton("我是新用户，帮我一分钟配好") {
@@ -179,12 +176,7 @@ class WanxiangSetupFragment : Fragment() {
         content.removeAllViews()
         title.text = "老用户：方案包自己放"
         content.addView(
-            hint(
-                "把方案包文件夹放到：\n\n" +
-                    "  ${DataManager.userDataBaseDir.absolutePath}\n\n" +
-                    "一个方案包 = 一个文件夹，里面要有 default.yaml 和至少一个 *.schema.yaml。\n" +
-                    "放好后回到「方案包管理」就能看到它，选中即用。",
-            ),
+            hint("放到这个目录，一个包一个文件夹：\n\n  ${DataManager.userDataBaseDir.absolutePath}"),
         )
         content.addView(
             bigButton("打开这个文件夹") {
@@ -274,7 +266,6 @@ class WanxiangSetupFragment : Fragment() {
 
     private fun renderExtras() {
         title.text = "顺手调两个"
-        content.addView(hint("这两项以后也能在「方案设置」里改。"))
         content.addView(sectionLabel("候选个数"))
         content.addView(
             radio(
@@ -285,21 +276,9 @@ class WanxiangSetupFragment : Fragment() {
         content.addView(sectionLabel("用户词典（记住你常打的词）"))
         content.addView(
             radio(
-                listOf(false to "不开（官方默认，换词序更稳定）", true to "开（越用越顺手）"),
+                listOf(false to "不开", true to "开"),
                 WanxiangPrefs.userDict,
             ) { WanxiangPrefs.userDict = it; render() },
-        )
-        content.addView(sectionLabel("模糊音"))
-        content.addView(
-            hint(
-                "默认全关（官方也是全关）。需要的话配好后到「万象拼音 → 方案设置 → 模糊音」逐项打开：" +
-                    "n/l、r/l、h/f、k/g、en/eng、in/ing、c/ch、z/zh、s/sh。",
-            ),
-        )
-        content.addView(
-            hint(
-                "辅助码这次不选：内置的 Base 词库不含辅码，等你在「方案设置」里装上 Pro 变体（约 30 MB）后再开。",
-            ),
         )
     }
 

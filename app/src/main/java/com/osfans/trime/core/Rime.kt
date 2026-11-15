@@ -328,8 +328,7 @@ class Rime :
         // 内置万象 Pro：安装完就静默释放到用户目录（只拷文件，不部署、不改活动包）。
         // 走后台线程，避免 85 MB 的拷贝把首次启动卡住。
         runCatching {
-            SchemaPackStore.cleanupLegacyInBackground(com.osfans.trime.TrimeApplication.getInstance())
-        }
+            }
         runCatching {
             WanxiangPrefs.init(com.osfans.trime.TrimeApplication.getInstance())
         }

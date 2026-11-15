@@ -128,18 +128,23 @@ class WanxiangFragment : PaddingPreferenceFragment() {
                         showDirDialog()
                     }
 
-                    addRow(
-                        title = "删除已释放的文件",
-                        summary = "只删 Documents 下这份 `wanxiang-base`，保留其它方案包",
-                    ) {
-                        confirmDelete()
-                    }
                 }
 
-                addBambooCategory("方案设置", "这些值会写进 custom，点「应用并部署」后生效") {
+                addBambooCategory("方案设置", "改完点「应用并部署」生效") {
+                    addRow(
+                        title = "方案包与下载",
+                        summary = downloadSummary(),
+                    ) {
+                        runCatching {
+                            findNavController().navigate(
+                                com.osfans.trime.ui.main.NavigationRoute.WanxiangDownload,
+                            )
+                        }.onFailure { toast("打不开下载页：${it.message}") }
+                    }
+
                     addRow(
                         title = "设置向导",
-                        summary = "三步选完：键盘 → 全拼/双拼 → 拼音方案；选完自动切方案并部署",
+                        summary = "键盘 → 编码 → 方案，选完自动应用",
                     ) {
                         runCatching {
                             findNavController().navigate(
@@ -150,7 +155,7 @@ class WanxiangFragment : PaddingPreferenceFragment() {
 
                     settingRow(
                         title = "键盘形态",
-                        summary = layoutLabel() + "　（改这个不会切换键盘布局，键盘请在键盘弹窗里选）",
+                        summary = layoutLabel(),
                     ) {
                         pickInt(
                             "键盘形态",
@@ -188,7 +193,7 @@ class WanxiangFragment : PaddingPreferenceFragment() {
 
                     settingRow(
                         title = "双拼方案",
-                        summary = WanxiangPrefs.scheme + "（只在双拼下生效）",
+                        summary = WanxiangPrefs.scheme,
                     ) {
                         pickString(
                             "双拼方案",
@@ -204,19 +209,19 @@ class WanxiangFragment : PaddingPreferenceFragment() {
                     settingRow(
                         title = "辅助码",
                         summary = if (SchemaPackStore.variant() == SchemaPackStore.VARIANT_BASE) {
-                            "内置 Base 词库不含辅助码，装上 Pro 变体后才能开"
+                            "需要先装带辅助码的词库"
                         } else if (WanxiangPrefs.layout == WanxiangPrefs.LAYOUT_9) {
                             "九键没有字母键，辅助码用不上（切回全键盘后可开）"
                         } else {
                             when (WanxiangPrefs.aux) {
-                                WanxiangPrefs.AUX_DIRECT -> "直接辅助（默认关闭，已开启）"
-                                WanxiangPrefs.AUX_INDIRECT -> "间接辅助（默认关闭，已开启）"
+                                WanxiangPrefs.AUX_DIRECT -> "直接辅助"
+                                WanxiangPrefs.AUX_INDIRECT -> "间接辅助"
                                 else -> "关闭（官方默认）"
                             }
                         },
                     ) {
                         if (SchemaPackStore.variant() == SchemaPackStore.VARIANT_BASE) {
-                            toast("内置 Base 词库不含辅助码；装上 Pro 变体后再来开")
+                            toast("先在「方案包与下载」里装带辅助码的词库")
                             return@settingRow
                         }
                         if (WanxiangPrefs.layout == WanxiangPrefs.LAYOUT_9) {
@@ -226,7 +231,7 @@ class WanxiangFragment : PaddingPreferenceFragment() {
                         pickInt(
                             "辅助码",
                             listOf(
-                                WanxiangPrefs.AUX_NONE to "关闭（推荐，官方默认）",
+                                WanxiangPrefs.AUX_NONE to "关闭",
                                 WanxiangPrefs.AUX_DIRECT to "直接辅助",
                                 WanxiangPrefs.AUX_INDIRECT to "间接辅助",
                             ),
@@ -237,9 +242,9 @@ class WanxiangFragment : PaddingPreferenceFragment() {
                     settingRow(
                         title = "模糊音",
                         summary = if (WanxiangPrefs.layout == WanxiangPrefs.LAYOUT_9) {
-                            "九键不跟随模糊音（切回全键盘后可设）"
+                            "九键用不上"
                         } else if (WanxiangPrefs.fuzzy.isEmpty()) {
-                            "全部关闭（官方默认）"
+                            "关闭"
                         } else {
                             WanxiangPrefs.fuzzy.sorted().joinToString("、") { WanxiangPrefs.FUZZY_LABELS[it] ?: it }
                         },
@@ -253,7 +258,7 @@ class WanxiangFragment : PaddingPreferenceFragment() {
 
                     settingRow(
                         title = "候选个数",
-                        summary = "${WanxiangPrefs.pageSize} 个（官方默认 6，最大 6）",
+                        summary = "${WanxiangPrefs.pageSize} 个（最大 6）",
                     ) {
                         pickInt(
                             "候选个数",
@@ -264,7 +269,7 @@ class WanxiangFragment : PaddingPreferenceFragment() {
 
                     settingRow(
                         title = "用户词典（自动调频）",
-                        summary = if (WanxiangPrefs.userDict) "已开启" else "关闭（官方默认）",
+                        summary = if (WanxiangPrefs.userDict) "已开启" else "关闭",
                     ) {
                         pickBool("用户词典（自动调频）", WanxiangPrefs.userDict) {
                             WanxiangPrefs.userDict = it; refresh()
@@ -274,11 +279,11 @@ class WanxiangFragment : PaddingPreferenceFragment() {
                     settingRow(
                         title = "智能调频（上下文预测）",
                         summary = if (!WanxiangPrefs.userDict) {
-                            "依赖用户词典，先打开「用户词典」再设"
+                            "需要先开「用户词典」"
                         } else if (WanxiangPrefs.contextual) {
                             "已开启"
                         } else {
-                            "关闭（官方默认，官方注释写着效果一般）"
+                            "关闭"
                         },
                     ) {
                         if (!WanxiangPrefs.userDict) {
@@ -510,6 +515,12 @@ class WanxiangFragment : PaddingPreferenceFragment() {
         addRow(title = title, summary = summary) {
             if (ensureWritable()) onClick()
         }
+    }
+
+    private fun downloadSummary(): String {
+        val v = SchemaPackStore.variant()
+        val title = com.osfans.trime.actions.wanxiang.WanxiangVariants.installedNote(v)
+        return if (SchemaPackStore.isInstalled()) "当前：$title" else "下载辅助码词库、语法模型"
     }
 
     private fun encodeLabel(): String =

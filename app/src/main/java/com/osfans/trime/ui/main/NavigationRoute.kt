@@ -30,6 +30,7 @@ import com.osfans.trime.ui.main.settings.PackageListFragment
 import com.osfans.trime.ui.main.settings.ProfileSettingsFragment
 import com.osfans.trime.ui.main.settings.VoiceInputSettingsFragment
 import com.osfans.trime.ui.main.settings.VoiceAiFragment
+import com.osfans.trime.ui.main.settings.WanxiangDownloadFragment
 import com.osfans.trime.ui.main.settings.WanxiangFragment
 import com.osfans.trime.ui.main.settings.WanxiangSetupFragment
 import com.osfans.trime.ui.main.settings.schema.SchemaListFragment
@@ -91,6 +92,9 @@ sealed class NavigationRoute : Parcelable {
 
     @Serializable
     data object Wanxiang : NavigationRoute()
+
+    @Serializable
+    data object WanxiangDownload : NavigationRoute()
 
     @Serializable
     data object WanxiangSetup : NavigationRoute()
@@ -204,6 +208,9 @@ sealed class NavigationRoute : Parcelable {
             }
             fragment<WanxiangSetupFragment, WanxiangSetup> {
                 label = "万象拼音设置向导"
+            }
+            fragment<WanxiangDownloadFragment, WanxiangDownload> {
+                label = "方案包下载"
             }
             fragment<VoiceAiFragment, VoiceAi> {
                 label = "语音发AI"

@@ -60,6 +60,7 @@ object WanxiangPrefs {
     private const val KEY_FUZZY = "fuzzy"
     private const val KEY_WIZARD_DONE = "wizard_done"
     private const val KEY_APPLIED = "applied_signature"
+    private const val KEY_DOWNLOAD_BASE = "download_base"
 
     private const val KEY_T9_PAGE_SIZE = "t9_page_size"
     private const val KEY_T9_USER_DICT = "t9_user_dict"
@@ -112,6 +113,15 @@ object WanxiangPrefs {
     var wizardDone: Boolean
         get() = ready().getBoolean(KEY_WIZARD_DONE, false)
         set(v) = ready().edit { putBoolean(KEY_WIZARD_DONE, v) }
+
+    /**
+     * 方案包下载源前缀（可换国内镜像）。
+     *
+     * 空 = 用官方 GitHub；填了就按 `<前缀>/<文件名>` 拼。
+     */
+    var downloadBase: String
+        get() = ready().getString(KEY_DOWNLOAD_BASE, "").orEmpty()
+        set(v) = ready().edit { putString(KEY_DOWNLOAD_BASE, v.trim()) }
 
     /** 上次「应用并部署」时的状态指纹；与 [signature] 不等即表示「有未应用的改动」。 */
     var appliedSignature: String
