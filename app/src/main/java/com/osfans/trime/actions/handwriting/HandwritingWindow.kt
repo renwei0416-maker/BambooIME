@@ -4,6 +4,7 @@
 package com.osfans.trime.actions.handwriting
 
 import android.widget.ListView
+import com.osfans.trime.util.BambooLog
 import android.widget.BaseAdapter
 import android.widget.AbsListView
 import android.graphics.drawable.ColorDrawable
@@ -294,7 +295,7 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
     @SuppressLint("ClickableViewAccessibility")
     override fun onCreateView(): View {
         active = true
-        HandwritingLog.d(
+        BambooLog.hw.d(
             "view",
             "onCreateView #${++viewSeq} this=${hashCode().toUInt().toString(16)} " +
                 "active=$active attached=${windowManager.isAttached(this)}",
@@ -304,7 +305,7 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
         } catch (t: Throwable) {
             // 最后一层兜底：主题再怪也不许闪退，退回到内置配色的极简手写板
             Timber.e(t, "handwriting: build failed, falling back to plain board")
-            HandwritingLog.w("view", "buildView threw, fallback used", t)
+            BambooLog.hw.w("view", "buildView threw, fallback used", t)
             fallbackView()
         }
         rootView = created
@@ -371,7 +372,7 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
                 cornerRadius = cornerPx
             }
             setOnClickListener {
-                HandwritingLog.d("tap", "$label candidates=${lastCandidates.size}")
+                BambooLog.hw.d("tap", "$label candidates=${lastCandidates.size}")
                 onClick(it)
             }
             // 高度 MATCH_PARENT：按钮底边和工具栏行底边重合，右边列的「回车」才能和它齐平
@@ -685,7 +686,7 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
         val restorePage = panelOnlyPage
         if (restorePage >= 0) {
             showPanel(restorePage, ORIGIN_KEYBOARD, if (restorePage == 0) 0 else 3)
-            HandwritingLog.d("panel", "restore standalone page=" + restorePage)
+            BambooLog.hw.d("panel", "restore standalone page=" + restorePage)
         }
         Timber.d(
             "handwriting: window created themeColors=%s paper=#%06X ink=#%06X",
@@ -739,7 +740,7 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
             addView(iconView, LayoutParams(dp(22), dp(22)))
             addView(labelView, LayoutParams(WRAP_CONTENT, WRAP_CONTENT))
             setOnClickListener {
-                HandwritingLog.d("tap", "$currentLabel candidates=${lastCandidates.size}")
+                BambooLog.hw.d("tap", "$currentLabel candidates=${lastCandidates.size}")
                 onTap(it)
             }
             // 高度 MATCH_PARENT：按钮底边和工具栏行底边重合，右边列的「回车」才能和它齐平
@@ -1044,7 +1045,7 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
         if (requested != SymbolPages.PAGE_SYMBOL) return requested
         val ascii = runCatching { RimeDaemon.isAsciiMode }.getOrDefault(false)
         val page = if (ascii) SymbolPages.PAGE_EN else SymbolPages.PAGE_CN
-        HandwritingLog.d("panel", "entry token -> " + (if (ascii) "EN" else "CN") + " page=" + page)
+        BambooLog.hw.d("panel", "entry token -> " + (if (ascii) "EN" else "CN") + " page=" + page)
         return page
     }
 
@@ -1148,12 +1149,12 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
                         buildPanelGrid(SymbolPages.PAGE_FAVORITE)
                     }
                     setMessage("已清空常用记录")
-                    HandwritingLog.d("panel", "favorites cleared")
+                    BambooLog.hw.d("panel", "favorites cleared")
                 }
                 .setNegativeButton("取消", null)
                 .show()
         }.onFailure {
-            HandwritingLog.w("panel", "clear favorites dialog failed", it)
+            BambooLog.hw.w("panel", "clear favorites dialog failed", it)
             setMessage("打不开确认框，长按再试一次")
         }
     }
@@ -1499,7 +1500,7 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
     }
     private fun renderCandidates(list: List<HandwritingRecognizer.Candidate>) {
         lastCandidates = list
-        HandwritingLog.d(
+        BambooLog.hw.d(
             "recog",
             "candidates=${list.size} segs=${segs.size} first=${list.firstOrNull()?.text}",
         )
@@ -1608,7 +1609,7 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
         if (best != selectedIndex) {
             selectedIndex = best
             applySelection()
-            HandwritingLog.d(
+            BambooLog.hw.d(
                 "hl",
                 "anchor select idx=$best dist=$bestDist tol=$tolerance anchorW=$anchorWidth x=${sv.scrollX}",
             )
@@ -1670,11 +1671,11 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
         if (text.isEmpty()) return
         if (service.currentInputConnection == null) {
             // 输入连接断掉时上屏必然失败，先把原因显示出来，别让用户以为按钮坏了
-            HandwritingLog.w("commit", "no input connection, dropped len=${text.length}")
+            BambooLog.hw.w("commit", "no input connection, dropped len=${text.length}")
             setMessage("输入框已断开，点一下输入框再试")
             return
         }
-        HandwritingLog.d("commit", "text=\"$text\" attached=${board.isAttachedToWindow}")
+        BambooLog.hw.d("commit", "text=\"$text\" attached=${board.isAttachedToWindow}")
         board.clear()
         segs.clear()
         showCandidates(emptyList())
@@ -1698,7 +1699,7 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
     private fun deleteEditorChar() {
         val ic = service.currentInputConnection
         if (ic == null) {
-            HandwritingLog.w("delete", "no input connection")
+            BambooLog.hw.w("delete", "no input connection")
             return
         }
         val units = unitsOfLastChar(ic)
@@ -1728,15 +1729,15 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
     private fun sendEnter() {
         val ic = service.currentInputConnection
         if (ic == null) {
-            HandwritingLog.w("enter", "no input connection")
+            BambooLog.hw.w("enter", "no input connection")
             setMessage("输入框已断开，点一下输入框再试")
             return
         }
-        HandwritingLog.d("enter", "send KEYCODE_ENTER")
+        BambooLog.hw.d("enter", "send KEYCODE_ENTER")
         runCatching {
             ic.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_ENTER))
             ic.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_ENTER))
-        }.onFailure { HandwritingLog.w("enter", "sendKeyEvent failed", it) }
+        }.onFailure { BambooLog.hw.w("enter", "sendKeyEvent failed", it) }
     }
 
     /**
@@ -1757,7 +1758,7 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
         if (this::candidateRow.isInitialized) {
             // 不要在这里预置 lastCandidates，否则 showCandidates 的「内容没变就不重画」会把清空吃掉
             runCatching { renderCandidates(emptyList()) }
-                .onFailure { HandwritingLog.w("life", "reset candidates failed", it) }
+                .onFailure { BambooLog.hw.w("life", "reset candidates failed", it) }
         }
     }
 
@@ -1768,14 +1769,14 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
         runCatching { refreshToolButtons() }
         val self = windowManager.isAttached(this)
         val onScreen = rootView?.isAttachedToWindow == true
-        HandwritingLog.d(
+        BambooLog.hw.d(
             "life",
             "leaveToKeyboard active=$active self=$self onScreen=$onScreen " +
                 "kb=${windowManager.isKeyboardAttached()} segs=${segs.size}",
         )
         // 已经在键盘上（连点返回的第二、第三下）：什么都不用做
         if (!self && !onScreen) {
-            HandwritingLog.d("life", "leaveToKeyboard ignored (already on keyboard)")
+            BambooLog.hw.d("life", "leaveToKeyboard ignored (already on keyboard)")
             return
         }
         active = false
@@ -1785,22 +1786,22 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
             // 用 Key 重载：这样拿到的永远是「当前这套依赖」里缓存的那个键盘窗口
             windowManager.attachWindow(KeyboardWindow)
         }.onFailure {
-            HandwritingLog.w("life", "leaveToKeyboard failed", it)
+            BambooLog.hw.w("life", "leaveToKeyboard failed", it)
             Timber.w(it, "handwriting: leaveToKeyboard failed")
         }
         // 兜底：不管管理器怎么说，只要这棵树还挂在窗口上，就直接从父容器摘掉。
         // （旧管理器 early-return、或者视图与 currentWindow 脱节时，这是唯一可靠的退出方式）
         val v = rootView
         if (v != null && v.isAttachedToWindow) {
-            HandwritingLog.w("life", "view still on screen after attachWindow(keyboard), force removing")
+            BambooLog.hw.w("life", "view still on screen after attachWindow(keyboard), force removing")
             runCatching {
                 (v.parent as? ViewGroup)?.removeView(v)
-            }.onFailure { HandwritingLog.w("life", "force remove view failed", it) }
+            }.onFailure { BambooLog.hw.w("life", "force remove view failed", it) }
         }
     }
 
     override fun onAttached() {
-        HandwritingLog.d("life", "onAttached active=$active")
+        BambooLog.hw.d("life", "onAttached active=$active")
         ensureModel()
     }
 
@@ -1809,7 +1810,7 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
         // 不管从哪条路离开（返回键 / 切输入法 / 换输入框 / 打开剪贴板等其它面板），
         // 都算这一次手写结束：清候选、清笔迹，避免下次进来接着拼。
         // 切 App（收起输入法）不会 detach，所以「切走再回来接着写」不受影响。
-        HandwritingLog.d("life", "onDetached active=$active segs=${segs.size}")
+        BambooLog.hw.d("life", "onDetached active=$active segs=${segs.size}")
         active = false
         resetHandwritingState()
         if (this::panel.isInitialized) hidePanel()

@@ -6,13 +6,13 @@
 package com.osfans.trime.actions.wenquxing
 
 import android.os.Handler
+import com.osfans.trime.util.BambooLog
 import android.os.Looper
 import android.os.SystemClock
 import android.view.KeyEvent
 
 import com.osfans.trime.actions.bamboo.BambooActions
 import com.osfans.trime.ime.core.TrimeInputMethodService
-import com.osfans.trime.actions.handwriting.HandwritingLog
 import com.osfans.trime.actions.tips.TipEntry
 
 object WenquxingTips {
@@ -79,9 +79,9 @@ object WenquxingTips {
         val texts = ArrayList<String>()
         // 命中都算进去（共 N 组要真实），显示时再按「显示条数」截断
         for (key in keys) {
-            HandwritingLog.d("wenquxing", "query key=$key")
+            BambooLog.wq.d("wenquxing", "query key=$key")
             val hits = WenquxingStore.query(key) { name -> WenquxingPrefs.isPackEnabled(name) }
-            HandwritingLog.d("wenquxing", "hit n=${hits.size}")
+            BambooLog.wq.d("wenquxing", "hit n=${hits.size}")
             for ((_, hit) in hits) {
                 if (hit.text.isEmpty() || hit.text in texts) continue
                 texts.add(hit.text)
@@ -97,7 +97,7 @@ object WenquxingTips {
         shownPreedit = preedit.orEmpty()
         adoptUntil = SystemClock.uptimeMillis() + ADOPT_WINDOW_MS
         blankUntil = adoptUntil
-        HandwritingLog.d("wenquxing", "hit n=$total")
+        BambooLog.wq.d("wenquxing", "hit n=$total")
         return total
     }
 
@@ -122,7 +122,7 @@ object WenquxingTips {
                 shownPreedit = preedit
                 adoptUntil = 0L
             } else {
-                HandwritingLog.d("wenquxing", "clear by preedit change")
+                BambooLog.wq.d("wenquxing", "clear by preedit change")
                 clear()
             }
         }
@@ -294,7 +294,7 @@ object WenquxingTips {
         // 轮换后马上会有一次重绘，那一次不算「编码变了」
         adoptUntil = SystemClock.uptimeMillis() + ADOPT_WINDOW_MS
         blankUntil = adoptUntil
-        HandwritingLog.d("wenquxing", "rotate order=$order")
+        BambooLog.wq.d("wenquxing", "rotate order=$order")
     }
 
     private fun codeOf(name: String): Int = when (name.lowercase()) {

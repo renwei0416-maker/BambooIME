@@ -6,10 +6,10 @@
 package com.osfans.trime.actions.ocr
 
 import android.content.Context
+import com.osfans.trime.util.BambooLog
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Matrix
-import com.osfans.trime.actions.handwriting.HandwritingLog
 import android.graphics.Paint
 import android.graphics.RectF
 import android.view.MotionEvent
@@ -130,7 +130,7 @@ class OcrGalleryView(context: Context) : FrameLayout(context) {
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
-        HandwritingLog.d("ocr", "gallery canvas " + w + "x" + h + " (was " + oldw + "x" + oldh + ")")
+        BambooLog.ocr.d("ocr", "gallery canvas " + w + "x" + h + " (was " + oldw + "x" + oldh + ")")
         if (oldw == 0 && oldh == 0) {
             fitCenter()
             pendingMatrix?.let {

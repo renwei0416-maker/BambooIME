@@ -4,6 +4,7 @@
 package com.osfans.trime.actions.wenquxing
 
 import android.content.Context
+import com.osfans.trime.util.BambooLog
 import android.os.Environment
 import com.osfans.trime.BuildConfig
 import java.io.File
@@ -75,7 +76,7 @@ object WenquxingStore {
                 }
             }
             loaded = true
-            com.osfans.trime.actions.handwriting.HandwritingLog.d(
+            com.osfans.trime.util.BambooLog.wq.d(
                 "wenquxing",
                 "loaded packs=" + packs.size + " " + packs.joinToString(",") { it.name },
             )

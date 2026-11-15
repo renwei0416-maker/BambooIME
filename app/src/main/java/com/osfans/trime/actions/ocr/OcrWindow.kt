@@ -6,6 +6,7 @@
 package com.osfans.trime.actions.ocr
 
 import android.Manifest
+import com.osfans.trime.util.BambooLog
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -58,7 +59,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
 import com.osfans.trime.actions.bamboo.BambooActions
-import com.osfans.trime.actions.handwriting.HandwritingLog
 import com.osfans.trime.data.base.DataManager
 import com.osfans.trime.data.theme.ColorManager
 import com.osfans.trime.util.forceShowSelf
@@ -302,12 +302,12 @@ class OcrWindow : BoardWindow.NoBarBoardWindow() {
     }
 
     override fun onCreateView(): View {
-        HandwritingLog.d("ocr", "onCreateView")
+        BambooLog.ocr.d("ocr", "onCreateView")
         val created = try {
             buildView()
         } catch (t: Throwable) {
             Timber.e(t, "ocr: buildView failed")
-            HandwritingLog.w("ocr", "buildView threw", t)
+            BambooLog.ocr.w("ocr", "buildView threw", t)
             plainView()
         }
         rootView = created
@@ -315,7 +315,7 @@ class OcrWindow : BoardWindow.NoBarBoardWindow() {
     }
 
     override fun onAttached() {
-        HandwritingLog.d("ocr", "onAttached")
+        BambooLog.ocr.d("ocr", "onAttached")
         // 只要面板被挂上就算会话开着：切 App、换输入框回来后靠这个把面板接回来
         markSessionActive()
         // 面板接管后卡片就不再是「当前状态」：清掉留底，避免切 App 时旧卡片又冒出来
@@ -326,7 +326,7 @@ class OcrWindow : BoardWindow.NoBarBoardWindow() {
         if (returnToFrame) {
             returnToFrame = false
             syncFrameModeUi()
-            HandwritingLog.d("ocr", "onAttached keep frame single=" + singleCharMode)
+            BambooLog.ocr.d("ocr", "onAttached keep frame single=" + singleCharMode)
         } else {
             resetFrameMode()
         }
@@ -343,7 +343,7 @@ class OcrWindow : BoardWindow.NoBarBoardWindow() {
             modeButton?.text = if (singleCharMode) "整段" else "单字"
             maskView.single = singleCharMode
             maskView.invalidate()
-            HandwritingLog.d("ocr", "restore gallery " + pending.width + "x" + pending.height)
+            BambooLog.ocr.d("ocr", "restore gallery " + pending.width + "x" + pending.height)
             ocrCardHostRestore(pending)
         } else {
             // 每次挂上都重新起相机：切走再回来要能继续看画面
@@ -352,7 +352,7 @@ class OcrWindow : BoardWindow.NoBarBoardWindow() {
     }
 
     override fun onDetached() {
-        HandwritingLog.d("ocr", "onDetached")
+        BambooLog.ocr.d("ocr", "onDetached")
         runCatching { service.currentInputView?.setInputBarSuppressed(false) }
             .onFailure { Timber.w(it, "ocr: restore input bar failed") }
         stability.reset()
@@ -749,7 +749,7 @@ class OcrWindow : BoardWindow.NoBarBoardWindow() {
         card.visibility = View.VISIBLE
         previewWrap?.visibility = View.GONE
         stopCamera()
-        HandwritingLog.d("ocr", "confirm shown ${text.length} chars")
+        BambooLog.ocr.d("ocr", "confirm shown ${text.length} chars")
     }
 
     /** 收起卡片，回到取景。 */
@@ -795,7 +795,7 @@ class OcrWindow : BoardWindow.NoBarBoardWindow() {
                 true
             }.getOrDefault(false)
         toast(if (ok) "已复制到剪贴板" else "复制失败")
-        HandwritingLog.d("ocr", "copy ${if (ok) "ok" else "failed"} ${text.length} chars")
+        BambooLog.ocr.d("ocr", "copy ${if (ok) "ok" else "failed"} ${text.length} chars")
     }
 
     /** 上屏：走 App 现有提交链路 + 记一笔账本，这样 qq/ 也能回退它。 */
@@ -807,8 +807,8 @@ class OcrWindow : BoardWindow.NoBarBoardWindow() {
         }
         runCatching {
             service.commitText(text)
-        }.onFailure { HandwritingLog.w("ocr", "commit failed", it) }
-        HandwritingLog.d("ocr", "commit ${text.length} chars, back to keyboard")
+        }.onFailure { BambooLog.ocr.w("ocr", "commit failed", it) }
+        BambooLog.ocr.d("ocr", "commit ${text.length} chars, back to keyboard")
         lastResult = text
         hideConfirm()
         leaveToKeyboard()
@@ -845,7 +845,7 @@ class OcrWindow : BoardWindow.NoBarBoardWindow() {
                 val provider =
                     runCatching { future.get() }.onFailure {
                         Timber.w(it, "ocr: camera provider unavailable")
-                        HandwritingLog.w("ocr", "camera provider unavailable", it)
+                        BambooLog.ocr.w("ocr", "camera provider unavailable", it)
                     }.getOrNull() ?: return@addListener
                 cameraProvider = provider
                 // 旋转角与预览一致，否则帧是传感器方向，按取景框裁会裁错位置
@@ -911,7 +911,7 @@ class OcrWindow : BoardWindow.NoBarBoardWindow() {
                     updateLensRow()
                     applyDigitalZoom()
                     updateZoomBadge()
-                    HandwritingLog.d(
+                    BambooLog.ocr.d(
                         "ocr",
                         "camera bound rot=" +
                             targetRotation +
@@ -924,7 +924,7 @@ class OcrWindow : BoardWindow.NoBarBoardWindow() {
                     )
                 }.onFailure {
                     Timber.w(it, "ocr: bind preview failed")
-                    HandwritingLog.w("ocr", "bind preview failed", it)
+                    BambooLog.ocr.w("ocr", "bind preview failed", it)
                     setMessage("相机无法启动，请关闭后重试")
                 }
             },
@@ -955,7 +955,7 @@ class OcrWindow : BoardWindow.NoBarBoardWindow() {
                 zoomPresets = buildZoomPresets(zoomMin, zoomMax)
                 zoomPresetMode = true
                 desiredZoom = 1f.coerceIn(zoomMin, zoomMax)
-                HandwritingLog.d(
+                BambooLog.ocr.d(
                     "ocr",
                     "plan: logical camera id=" + cameraIdOf(logical) +
                         " zoom=" + zoomMin + ".." + zoomMax,
@@ -967,7 +967,7 @@ class OcrWindow : BoardWindow.NoBarBoardWindow() {
         // 回退：逐颗物理镜头
         lensOptions = buildLensOptions(provider)
         lensIndex = lensOptions.indexOfFirst { it.isMain }.coerceAtLeast(0)
-        HandwritingLog.d("ocr", "plan: lens-switch, lenses=" + lensOptions.size)
+        BambooLog.ocr.d("ocr", "plan: lens-switch, lenses=" + lensOptions.size)
         return lensOptions.getOrNull(lensIndex)?.selector ?: CameraSelector.DEFAULT_BACK_CAMERA
     }
 
@@ -1035,7 +1035,7 @@ class OcrWindow : BoardWindow.NoBarBoardWindow() {
         runCatching {
             provider.availableCameraInfos.forEach { info ->
                 val range = zoomRangeOf(info)
-                HandwritingLog.d(
+                BambooLog.ocr.d(
                     "ocr",
                     "camera id=" + cameraIdOf(info) +
                         " logical=" + isLogicalCamera(info) +
@@ -1143,7 +1143,7 @@ class OcrWindow : BoardWindow.NoBarBoardWindow() {
                 )
             }
 
-        HandwritingLog.d(
+        BambooLog.ocr.d(
             "ocr",
             "lenses: " +
                 options.joinToString(" | ") { it.label } +
@@ -1249,7 +1249,7 @@ class OcrWindow : BoardWindow.NoBarBoardWindow() {
             camera = provider.bindToLifecycle(lifecycleOwner, lensOptions[index].selector, group)
         }.onFailure {
             Timber.w(it, "ocr: switch lens failed")
-            HandwritingLog.w("ocr", "switch lens failed", it)
+            BambooLog.ocr.w("ocr", "switch lens failed", it)
         }
         lastFrame = null
         stability.reset()
@@ -1260,7 +1260,7 @@ class OcrWindow : BoardWindow.NoBarBoardWindow() {
         if (zoomToOptical && ratio > 0f) desiredZoom = ratio
         applyDigitalZoom()
         updateZoomBadge()
-        HandwritingLog.d(
+        BambooLog.ocr.d(
             "ocr",
             "lens -> " + lensOptions[index].label + " zoom=" + desiredZoom,
         )
@@ -1435,7 +1435,7 @@ class OcrWindow : BoardWindow.NoBarBoardWindow() {
         zoomPresetMode = false
         presetChips.clear()
         updateLensRow()
-        HandwritingLog.d("ocr", "camera released")
+        BambooLog.ocr.d("ocr", "camera released")
     }
 
     private fun requestCameraPermission() {
@@ -1475,13 +1475,13 @@ class OcrWindow : BoardWindow.NoBarBoardWindow() {
         }
         val frame = lastFrame
         if (frame == null) {
-            HandwritingLog.d("ocr", "shutter: no frame yet ok=" + frameCount + " err=" + frameErrors)
+            BambooLog.ocr.d("ocr", "shutter: no frame yet ok=" + frameCount + " err=" + frameErrors)
             toast("还没有画面，稍等一下再拍")
             return
         }
         val crop = cropFrame(frame)
         if (crop == null) {
-            HandwritingLog.d(
+            BambooLog.ocr.d(
                 "ocr",
                 "shutter: crop=null view=" + previewView.width + "x" + previewView.height +
                     " frame=" + frame.width + "x" + frame.height,
@@ -1489,9 +1489,9 @@ class OcrWindow : BoardWindow.NoBarBoardWindow() {
             toast("取景框还没准备好")
             return
         }
-        HandwritingLog.d("ocr", "shutter: frame=" + frame.width + "x" + frame.height + " crop=" + crop.width + "x" + crop.height)
+        BambooLog.ocr.d("ocr", "shutter: frame=" + frame.width + "x" + frame.height + " crop=" + crop.width + "x" + crop.height)
         // 仅在 debug 包里把原图与裁图落盘，release 常量折叠后这段不存在。
-        if (com.osfans.trime.BuildConfig.DEBUG) {
+        if (com.osfans.trime.util.LogSwitches.OCR_DUMP) {
             dumpDebug(frame, "shutter-frame-" + System.currentTimeMillis())
             dumpDebug(crop, "shutter-crop-" + System.currentTimeMillis())
         }
@@ -1499,9 +1499,9 @@ class OcrWindow : BoardWindow.NoBarBoardWindow() {
         val appContext = context.applicationContext
         ocrExecutor.execute {
             val ready = OcrRecognizer.ensureReady(appContext)
-            if (!ready) HandwritingLog.w("ocr", "shutter: model not ready -> " + OcrRecognizer.lastError.orEmpty())
+            if (!ready) BambooLog.ocr.w("ocr", "shutter: model not ready -> " + OcrRecognizer.lastError.orEmpty())
             val value = if (ready) OcrRecognizer.recognize(crop, singleCharMode) else null
-            HandwritingLog.d("ocr", "shutter: ready=" + ready + " chars=" + (value?.length ?: -1) + " text=" + value.orEmpty().take(40).replace("\n", "/"))
+            BambooLog.ocr.d("ocr", "shutter: ready=" + ready + " chars=" + (value?.length ?: -1) + " text=" + value.orEmpty().take(40).replace("\n", "/"))
             val message = if (!ready) OcrRecognizer.lastError else null
             Handler(Looper.getMainLooper()).post { onRecognized(value, message) }
         }
@@ -1515,10 +1515,10 @@ class OcrWindow : BoardWindow.NoBarBoardWindow() {
             return
         }
         lastResult = clean
-        HandwritingLog.d("ocr", "recognized ${clean.length} chars")
+        BambooLog.ocr.d("ocr", "recognized ${clean.length} chars")
         // 识别成功后离开相机，换成「键盘 + 上方确认卡片」（卡片可编辑、可重拍）
         val inputView = TrimeInputMethodService.current?.currentInputView
-        HandwritingLog.d(
+        BambooLog.ocr.d(
             "ocr",
             "onRecognized len=" + clean.length +
                 " inputView=" + (inputView != null) +
@@ -1546,7 +1546,7 @@ class OcrWindow : BoardWindow.NoBarBoardWindow() {
             lastFrameAt = now
             frameCount++
             if (frameCount % 20 == 1) {
-                HandwritingLog.d(
+                BambooLog.ocr.d(
                     "ocr",
                     "frame #" + frameCount + " " + bitmap.width + "x" + bitmap.height +
                         " errors=" + frameErrors,
@@ -1576,7 +1576,7 @@ class OcrWindow : BoardWindow.NoBarBoardWindow() {
             try {
                 val crop = cropFrame(frame)
                 if (crop == null) {
-                    HandwritingLog.d(
+                    BambooLog.ocr.d(
                         "ocr",
                         "live: crop=null view=" + previewView.width + "x" + previewView.height +
                             " frame=" + frame.width + "x" + frame.height,
@@ -1585,7 +1585,7 @@ class OcrWindow : BoardWindow.NoBarBoardWindow() {
                 }
                 val quality = OcrFrameQuality.assess(crop)
                 if (quality != OcrFrameQuality.Verdict.READY) {
-                    HandwritingLog.d(
+                    BambooLog.ocr.d(
                         "ocr",
                         "live: crop=" + crop.width + "x" + crop.height + " quality=" + quality,
                     )
@@ -1594,17 +1594,17 @@ class OcrWindow : BoardWindow.NoBarBoardWindow() {
                 }
                 val ready = OcrRecognizer.ensureReady(appContext)
                 if (!ready) {
-                    HandwritingLog.w(
+                    BambooLog.ocr.w(
                         "ocr",
                         "live: model not ready -> " + OcrRecognizer.lastError.orEmpty(),
                     )
                 }
                 val value = if (ready) OcrRecognizer.recognize(crop, singleCharMode) else null
-                HandwritingLog.d(
+                BambooLog.ocr.d(
                     "ocr",
                     "crop single=" + singleCharMode + " " + crop.width + "x" + crop.height,
                 )
-                HandwritingLog.d(
+                BambooLog.ocr.d(
                     "ocr",
                     "live: crop=" + crop.width + "x" + crop.height + " q=READY ready=" + ready +
                         " chars=" + (value?.length ?: -1) +
@@ -1612,7 +1612,7 @@ class OcrWindow : BoardWindow.NoBarBoardWindow() {
                 )
                 Handler(Looper.getMainLooper()).post { showLive(value.orEmpty()) }
             } catch (error: Throwable) {
-                HandwritingLog.w("ocr", "live: recognize threw", error)
+                BambooLog.ocr.w("ocr", "live: recognize threw", error)
                 Timber.w(error, "ocr: live recognize failed")
             } finally {
                 liveRunning = false
@@ -1668,7 +1668,7 @@ class OcrWindow : BoardWindow.NoBarBoardWindow() {
         lensHintShown = false
         desiredZoom = 1f
         syncFrameModeUi()
-        HandwritingLog.d("ocr", "resetFrameMode preview=" + previewView.width + "x" + previewView.height)
+        BambooLog.ocr.d("ocr", "resetFrameMode preview=" + previewView.width + "x" + previewView.height)
     }
 
     /** 只把界面同步到当前 [singleCharMode]，不改模式本身（卡片返回时用）。 */
@@ -1683,7 +1683,7 @@ class OcrWindow : BoardWindow.NoBarBoardWindow() {
 
     private fun toggleSingleCharMode() {
         singleCharMode = !singleCharMode
-        HandwritingLog.d(
+        BambooLog.ocr.d(
             "ocr",
             "toggle single=" + singleCharMode +
                 " preview=" + previewView.width + "x" + previewView.height,
@@ -1698,7 +1698,7 @@ class OcrWindow : BoardWindow.NoBarBoardWindow() {
         }
         stability.reset()
         setMessage(alignHint())
-        HandwritingLog.d("ocr", "mode single=" + singleCharMode)
+        BambooLog.ocr.d("ocr", "mode single=" + singleCharMode)
     }
 
     private fun setMessage(message: String) {
@@ -1839,7 +1839,7 @@ class OcrWindow : BoardWindow.NoBarBoardWindow() {
             toast("这张图片读不出来，换一张试试")
             return
         }
-        HandwritingLog.d("ocr", "gallery picked " + bitmap.width + "x" + bitmap.height)
+        BambooLog.ocr.d("ocr", "gallery picked " + bitmap.width + "x" + bitmap.height)
         // 新选的一张图：旧的缩放/旋转对不上，清掉重新居中
         galleryMatrix = null
         gallerySingle = false
@@ -1853,8 +1853,8 @@ class OcrWindow : BoardWindow.NoBarBoardWindow() {
                     val shown = runCatching { service.isInputViewShown }.getOrDefault(true)
                     if (!shown) {
                         runCatching { service.forceShowSelf() }
-                            .onFailure { HandwritingLog.w("ocr", "forceShowSelf failed", it) }
-                        HandwritingLog.d("ocr", "gallery: asked IME to show again after " + delay + "ms")
+                            .onFailure { BambooLog.ocr.w("ocr", "forceShowSelf failed", it) }
+                        BambooLog.ocr.d("ocr", "gallery: asked IME to show again after " + delay + "ms")
                     }
                 },
                 delay,
@@ -1882,7 +1882,7 @@ class OcrWindow : BoardWindow.NoBarBoardWindow() {
     private fun ocrCardHostRestore(bitmap: Bitmap) {
         val host = rootView ?: galleryWrap
         if (host == null) {
-            HandwritingLog.w("ocr", "restore: no host view")
+            BambooLog.ocr.w("ocr", "restore: no host view")
             return
         }
         host.post { showGallery(bitmap, ensureAttach = false, restoreTransform = true) }
@@ -1897,37 +1897,37 @@ class OcrWindow : BoardWindow.NoBarBoardWindow() {
         if (manager.isAttached(this)) return
         runCatching { manager.attachWindow(this) }
             .onFailure { Timber.w(it, "ocr: reattach after pick failed") }
-        HandwritingLog.d("ocr", "gallery: reattached")
+        BambooLog.ocr.d("ocr", "gallery: reattached")
     }
 
     private fun showGallery(bitmap: Bitmap, ensureAttach: Boolean = true, restoreTransform: Boolean = false) {
         if (ensureAttach) ensureAttached()
         val wrap = galleryWrap
         if (wrap == null) {
-            HandwritingLog.w("ocr", "gallery: no container, view not built yet")
+            BambooLog.ocr.w("ocr", "gallery: no container, view not built yet")
             toast("面板还没准备好，再点一次相册")
             return
         }
-        HandwritingLog.d("ocr", "gallery: container=" + wrap.width + "x" + wrap.height)
+        BambooLog.ocr.d("ocr", "gallery: container=" + wrap.width + "x" + wrap.height)
         galleryMode = true
         galleryActive = true
         galleryBitmap = bitmap
         galleryRestorePending = false
         stopCamera()
-        HandwritingLog.d("ocr", "gallery: camera stopped")
+        BambooLog.ocr.d("ocr", "gallery: camera stopped")
         previewWrap?.visibility = View.GONE
         wrap.visibility = View.VISIBLE
-        HandwritingLog.d("ocr", "gallery: visible")
+        BambooLog.ocr.d("ocr", "gallery: visible")
         val canvas = galleryView
         if (canvas == null) {
-            HandwritingLog.w("ocr", "gallery: no canvas")
+            BambooLog.ocr.w("ocr", "gallery: no canvas")
             return
         }
         canvas.singleFrameRatio = OcrPrefs.singleFrameRatio
         canvas.setBitmap(bitmap)
         if (restoreTransform) canvas.restoreMatrix(galleryMatrix)
         canvas.setSingleMode(singleCharMode)
-        HandwritingLog.d("ocr", "gallery: bitmap " + bitmap.width + "x" + bitmap.height)
+        BambooLog.ocr.d("ocr", "gallery: bitmap " + bitmap.width + "x" + bitmap.height)
         shootButton?.text = "识别"
         albumButton?.text = "换一张"
         setMessage(alignHint())
@@ -1948,7 +1948,7 @@ class OcrWindow : BoardWindow.NoBarBoardWindow() {
         val frame = canvas?.frameRect()
         val loc = IntArray(2)
         wrap?.getLocationInWindow(loc)
-        HandwritingLog.d(
+        BambooLog.ocr.d(
             "ocr",
             "gallery[" + stage + "] root=" + (host?.width ?: -1) + "x" + (host?.height ?: -1) +
                 " preview=" + (previewWrap?.width ?: -1) + "x" + (previewWrap?.height ?: -1) +
@@ -1992,16 +1992,16 @@ class OcrWindow : BoardWindow.NoBarBoardWindow() {
             toast("框内没有内容，缩放一下再试")
             return
         }
-        HandwritingLog.d("ocr", "gallery shutter crop=" + crop.width + "x" + crop.height)
+        BambooLog.ocr.d("ocr", "gallery shutter crop=" + crop.width + "x" + crop.height)
         setMessage("识别中…")
         val appContext = context.applicationContext
         ocrExecutor.execute {
             val ready = OcrRecognizer.ensureReady(appContext)
             if (!ready) {
-                HandwritingLog.w("ocr", "gallery: model not ready -> " + OcrRecognizer.lastError.orEmpty())
+                BambooLog.ocr.w("ocr", "gallery: model not ready -> " + OcrRecognizer.lastError.orEmpty())
             }
             val value = if (ready) OcrRecognizer.recognize(crop, singleCharMode) else null
-            HandwritingLog.d(
+            BambooLog.ocr.d(
                 "ocr",
                 "gallery: ready=" + ready + " chars=" + (value?.length ?: -1) +
                     " text=" + value.orEmpty().take(40).replace("\n", "/"),
@@ -2016,14 +2016,14 @@ class OcrWindow : BoardWindow.NoBarBoardWindow() {
      * 用户可以直接从文件管理取出来，我们据此判断「图本身没字」还是「引擎认不出」。
      */
     private fun dumpDebug(bitmap: Bitmap, name: String) {
-        if (!com.osfans.trime.BuildConfig.DEBUG) return
+        if (!com.osfans.trime.util.LogSwitches.OCR_DUMP) return
         runCatching {
             val dir = File(DataManager.defaultDataDir, "ocr-debug")
             if (!dir.exists()) dir.mkdirs()
             val file = File(dir, name + ".png")
             FileOutputStream(file).use { out -> bitmap.compress(Bitmap.CompressFormat.PNG, 100, out) }
-            HandwritingLog.d("ocr", "dump -> " + file.absolutePath)
-        }.onFailure { HandwritingLog.w("ocr", "dump failed", it) }
+            BambooLog.ocr.d("ocr", "dump -> " + file.absolutePath)
+        }.onFailure { BambooLog.ocr.w("ocr", "dump failed", it) }
     }
 
     /**
@@ -2075,7 +2075,7 @@ class OcrWindow : BoardWindow.NoBarBoardWindow() {
         stopCamera()
         val onScreen = rootView?.isAttachedToWindow == true
         if (!windowManager.isAttached(this) && !onScreen) {
-            HandwritingLog.d("ocr", "leave ignored (already on keyboard)")
+            BambooLog.ocr.d("ocr", "leave ignored (already on keyboard)")
             return
         }
         runCatching {
@@ -2083,7 +2083,7 @@ class OcrWindow : BoardWindow.NoBarBoardWindow() {
             windowManager.attachWindow(KeyboardWindow)
         }.onFailure {
             Timber.w(it, "ocr: leave failed")
-            HandwritingLog.w("ocr", "leave failed", it)
+            BambooLog.ocr.w("ocr", "leave failed", it)
         }
         // 兜底：管理器 early-return 或视图脱节时，直接从父容器摘掉
         val v = rootView

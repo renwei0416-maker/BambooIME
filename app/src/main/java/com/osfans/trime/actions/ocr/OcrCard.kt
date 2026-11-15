@@ -1,6 +1,7 @@
 package com.osfans.trime.actions.ocr
 
 import android.graphics.Color
+import com.osfans.trime.util.BambooLog
 import android.graphics.drawable.GradientDrawable
 import android.text.InputType
 import android.view.Gravity
@@ -11,7 +12,6 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import com.osfans.trime.actions.bamboo.BambooActions
-import com.osfans.trime.actions.handwriting.HandwritingLog
 import com.osfans.trime.data.theme.ColorManager
 import com.osfans.trime.ime.core.TrimeInputMethodService
 import com.osfans.trime.ime.window.BoardWindowManager
@@ -67,7 +67,7 @@ object OcrCard {
             card?.let { view -> (view.parent as? ViewGroup)?.removeView(view) }
             built = false
             this.host = host
-            HandwritingLog.d("card", "bind new host=${System.identityHashCode(host)} rebuild")
+            BambooLog.ocr.d("card", "bind new host=${System.identityHashCode(host)} rebuild")
         }
         if (built && builtOpacity == cardOpacity()) return
         // 重建（比如改了不透明度）时旧卡片还挂在宿主上，必须先摘掉，否则会叠出两张
@@ -312,7 +312,7 @@ object OcrCard {
 
         parent.addView(root)
         card = root
-        HandwritingLog.d(
+        BambooLog.ocr.d(
             "card",
             "build host=${System.identityHashCode(parent)} children=" + parent.childCount,
         )

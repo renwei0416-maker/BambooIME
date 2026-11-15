@@ -6,6 +6,7 @@
 package com.osfans.trime.ime.composition
 
 import android.content.Context
+import com.osfans.trime.util.BambooLog
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.text.SpannableStringBuilder
@@ -31,7 +32,6 @@ import androidx.core.text.buildSpannedString
 import com.osfans.trime.actions.glossary.GlossaryPrefs
 import com.osfans.trime.BuildConfig
 import com.osfans.trime.actions.glossary.GlossaryTips
-import com.osfans.trime.actions.handwriting.HandwritingLog
 import com.osfans.trime.actions.tips.TipBlocks
 import com.osfans.trime.actions.tips.TipEntry
 import com.osfans.trime.actions.wenquxing.WenquxingPrefs
@@ -193,7 +193,7 @@ open class PreeditUi(
     fun refreshTips() {
         if (!buildLogged) {
             buildLogged = true
-            HandwritingLog.d(
+            BambooLog.tips.d(
                 "tips",
                 "build=" + BuildConfig.BUILD_VERSION_NAME + " vc=" + BuildConfig.VERSION_CODE +
                     " (tips54: glossary scroller=UNSPECIFIED)",
@@ -504,7 +504,7 @@ open class PreeditUi(
             // 否则展开态会被自己人清掉——用户看到的就是「展开后一秒自己缩回」。
             val changed = id != snapshot
             if (changed) {
-                HandwritingLog.d(
+                BambooLog.tips.d(
                     "tips",
                     "refresh ${if (wenquxing) "wq" else "gl"} changed vis=$visibility " +
                         "expanded=$expandedIndex entries=${list.size}",
@@ -751,7 +751,7 @@ open class PreeditUi(
                         val collapseTop = scroller.top.toFloat()
                         val collapseBottom = collapseTop + ctx.dp(COLLAPSE_H_DP + 8)
                         if (expandedIndex >= 0 && localY in collapseTop..collapseBottom) {
-                            HandwritingLog.d("tips", "tap collapse rawY=" + ev.rawY.toInt())
+                            BambooLog.tips.d("tips", "tap collapse rawY=" + ev.rawY.toInt())
                             collapse()
                             return true
                         }
@@ -786,16 +786,16 @@ open class PreeditUi(
                                 scr.append(" #").append(ci).append(':').append(loc[1])
                                     .append("..").append(loc[1] + cv.height)
                             }
-                            HandwritingLog.d(
+                            BambooLog.tips.d(
                                 "tips",
                                 "tap rawY=" + ev.rawY.toInt() + " blockTop=" + me[1] +
                                     " scrollerTop=" + sc[1] + " columnTop=" + col[1] +
                                     " localY=" + ev.y.toInt() + " yInColumn=" + yInColumn.toInt() +
                                     " idx=" + idx + " scrollY=" + scroller.scrollY,
                             )
-                            HandwritingLog.d("tips", "screen$scr")
+                            BambooLog.tips.d("tips", "screen$scr")
                         }
-                        HandwritingLog.d(
+                        BambooLog.tips.d(
                             "tips",
                             "tap y=" + ev.y.toInt() + " yInColumn=" + yInColumn.toInt() +
                                 " idx=" + idx + " expanded=" + expandedIndex +
@@ -887,7 +887,7 @@ open class PreeditUi(
                 return
             }
             val item = entries.getOrNull(idx) ?: return
-            HandwritingLog.d(
+            BambooLog.tips.d(
                 "tips",
                 "activate idx=" + idx + " expandable=" + entryExpandable[idx] + " text=" + item.text.take(12),
             )
@@ -914,7 +914,7 @@ open class PreeditUi(
                     " scrollY=" + scroller.scrollY + " expanded=" + expandedIndex + sb
                 if (line != lastBounds) {
                     lastBounds = line
-                    HandwritingLog.d("tips", "bounds " + line)
+                    BambooLog.tips.d("tips", "bounds " + line)
                 }
             }
             this@PreeditUi.syncTouchable()
@@ -935,7 +935,7 @@ open class PreeditUi(
                 val h = expandHeightPx()
                 if (h != lastMeasured) {
                     lastMeasured = h
-                    HandwritingLog.d("tips", "measure ${if (wenquxing) "wq" else "gl"} expanded h=$h")
+                    BambooLog.tips.d("tips", "measure ${if (wenquxing) "wq" else "gl"} expanded h=$h")
                 }
                 scroller.measure(wSpec, MeasureSpec.makeMeasureSpec(h, MeasureSpec.EXACTLY))
                 collapseButton.measure(
@@ -980,7 +980,7 @@ open class PreeditUi(
                 }
             if (h != lastMeasured) {
                 lastMeasured = h
-                HandwritingLog.d(
+                BambooLog.tips.d(
                     "tips",
                     "measure ${if (wenquxing) "wq" else "gl"} rows=$want content=$contentH final=$h",
                 )
@@ -1004,7 +1004,7 @@ open class PreeditUi(
             render()
             requestLayout()
             (parent as? View)?.requestLayout()
-            HandwritingLog.d(
+            BambooLog.tips.d(
                 "tips",
                 "expand ${if (wenquxing) "wq" else "gl"} idx=" + index +
                     " h=" + expandHeightPx(),
@@ -1063,7 +1063,7 @@ open class PreeditUi(
             }
             requestLayout()
             (parent as? View)?.requestLayout()
-            HandwritingLog.d("tips", "collapse ${if (wenquxing) "wq" else "gl"}")
+            BambooLog.tips.d("tips", "collapse ${if (wenquxing) "wq" else "gl"}")
             post { scroller.scrollTo(0, scrollBeforeExpand) }
         }
 
@@ -1305,7 +1305,7 @@ open class PreeditUi(
             // 否则展开态会被自己人清掉——用户看到的就是「展开后一秒自己缩回」。
             val changed = id != snapshot
             if (changed) {
-                HandwritingLog.d(
+                BambooLog.tips.d(
                     "tips",
                     "refresh ${if (wenquxing) "wq" else "gl"} changed vis=$visibility " +
                         "expanded=$expandedIndex entries=${list.size}",
@@ -1614,7 +1614,7 @@ open class PreeditUi(
                     if (!moved && kotlin.math.abs(ev.rawY - downRawY) > ctx.dp(TAP_SLOP_DP)) {
                         moved = true
                         // 诊断：确认拖动事件真的到了、ScrollView 当前的滚动位置是多少
-                        HandwritingLog.d(
+                        BambooLog.tips.d(
                             "tips",
                             "gl move dy=" + (ev.rawY - downRawY).toInt() +
                                 " scrollY=" + scroller.scrollY +
@@ -1630,7 +1630,7 @@ open class PreeditUi(
                     if (expandedIndex >= 0 &&
                         hitCollapseButton(ev.rawX, ev.rawY)
                     ) {
-                        HandwritingLog.d(
+                        BambooLog.tips.d(
                             "tips",
                             "tap collapseBtn rawX=" + ev.rawX.toInt() +
                                 " rawY=" + ev.rawY.toInt() + " moved=" + moved,
@@ -1647,7 +1647,7 @@ open class PreeditUi(
                         val collapseTop = scroller.top.toFloat()
                         val collapseBottom = collapseTop + ctx.dp(COLLAPSE_H_DP + 8)
                         if (expandedIndex >= 0 && localY in collapseTop..collapseBottom) {
-                            HandwritingLog.d("tips", "tap collapse rawY=" + ev.rawY.toInt())
+                            BambooLog.tips.d("tips", "tap collapse rawY=" + ev.rawY.toInt())
                             collapse()
                             return true
                         }
@@ -1682,16 +1682,16 @@ open class PreeditUi(
                                 scr.append(" #").append(ci).append(':').append(loc[1])
                                     .append("..").append(loc[1] + cv.height)
                             }
-                            HandwritingLog.d(
+                            BambooLog.tips.d(
                                 "tips",
                                 "tap rawY=" + ev.rawY.toInt() + " blockTop=" + me[1] +
                                     " scrollerTop=" + sc[1] + " columnTop=" + col[1] +
                                     " localY=" + ev.y.toInt() + " yInColumn=" + yInColumn.toInt() +
                                     " idx=" + idx + " scrollY=" + scroller.scrollY,
                             )
-                            HandwritingLog.d("tips", "screen$scr")
+                            BambooLog.tips.d("tips", "screen$scr")
                         }
-                        HandwritingLog.d(
+                        BambooLog.tips.d(
                             "tips",
                             "tap y=" + ev.y.toInt() + " yInColumn=" + yInColumn.toInt() +
                                 " idx=" + idx + " expanded=" + expandedIndex +
@@ -1789,7 +1789,7 @@ open class PreeditUi(
                 return
             }
             val item = entries.getOrNull(idx) ?: return
-            HandwritingLog.d(
+            BambooLog.tips.d(
                 "tips",
                 "activate idx=" + idx + " expandable=" + entryExpandable[idx] + " text=" + item.text.take(12),
             )
@@ -1816,7 +1816,7 @@ open class PreeditUi(
                     " scrollY=" + scroller.scrollY + " expanded=" + expandedIndex + sb
                 if (line != lastBounds) {
                     lastBounds = line
-                    HandwritingLog.d("tips", "bounds " + line)
+                    BambooLog.tips.d("tips", "bounds " + line)
                 }
             }
             this@PreeditUi.syncTouchable()
@@ -1871,7 +1871,7 @@ open class PreeditUi(
             setMeasuredDimension(w, h)
             if (h != lastMeasured) {
                 lastMeasured = h
-                HandwritingLog.d(
+                BambooLog.tips.d(
                     "tips",
                     "measure gl content=" + contentH + " final=" + h + " expanded=" + expandedIndex,
                 )
@@ -1888,7 +1888,7 @@ open class PreeditUi(
             expandedIndex = index
             render()
             applyHeight()
-            HandwritingLog.d(
+            BambooLog.tips.d(
                 "tips",
                 "expand ${if (wenquxing) "wq" else "gl"} idx=" + index +
                     " h=" + expandHeightPx(),
@@ -1945,7 +1945,7 @@ open class PreeditUi(
             render()
             // 收起后把高度交还给内容（WRAP_CONTENT）并强制父容器重排
             applyHeight()
-            HandwritingLog.d("tips", "collapse ${if (wenquxing) "wq" else "gl"}")
+            BambooLog.tips.d("tips", "collapse ${if (wenquxing) "wq" else "gl"}")
             post { scroller.scrollTo(0, scrollBeforeExpand) }
         }
 

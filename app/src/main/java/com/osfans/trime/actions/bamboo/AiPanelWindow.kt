@@ -5,6 +5,7 @@
 package com.osfans.trime.actions.bamboo
 
 import android.graphics.PorterDuff
+import com.osfans.trime.util.BambooLog
 import android.graphics.PorterDuffColorFilter
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -23,7 +24,6 @@ import android.widget.Toast
 import androidx.core.widget.TextViewCompat
 import com.mikepenz.iconics.IconicsDrawable
 import com.mikepenz.iconics.utils.sizePx
-import com.osfans.trime.actions.handwriting.HandwritingLog
 import com.osfans.trime.actions.wenquxing.WenquxingPrefs
 import com.osfans.trime.data.theme.ColorManager
 import com.osfans.trime.actions.ocr.ThemeContrast
@@ -68,26 +68,26 @@ class AiPanelWindow : BoardWindow.NoBarBoardWindow() {
     private var colorAccent = 0xFF6FAE8F.toInt()
 
     override fun onCreateView(): View {
-        HandwritingLog.d("aipanel", "onCreateView")
+        BambooLog.ai.d("aipanel", "onCreateView")
         val created =
             runCatching { buildView() }
                 .onFailure {
                     Timber.e(it, "ai panel: buildView failed")
-                    HandwritingLog.w("aipanel", "buildView threw", it)
+                    BambooLog.ai.w("aipanel", "buildView threw", it)
                 }.getOrElse { plainView() }
         rootView = created
         return created
     }
 
     override fun onAttached() {
-        HandwritingLog.d("aipanel", "onAttached")
+        BambooLog.ai.d("aipanel", "onAttached")
         active = true
         // 每次挂上都按当前状态重画：从别的窗口回来时模式可能已经变了
         rebuild()
     }
 
     override fun onDetached() {
-        HandwritingLog.d("aipanel", "onDetached")
+        BambooLog.ai.d("aipanel", "onDetached")
         active = false
     }
 
@@ -162,12 +162,12 @@ class AiPanelWindow : BoardWindow.NoBarBoardWindow() {
             ExitButton().apply {
                 setOnClickListener {
                     if (BambooActions.armedDisplayName == null) {
-                        HandwritingLog.d("aipanel", "exit tapped but no mode")
+                        BambooLog.ai.d("aipanel", "exit tapped but no mode")
                         toast("当前未进入任何模式")
                         return@setOnClickListener
                     }
                     val was = BambooActions.exitArmedMode()
-                    HandwritingLog.d("aipanel", "exit mode was=$was")
+                    BambooLog.ai.d("aipanel", "exit mode was=$was")
                     leaveToKeyboard()
                 }
             }
@@ -178,7 +178,7 @@ class AiPanelWindow : BoardWindow.NoBarBoardWindow() {
 
         header.addView(
             smallButton("收起") {
-                HandwritingLog.d("aipanel", "collapse -> keyboard")
+                BambooLog.ai.d("aipanel", "collapse -> keyboard")
                 leaveToKeyboard()
             },
             LinearLayout.LayoutParams(WRAP_CONTENT, dp(30)),
@@ -359,7 +359,7 @@ class AiPanelWindow : BoardWindow.NoBarBoardWindow() {
         )
 
         cell.setOnClickListener {
-            HandwritingLog.d(
+            BambooLog.ai.d(
                 "aipanel",
                 "tap code=${item.code} tips=${item.isTips} active=$active",
             )
@@ -381,7 +381,7 @@ class AiPanelWindow : BoardWindow.NoBarBoardWindow() {
             if (!BambooActions.enterAiMode(item.code)) return
         }
         // 选完就收起回键盘：进模式是为了接着打字
-        HandwritingLog.d("aipanel", "now=${BambooActions.armedDisplayName ?: "off"}")
+        BambooLog.ai.d("aipanel", "now=${BambooActions.armedDisplayName ?: "off"}")
         leaveToKeyboard()
     }
 

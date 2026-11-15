@@ -6,6 +6,7 @@
 package com.osfans.trime
 
 import android.app.Application
+import com.osfans.trime.util.BambooLog
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.SharedPreferences
@@ -24,7 +25,6 @@ import com.osfans.trime.data.db.SyncEntryType
 import com.osfans.trime.data.prefs.AppPrefs
 import com.osfans.trime.data.theme.ColorManager
 import com.osfans.trime.actions.bamboo.BambooPrefs
-import com.osfans.trime.actions.handwriting.HandwritingLog
 import com.osfans.trime.data.theme.ThemeManager
 import com.osfans.trime.ime.clipboard.ScreenshotClipboardWatcher
 import com.osfans.trime.link.SherpaSpeechClient
@@ -177,11 +177,11 @@ class TrimeApplication : Application() {
                 runCatching { CrashLogExporter.exportCrash(applicationContext, error) }
             }
             runCatching {
-                HandwritingLog.d(
+                BambooLog.core.d(
                     "crash",
                     "thread=" + thread.name + " " + error.javaClass.name + ": " + error.message,
                 )
-                HandwritingLog.d("crash", error.stackTraceToString())
+                BambooLog.core.d("crash", error.stackTraceToString())
             }
             if (BuildConfig.DEBUG) {
                 // debug：写完文件就交回系统默认处理（进程结束），不弹 LogActivity 打断手势

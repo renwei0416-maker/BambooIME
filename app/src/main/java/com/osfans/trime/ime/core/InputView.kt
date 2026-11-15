@@ -6,9 +6,9 @@
 package com.osfans.trime.ime.core
 
 import com.osfans.trime.actions.bamboo.AiPanelWindow
+import com.osfans.trime.util.BambooLog
 import com.osfans.trime.actions.handwriting.HandwritingWindow
 import com.osfans.trime.actions.ocr.OcrWindow
-import com.osfans.trime.actions.handwriting.HandwritingLog
 import com.osfans.trime.actions.ocr.OcrCard
 import android.annotation.SuppressLint
 import android.content.res.Configuration
@@ -1053,7 +1053,7 @@ class InputView(
      * 候选栏、功能键排、键盘的位置与高度都不变，卡片里的编码框位置也不变。
      */
     fun showOcrCard(text: String) {
-        HandwritingLog.d(
+        BambooLog.core.d(
             "card",
             "show len=" + text.length + " host=" + System.identityHashCode(ocrCardHost) +
                 " attached=" + ocrCardHost.isAttachedToWindow +
@@ -1063,7 +1063,7 @@ class InputView(
         OcrCard.bind(ocrCardHost)
         // 兜底：卡片视图没能挂进宿主时不要激活，否则键盘输入会被吞进看不见的编辑框
         if (ocrCardHost.childCount == 0) {
-            HandwritingLog.d("card", "show aborted: no card view")
+            BambooLog.core.d("card", "show aborted: no card view")
             return
         }
         ocrCardHost.visibility = View.VISIBLE
@@ -1072,7 +1072,7 @@ class InputView(
         // 卡片在默认触摸区之外，需要让系统重算 insets 才能点到
         requestApplyInsets()
         ocrCardHost.post {
-            HandwritingLog.d(
+            BambooLog.core.d(
                 "card",
                 "shown active=" + OcrCard.isActive +
                     " attached=" + ocrCardHost.isAttachedToWindow +
@@ -1084,7 +1084,7 @@ class InputView(
         // 延时自检：800ms 后卡片还没显示出来，就记一条，便于真机上定位是谁把它收掉了
         ocrCardHost.postDelayed(
             {
-                HandwritingLog.d(
+                BambooLog.core.d(
                     "card",
                     "verify vis=" + ocrCardHost.visibility +
                         " active=" + OcrCard.isActive +
@@ -1106,7 +1106,7 @@ class InputView(
                 v.getLocationOnScreen(p)
                 return "${p[0]},${p[1]} ${v.width}x${v.height} v=${v.visibility}"
             }
-            HandwritingLog.d(
+            BambooLog.core.d(
                 "card",
                 "$stage window=${pos(root)} sync=${pos(syncInputBox)} preedit=${pos(preedit.ui.root)} " +
                     "bar=${pos(inputBar.view)} card=${pos(ocrCardHost)} " +

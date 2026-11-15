@@ -6,6 +6,7 @@
 package com.osfans.trime.ime.keyboard
 
 import com.osfans.trime.actions.wenquxing.WenquxingTips
+import com.osfans.trime.util.BambooLog
 
 import android.app.Dialog
 import android.content.Context
@@ -17,7 +18,6 @@ import androidx.lifecycle.lifecycleScope
 import com.osfans.trime.R
 import com.osfans.trime.actions.bamboo.BambooActions
 import com.osfans.trime.actions.bamboo.BambooTokens
-import com.osfans.trime.actions.handwriting.HandwritingLog
 import com.osfans.trime.core.KeyModifier
 import com.osfans.trime.core.KeyModifiers
 import com.osfans.trime.core.RimeApi
@@ -248,14 +248,14 @@ class CommonKeyboardActionListener {
                     val raw = action.getText(KeyboardWindow.currentKeyboard)
                     val token = BambooTokens.match(raw)
                     if (token != null) {
-                        HandwritingLog.d("tips", "dispatch token=$token")
+                        BambooLog.core.d("tips", "dispatch token=$token")
                         service.postKeyJob { BambooActions.handleToken(service, this, token) }
                         return
                     }
                     // 主题绑了苍竹名字、但 APK 是旧版时不认识这个名字，会当普通文字上屏。
                     // 打一条日志，排查「绑了没反应」时一眼能看出来是版本不匹配。
                     if (raw.startsWith(BambooTokens.PREFIX, ignoreCase = true)) {
-                        HandwritingLog.d("tips", "unknown token=$raw（APK 与主题版本不一致？）")
+                        BambooLog.core.d("tips", "unknown token=$raw（APK 与主题版本不一致？）")
                     }
                 }
 

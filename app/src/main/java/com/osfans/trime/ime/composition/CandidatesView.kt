@@ -6,6 +6,7 @@
 package com.osfans.trime.ime.composition
 
 import android.annotation.SuppressLint
+import com.osfans.trime.util.BambooLog
 import android.graphics.RectF
 import android.os.Build
 import android.view.ViewGroup
@@ -190,7 +191,7 @@ class CandidatesView(
         TipBlocks.candidatesWindowShown = shown
         runCatching { service.refreshCandidatesPreedit() }
             .onFailure {
-                com.osfans.trime.actions.handwriting.HandwritingLog.d("tips", "sync owner refresh failed: $it")
+                com.osfans.trime.util.BambooLog.tips.d("tips", "sync owner refresh failed: $it")
             }
     }
 

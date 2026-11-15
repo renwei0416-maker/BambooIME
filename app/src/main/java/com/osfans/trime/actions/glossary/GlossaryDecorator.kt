@@ -6,9 +6,9 @@
 package com.osfans.trime.actions.glossary
 
 import android.os.Handler
+import com.osfans.trime.util.BambooLog
 import android.os.Looper
 import android.os.SystemClock
-import com.osfans.trime.actions.handwriting.HandwritingLog
 import com.osfans.trime.core.CandidateProto
 import com.osfans.trime.core.RimeMessage
 import com.osfans.trime.ime.core.TrimeInputMethodService
@@ -43,7 +43,7 @@ object GlossaryDecorator {
         } catch (e: Throwable) {
             // 词库/格式化出任何问题都不许把输入法弄崩：记一笔，原样放行。
             Timber.e(e, "glossary: decorate failed")
-            HandwritingLog.d("glossary", "decorate failed: " + e.stackTraceToString())
+            BambooLog.gl.d("glossary", "decorate failed: " + e.stackTraceToString())
             msg
         }
 
@@ -96,7 +96,7 @@ object GlossaryDecorator {
                 val first = GlossaryStore.lookup(w).firstOrNull()?.text ?: "-"
                 sb.append('[').append(w).append("->").append(first).append(']')
             }
-            HandwritingLog.d("glossary", sb.toString())
+            BambooLog.gl.d("glossary", sb.toString())
         }
     }
 

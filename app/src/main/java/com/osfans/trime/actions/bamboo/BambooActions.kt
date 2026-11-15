@@ -1,6 +1,7 @@
 package com.osfans.trime.actions.bamboo
 
 import android.content.ClipboardManager
+import com.osfans.trime.util.BambooLog
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
@@ -12,7 +13,6 @@ import android.widget.Toast
 import androidx.lifecycle.lifecycleScope
 import com.osfans.trime.actions.glossary.GlossaryDecorator
 import com.osfans.trime.actions.tips.TipBlocks
-import com.osfans.trime.actions.handwriting.HandwritingLog
 import com.osfans.trime.actions.wenquxing.WenquxingPrefs
 import com.osfans.trime.actions.wenquxing.WenquxingTips
 import com.osfans.trime.core.Rime
@@ -176,7 +176,7 @@ object BambooActions {
         if (text.isNullOrEmpty()) return
         if (sensitiveNow()) return
         RevertLedger.record(text)
-        HandwritingLog.d(
+        BambooLog.ai.d(
             "ledger",
             "record \"$text\" cp=${text.codePointCount(0, text.length)} total=${RevertLedger.size()}",
         )
@@ -185,7 +185,7 @@ object BambooActions {
     /** 用户手动按退格、rime 没消费、键被回放给编辑器时扣 1。 */
     fun onBackspaceReplayed() {
         RevertLedger.consume(1)
-        HandwritingLog.d("ledger", "backspace replay -> consume 1, total=${RevertLedger.size()}")
+        BambooLog.ai.d("ledger", "backspace replay -> consume 1, total=${RevertLedger.size()}")
     }
 
     /** 文曲星模式在 AiMode.key 上的标记。 */
@@ -392,7 +392,7 @@ object BambooActions {
                 }
             if (text.isNullOrEmpty()) {
                 // 落盘日志：主题绑了 token 但这一块没有第 N 条时会走到这里，排查时要看得见
-                HandwritingLog.d("tips", "token=$token block=${TipBlocks.current()} 没有第 $tipSlot 条，吞键")
+                BambooLog.ai.d("tips", "token=$token block=${TipBlocks.current()} 没有第 $tipSlot 条，吞键")
                 return true
             }
             // 只上屏内容，不要把中文候选一起提交：
@@ -400,7 +400,7 @@ object BambooActions {
             // 结果是「中文候选 + 英文」两个都进编辑框。这里改成丢弃组句、只提交内容。
             api.clearComposition()
             service.commitText(text)
-            HandwritingLog.d("tips", "token=$token block=${TipBlocks.current()} -> $text")
+            BambooLog.ai.d("tips", "token=$token block=${TipBlocks.current()} -> $text")
             return true
         }
         // 「按住说话」属于语音链路，和「回退与AI」总开关无关（等价主题原来的 VoiceAssist）。
@@ -411,7 +411,7 @@ object BambooActions {
                 // Kodein 的 di.instance<T>() 返回 LazyDelegate，必须取一次真实例才能调方法
                 val bar: InputBarDelegate by InputDependencyManager.getInstance().di.instance()
                 bar.startVoiceHoldSession()
-                HandwritingLog.d("voice ai", "token voice ai -> startVoiceHoldSession")
+                BambooLog.ai.d("voice ai", "token voice ai -> startVoiceHoldSession")
             }.onFailure { Timber.w(it, "bamboo: token voice ai start failed") }
             return true
         }
@@ -517,7 +517,7 @@ object BambooActions {
      */
     private suspend fun revert(service: TrimeInputMethodService): Int {
         val left = RevertLedger.lastCodePoints()
-        HandwritingLog.d(
+        BambooLog.ai.d(
             "revert",
             "start left=$left last=\"${RevertLedger.lastText()}\" " +
                 "max=${BambooPrefs.revertMaxCodePoints} total=${RevertLedger.size()}",
@@ -525,9 +525,9 @@ object BambooActions {
         if (left <= 0) return 0
         val want = minOf(left, BambooPrefs.revertMaxCodePoints)
         val done = deleteCodePoints(service, want)
-        HandwritingLog.d("revert", "delete want=$want done=$done")
+        BambooLog.ai.d("revert", "delete want=$want done=$done")
         if (done > 0) RevertLedger.consume(done)
-        HandwritingLog.d("revert", "after total=${RevertLedger.size()}")
+        BambooLog.ai.d("revert", "after total=${RevertLedger.size()}")
         return done
     }
 
@@ -538,7 +538,7 @@ object BambooActions {
      * 丢掉正在拼写的组合 → 退掉账本最近一笔 → 账本真的空了才提示。
      */
     private suspend fun doRevert(service: TrimeInputMethodService, api: RimeApi, source: String): Boolean {
-        HandwritingLog.d("revert", "trigger $source")
+        BambooLog.ai.d("revert", "trigger $source")
         api.clearComposition()
         val deleted = revert(service)
         Timber.d("bamboo: revert %s -> %d", source, deleted)
@@ -561,7 +561,7 @@ object BambooActions {
                 if (before.isEmpty()) {
                     // 编辑器不提供光标前文本（部分 WebView / 自绘编辑器）。
                     // 无法核验，但删除指令仍然有效，按请求量记账。
-                    HandwritingLog.d("revert", "no before-text -> blind delete $count")
+                    BambooLog.ai.d("revert", "no before-text -> blind delete $count")
                     val blind = runCatching {
                         ic.beginBatchEdit()
                         val ok = runCatching { ic.deleteSurroundingTextInCodePoints(count, 0) }
