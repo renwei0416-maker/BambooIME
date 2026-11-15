@@ -195,10 +195,19 @@ class KeyPanelWindow : BoardWindow.NoBarBoardWindow() {
             LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f).apply { topMargin = dp(2) },
         )
 
-        // 底部「收起」：单手够得着，酒红底（跟「功能模式」面板一致）
+        // 底部「收起」：不占整行，宽度取 1/3 行宽、高度 29dp，居中。
         root.addView(
-            bottomBar("收起") { leaveToKeyboard() },
-            LinearLayout.LayoutParams(MATCH_PARENT, dp(44)).apply { topMargin = dp(4) },
+            LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                addView(View(context), LinearLayout.LayoutParams(0, 1, 1f))
+                addView(
+                    bottomBar("收起") { leaveToKeyboard() },
+                    LinearLayout.LayoutParams(0, dp(29), 1f),
+                )
+                addView(View(context), LinearLayout.LayoutParams(0, 1, 1f))
+            },
+            LinearLayout.LayoutParams(MATCH_PARENT, dp(29)).apply { topMargin = dp(6) },
         )
         return root
     }
@@ -269,20 +278,13 @@ class KeyPanelWindow : BoardWindow.NoBarBoardWindow() {
                 Cell("ahw", "手写", "", "cmd_draw", Kind.ACTION, "handwriting"),
                 Cell("aocr", "拍照", "", "cmd_camera", Kind.ACTION, "ocr"),
                 Cell("aai", "功能模式", "", "cmd_robot", Kind.ACTION, "ai"),
-                Cell(
-                    "agl",
-                    "外语学习",
-                    if (GlossaryPrefs.enabled) "开" else "关",
-                    "cmd_translate",
-                    Kind.ACTION,
-                    "glossary",
-                ),
                 Cell("aclip", "剪贴板", "", "cmd_clipboard_text", Kind.ACTION, "clipboard"),
             )
 
-        addRow(box, row1, current)
-        addRow(box, row2, current)
-        if (WanxiangPrefs.panelShowActions) addRow(box, row3, current)
+        // 每行最多 4 个：多了自动换行，绝不挤成 5 个一行
+        for (chunk in (row1 + row2 + if (WanxiangPrefs.panelShowActions) row3 else emptyList()).chunked(COLUMNS)) {
+            addRow(box, chunk, current)
+        }
     }
 
     private fun addRow(
@@ -577,6 +579,9 @@ class KeyPanelWindow : BoardWindow.NoBarBoardWindow() {
         /** 主题 preset 里写的文本（`text = "BambooKeyPanel"`）。 */
         const val TOKEN = "BambooKeyPanel"
 
+        /** 每行最多几格（多了自动换行）。 */
+        const val COLUMNS = 4
+
         fun isToken(text: String): Boolean = text.equals(TOKEN, ignoreCase = true)
 
         val instance: KeyPanelWindow by lazy { KeyPanelWindow() }
@@ -598,4 +603,5 @@ class KeyPanelWindow : BoardWindow.NoBarBoardWindow() {
                 .onFailure { Timber.w(it, "key panel: open failed") }
         }
     }
+
 }
