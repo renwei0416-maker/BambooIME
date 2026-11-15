@@ -139,8 +139,17 @@ class WanxiangSetupFragment : Fragment() {
         super.onDestroyView()
     }
 
+    /** 九宫格只能用全拼；这个组合一旦成立就不允许继续。 */
+    private fun t9Conflict(): Boolean =
+        WanxiangPrefs.layout == WanxiangPrefs.LAYOUT_9 &&
+            WanxiangPrefs.encode == WanxiangPrefs.ENCODE_SHUANGPIN
+
     private fun onNext() {
         if (busy) return
+        if (t9Conflict()) {
+            toast("九宫格只能用全拼：先把编码改成全拼，或换个键盘")
+            return
+        }
         if (page < pages - 1) {
             page ++
             // 九键只能是全拼、也不带辅助码 → 直接进收尾；全拼跳过双拼页
@@ -167,6 +176,13 @@ class WanxiangSetupFragment : Fragment() {
         prev.isEnabled = page > 0
         prev.visibility = if (page == 0) View.INVISIBLE else View.VISIBLE
         next.text = if (page == pages - 1) "完成并应用" else "下一步"
+        // 「九宫格 + 双拼」是不允许的组合：不让点下一步，并在上方说清楚怎么改
+        if (t9Conflict()) {
+            content.addView(
+                hint("九宫格只能用全拼：请把编码改成「全拼」，或者把键盘换成 26 / 18 / 14 键。"),
+            )
+        }
+        next.isEnabled = !t9Conflict()
 
         when (page) {
             0 -> renderGate()
@@ -249,10 +265,6 @@ class WanxiangSetupFragment : Fragment() {
                 WanxiangPrefs.layout,
             ) {
                 // 九键只能全拼：冲突在「选键盘」这一刻处理，而不是在第 2 步拦人。
-                if (it == WanxiangPrefs.LAYOUT_9 && WanxiangPrefs.encode == WanxiangPrefs.ENCODE_SHUANGPIN) {
-                    toast("九键固定用全拼，已把编码改成全拼")
-                    WanxiangPrefs.encode = WanxiangPrefs.ENCODE_QUANPIN
-                }
                 WanxiangPrefs.layout = it
                 render()
             },
