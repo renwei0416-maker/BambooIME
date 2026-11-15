@@ -236,7 +236,15 @@ class WanxiangSetupFragment : Fragment() {
                     9 to "九宫格（9 键）— 固定全拼",
                 ),
                 WanxiangPrefs.layout,
-            ) { WanxiangPrefs.layout = it; render() },
+            ) {
+                // 九键只能全拼：冲突在「选键盘」这一刻处理，而不是在第 2 步拦人。
+                if (it == WanxiangPrefs.LAYOUT_9 && WanxiangPrefs.encode == WanxiangPrefs.ENCODE_SHUANGPIN) {
+                    toast("九键固定用全拼，已把编码改成全拼")
+                    WanxiangPrefs.encode = WanxiangPrefs.ENCODE_QUANPIN
+                }
+                WanxiangPrefs.layout = it
+                render()
+            },
         )
     }
 
@@ -254,11 +262,7 @@ class WanxiangSetupFragment : Fragment() {
                 ),
                 WanxiangPrefs.encode,
             ) {
-                if (it == WanxiangPrefs.ENCODE_SHUANGPIN && WanxiangPrefs.layout == WanxiangPrefs.LAYOUT_9) {
-                    toast("九键固定用全拼，先在第 3 步换键盘")
-                } else {
-                    WanxiangPrefs.encode = it
-                }
+                WanxiangPrefs.encode = it
                 render()
             },
         )
