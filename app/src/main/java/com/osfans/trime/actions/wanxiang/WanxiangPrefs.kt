@@ -8,6 +8,7 @@ package com.osfans.trime.actions.wanxiang
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.core.content.edit
+import com.osfans.trime.BuildConfig
 
 /**
  * 万象拼音方案的用户偏好（独立于设置界面存的文件，只放「要写进 custom 的那几个值」）。
@@ -65,6 +66,7 @@ object WanxiangPrefs {
     private const val KEY_FUZZY = "fuzzy"
     private const val KEY_WIZARD_DONE = "wizard_done"
     private const val KEY_HINT_STATE = "first_run_hint"
+    private const val KEY_HINT_STAMP = "first_run_hint_stamp"
     private const val KEY_APPLIED = "applied_signature"
     private const val KEY_DOWNLOAD_BASE = "download_base"
 
@@ -142,8 +144,20 @@ object WanxiangPrefs {
 
     /** 首次「打不出字」提示卡的状态，见 `HINT_*`。非 0 即不再弹。 */
     var hintState: Int
-        get() = ready().getInt(KEY_HINT_STATE, HINT_NONE)
-        set(v) = ready().edit { putInt(KEY_HINT_STATE, v) }
+        get() {
+            val saved = ready().getInt(KEY_HINT_STATE, HINT_NONE)
+            if (saved == HINT_NONE) return HINT_NONE
+            // debug 包：装了新版本就当成没提示过，方便反复测试这条提示
+            if (BuildConfig.DEBUG) {
+                val stamp = ready().getString(KEY_HINT_STAMP, "").orEmpty()
+                if (stamp != BuildConfig.BUILD_VERSION_NAME) return HINT_NONE
+            }
+            return saved
+        }
+        set(v) = ready().edit {
+            putInt(KEY_HINT_STATE, v)
+            putString(KEY_HINT_STAMP, BuildConfig.BUILD_VERSION_NAME)
+        }
 
     /**
      * 方案包下载源前缀（可换国内镜像）。
@@ -195,6 +209,11 @@ object WanxiangPrefs {
         }
         if (!userDict) contextual = false
         if (!t9UserDict) t9Contextual = false
+    }
+
+    /** 把「首次提示卡」状态清掉：切回键盘会再弹一次。 */
+    fun resetHint() {
+        ready().edit { remove(KEY_HINT_STATE); remove(KEY_HINT_STAMP) }
     }
 
     fun resetToDefaults() {

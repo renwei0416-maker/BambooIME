@@ -239,6 +239,14 @@ class WanxiangFragment : PaddingPreferenceFragment() {
 
                 addBambooCategory("说明", "装之前先知道这几件事") {
                     addRow(
+                        "重新显示首次提示",
+                        "把「还没配好」那张提示卡的状态清掉，切回键盘会再弹一次",
+                    ) {
+                        WanxiangPrefs.resetHint()
+                        toast("已重置，切回键盘会再弹一次")
+                        rebuildPreferencesKeepingScroll { buildScreen() }
+                    }
+                    addRow(
                         title = "体积与耗时",
                         summary = "包内 67.3 MB；部署后 `build/` 约 70–90 MB；首次部署 1–2 分钟。" +
                             "九键（T9）需要更大的 word 表，首次会再久一点。",
