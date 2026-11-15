@@ -43,26 +43,12 @@ class MainFragment : PaddingPreferenceFragment() {
         }
     }
 
-    private fun wanxiangTitle(): String =
-        if (SchemaPackStore.isInstalled() && WanxiangPrefs.wizardDone) "万象拼音" else "万象拼音（还没配置）"
+    /** 首页入口标题固定，状态只在「万象拼音」页内顶部显示。 */
+    private fun wanxiangTitle(): String = "万象拼音"
 
-    private fun wanxiangSummary(): String {
-        if (!SchemaPackStore.isInstalled()) {
-            return "第一次用？点这里，1 分钟配好：内置全拼/双拼 + 九键，67 MB 不用担心下载"
-        }
-        if (!WanxiangPrefs.wizardDone) {
-            return "点这里选键盘形态和编码方式，1 分钟完成；也可以用「方案设置」逐项调"
-        }
-        val layout = when (WanxiangPrefs.layout) {
-            WanxiangPrefs.LAYOUT_9 -> "九键"
-            WanxiangPrefs.LAYOUT_18 -> "18 键"
-            WanxiangPrefs.LAYOUT_14 -> "14 键"
-            else -> "26 键"
-        }
-        val encode =
-            if (WanxiangPrefs.encode == WanxiangPrefs.ENCODE_QUANPIN) "全拼" else "双拼 · ${WanxiangPrefs.scheme}"
-        return "已配置：$layout · $encode（点这里改设置、换下载源、启用/切换方案包）"
-    }
+    /** 首页入口说明：固定一句话，不随状态变化。 */
+    private fun wanxiangSummary(): String =
+        "不用自己的方案包、也不懂改 custom 的，直接进「设置向导」配置就好。"
 
     override fun onCreatePreferences(
         savedInstanceState: Bundle?,

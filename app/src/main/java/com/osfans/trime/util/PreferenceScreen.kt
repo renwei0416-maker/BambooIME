@@ -238,10 +238,10 @@ private class ChipSpan(
     }
 }
 
-/** D：行保持原样，标题后面挂一个「新用户」胶囊。 */
+/** D：行保持原样，标题后面挂一个「新手用户」胶囊。 */
 open class AccentChipRow(
     context: Context,
-    private val chip: String = "新用户",
+    private val chip: String = "新手用户",
 ) : BambooClick(context) {
     override fun onBindViewHolder(holder: PreferenceViewHolder) {
         super.onBindViewHolder(holder)
@@ -346,12 +346,12 @@ open class AccentClick(context: Context) : BambooClick(context) {
     }
 }
 
-/** 行不动、标题后面挂「新用户」胶囊：首页那个入口用它。 */
+/** 行不动、标题后面挂「新手用户」胶囊：首页那个入口用它。 */
 fun PreferenceGroup.addAccentChipPreference(
     title: String,
     summary: String? = null,
     @DrawableRes icon: Int? = null,
-    chip: String = "新用户",
+    chip: String = "新手用户",
     onClick: (() -> Unit)? = null,
 ) {
     addPreference(

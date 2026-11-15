@@ -62,16 +62,20 @@ class WanxiangFragment : PaddingPreferenceFragment() {
         val installed = ourId != null && SchemaPackStore.isInstalled(ourId)
         preferenceScreen =
             preferenceManager.createPreferenceScreen(requireContext()).apply {
+                val activeId = SchemaPackageManager.activePackageId
+                val anyInstalled =
+                    SchemaPackStore.isInstalled(SchemaPackStore.BASE_ID) ||
+                        SchemaPackStore.isInstalled(SchemaPackStore.PRO_ID)
                 addRow(
                     title = when {
-                        ourId == null -> "当前不在万象包上"
-                        !installed -> "万象包文件不在了"
-                        else -> "当前生效：$ourId"
+                        ourId != null -> "当前生效：$ourId"
+                        anyInstalled -> "当前生效：${activeId}（不是内置包）"
+                        else -> "还没配置"
                     },
                     summary = when {
-                        ourId == null -> "下面这些设置要先走向导配好才能用"
-                        !installed -> "目录被删过，先走向导重新配一次"
-                        else -> "${layoutLabel()} · ${encodeLabel()}"
+                        ourId != null -> "${layoutLabel()} · ${encodeLabel()}"
+                        anyInstalled -> "应用后会切到内置包 · ${layoutLabel()} · ${encodeLabel()}"
+                        else -> "进「设置向导」配置，1 分钟"
                     },
                 )
                 addBambooCategory("方案设置", "改完点「应用并部署」生效") {
