@@ -499,6 +499,9 @@ class KeyboardWindow :
                 }
             }
         }
+        // 上面那句 switchKeyboard(targetKeyboard) 会把键盘重置成 default，
+        // 所以恢复我们自己的形态必须放在它之后。
+        restoreWanxiangKeyboard()
     }
 
     private fun dispatchCapsState(setShift: (Boolean, Boolean) -> Unit) {
