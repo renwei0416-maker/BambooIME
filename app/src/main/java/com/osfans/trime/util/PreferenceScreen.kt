@@ -169,34 +169,168 @@ private fun dpOf(
     value: Int,
 ): Int = (value * context.resources.displayMetrics.density).toInt()
 
+/** 淡红底（酒红 25%），用于「左侧竖条」那种轻强调。 */
+@ColorInt
+val ACCENT_BAR_BG: Int = 0xFF3C2320.toInt()
+
+/** 左侧竖条上的米色文字。 */
+@ColorInt
+val ACCENT_BAR_TEXT: Int = 0xFFF2EFE6.toInt()
+
+@ColorInt
+val ACCENT_BAR_SUMMARY: Int = 0xFFD9BDB6.toInt()
+
 /**
- * 整块强调的行：背景铺酒红、标题与摘要改白、图标也改白。
- * 只在 bind 时处理，不新建布局，也不依赖主题的任何颜色键。
+ * 「行不动、标题后面挂一个小胶囊」用的 span。
+ * 自己画圆角矩形，所以不需要额外的布局或 View。
  */
-open class AccentRow(context: Context) : BambooClick(context) {
+private class ChipSpan(
+    private val label: String,
+    @ColorInt private val bg: Int,
+    @ColorInt private val fg: Int,
+    private val padH: Float,
+    private val padV: Float,
+    private val radius: Float,
+) : android.text.style.ReplacementSpan() {
+    private val paint =
+        android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+        }
+
+    override fun getSize(
+        paint: android.graphics.Paint,
+        text: CharSequence?,
+        start: Int,
+        end: Int,
+        fm: android.graphics.Paint.FontMetricsInt?,
+    ): Int {
+        this.paint.textSize = paint.textSize * 0.74f
+        return (this.paint.measureText(label) + padH * 2).toInt()
+    }
+
+    override fun draw(
+        canvas: android.graphics.Canvas,
+        text: CharSequence?,
+        start: Int,
+        end: Int,
+        x: Float,
+        top: Int,
+        y: Int,
+        bottom: Int,
+        paint: android.graphics.Paint,
+    ) {
+        this.paint.textSize = paint.textSize * 0.74f
+        this.paint.color = fg
+        val w = this.paint.measureText(label)
+        val h = (bottom - top) - padV * 2
+        val rect =
+            android.graphics.RectF(
+                x + padH * 0.4f,
+                top + padV,
+                x + padH * 0.4f + w + padH * 2,
+                top + padV + h,
+            )
+        val fill =
+            android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { color = bg }
+        canvas.drawRoundRect(rect, radius, radius, fill)
+        val baseline = rect.centerY() - (this.paint.descent() + this.paint.ascent()) / 2f
+        canvas.drawText(label, rect.left + padH, baseline, this.paint)
+    }
+}
+
+/** D：行保持原样，标题后面挂一个「新用户」胶囊。 */
+open class AccentChipRow(
+    context: Context,
+    private val chip: String = "新用户",
+) : BambooClick(context) {
+    override fun onBindViewHolder(holder: PreferenceViewHolder) {
+        super.onBindViewHolder(holder)
+        runCatching {
+            val tv = holder.itemView.findViewById<android.widget.TextView>(android.R.id.title) ?: return@runCatching
+            val base = tv.text?.toString().orEmpty()
+            if (base.endsWith(chip)) return@runCatching
+            val density = holder.itemView.resources.displayMetrics.density
+            val span =
+                ChipSpan(
+                    label = chip,
+                    bg = ACCENT_ROW_BG,
+                    fg = ACCENT_ROW_TEXT,
+                    padH = 6f * density,
+                    padV = 2f * density,
+                    radius = 9f * density,
+                )
+            val text = base + " "
+            tv.text =
+                SpannableString(text + chip).apply {
+                    setSpan(span, text.length, text.length + chip.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                }
+        }
+    }
+}
+
+/** 背景：圆角淡红底 + 左侧一条实心酒红竖条。 */
+private class BarBackground(
+    @ColorInt private val bg: Int,
+    @ColorInt private val bar: Int,
+    private val radius: Float,
+    private val barWidth: Float,
+    private val barInset: Float,
+) : android.graphics.drawable.Drawable() {
+    private val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+
+    override fun draw(canvas: android.graphics.Canvas) {
+        val b = bounds
+        paint.color = bg
+        canvas.drawRoundRect(android.graphics.RectF(b), radius, radius, paint)
+        paint.color = bar
+        val barRect =
+            android.graphics.RectF(
+                b.left.toFloat(),
+                b.top + barInset,
+                b.left + barWidth,
+                b.bottom - barInset,
+            )
+        canvas.drawRoundRect(barRect, barWidth / 2f, barWidth / 2f, paint)
+    }
+
+    override fun setAlpha(alpha: Int) {
+        paint.alpha = alpha
+    }
+
+    override fun setColorFilter(colorFilter: android.graphics.ColorFilter?) {
+        paint.colorFilter = colorFilter
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun getOpacity(): Int = android.graphics.PixelFormat.TRANSLUCENT
+}
+
+/** C：淡红底 + 左侧竖条，文字改米色。 */
+open class AccentBarRow(context: Context) : BambooClick(context) {
     override fun onBindViewHolder(holder: PreferenceViewHolder) {
         super.onBindViewHolder(holder)
         runCatching {
             val ctx = holder.itemView.context
-            val radius = dpOf(ctx, 8).toFloat()
-            val fill =
-                android.graphics.drawable.GradientDrawable().apply {
-                    shape = android.graphics.drawable.GradientDrawable.RECTANGLE
-                    setColor(ACCENT_ROW_BG)
-                    cornerRadius = radius
-                }
+            val bg =
+                BarBackground(
+                    bg = ACCENT_BAR_BG,
+                    bar = ACCENT_ROW_BG,
+                    radius = dpOf(ctx, 8).toFloat(),
+                    barWidth = dpOf(ctx, 4).toFloat(),
+                    barInset = dpOf(ctx, 10).toFloat(),
+                )
             holder.itemView.background =
                 android.graphics.drawable.RippleDrawable(
                     android.content.res.ColorStateList.valueOf(0x33FFFFFF),
-                    fill,
+                    bg,
                     null,
                 )
             holder.itemView.findViewById<android.widget.TextView>(android.R.id.title)
-                ?.setTextColor(ACCENT_ROW_TEXT)
+                ?.setTextColor(ACCENT_BAR_TEXT)
             holder.itemView.findViewById<android.widget.TextView>(android.R.id.summary)
-                ?.setTextColor(ACCENT_ROW_SUMMARY)
+                ?.setTextColor(ACCENT_BAR_SUMMARY)
             holder.itemView.findViewById<android.widget.ImageView>(android.R.id.icon)
-                ?.setColorFilter(ACCENT_ROW_TEXT, android.graphics.PorterDuff.Mode.SRC_IN)
+                ?.setColorFilter(ACCENT_BAR_TEXT, android.graphics.PorterDuff.Mode.SRC_IN)
         }
     }
 }
@@ -212,15 +346,30 @@ open class AccentClick(context: Context) : BambooClick(context) {
     }
 }
 
-/** 整块酒红的行：用于「万象拼音」「设置向导」这类要抓眼球的入口。 */
-fun PreferenceGroup.addAccentPreference(
+/** 行不动、标题后面挂「新用户」胶囊：首页那个入口用它。 */
+fun PreferenceGroup.addAccentChipPreference(
+    title: String,
+    summary: String? = null,
+    @DrawableRes icon: Int? = null,
+    chip: String = "新用户",
+    onClick: (() -> Unit)? = null,
+) {
+    addPreference(
+        AccentChipRow(context, chip).apply {
+            setup(title, summary, icon, onClick)
+        },
+    )
+}
+
+/** 淡红底 + 左侧竖条：设置页里的「设置向导」用它。 */
+fun PreferenceGroup.addAccentBarPreference(
     title: String,
     summary: String? = null,
     @DrawableRes icon: Int? = null,
     onClick: (() -> Unit)? = null,
 ) {
     addPreference(
-        AccentRow(context).apply {
+        AccentBarRow(context).apply {
             setup(title, summary, icon, onClick)
         },
     )

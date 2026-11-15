@@ -632,11 +632,11 @@ class WanxiangFragment : PaddingPreferenceFragment() {
         onClick: () -> Unit,
     ) {
         addPreference(
-            com.osfans.trime.util.AccentRow(context).apply {
+            com.osfans.trime.util.AccentBarRow(context).apply {
+                setTitle(title)
+                setSummary(summary)
                 isIconSpaceReserved = false
                 isPersistent = false
-                this.title = title
-                this.summary = summary
                 setOnPreferenceClickListener {
                     onClick()
                     false

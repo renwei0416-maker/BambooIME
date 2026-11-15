@@ -17,7 +17,7 @@ import com.osfans.trime.data.packaging.SchemaPackStore
 import com.osfans.trime.ui.common.PaddingPreferenceFragment
 import com.osfans.trime.ui.texteditor.FileBrowserActivity
 import com.osfans.trime.util.addCategory
-import com.osfans.trime.util.addAccentPreference
+import com.osfans.trime.util.addAccentChipPreference
 import com.osfans.trime.util.addPreference
 import com.osfans.trime.util.navigateWithAnim
 
@@ -71,7 +71,7 @@ class MainFragment : PaddingPreferenceFragment() {
         preferenceScreen = preferenceManager.createPreferenceScreen(requireContext()).apply {
             // 万象拼音放最顶部：它是「第一次用要配的东西」，不能藏在中间。
             // 副标题按状态说人话：没就绪 -> 第一次用；就绪但没走向导 -> 还没配；配好了 -> 显示当前形态。
-            addAccentPreference(
+            addAccentChipPreference(
                 wanxiangTitle(),
                 wanxiangSummary(),
                 R.drawable.ic_baseline_text_fields_24,
