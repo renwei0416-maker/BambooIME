@@ -110,7 +110,14 @@ class WanxiangFragment : PaddingPreferenceFragment() {
                                 WanxiangPrefs.LAYOUT_9 to "九宫格（9 键，固定全拼）",
                             ),
                             WanxiangPrefs.layout,
-                        ) { WanxiangPrefs.layout = it; refresh() }
+                        ) {
+                            WanxiangPrefs.layout = it
+                            WanxiangPrefs.sanitize()
+                            if (it == WanxiangPrefs.LAYOUT_9) {
+                                toast("九键固定全拼：已把编码改成全拼、关掉辅助码和模糊音")
+                            }
+                            refresh()
+                        }
                     }
 
                     settingRow(
@@ -121,17 +128,20 @@ class WanxiangFragment : PaddingPreferenceFragment() {
                             if (WanxiangPrefs.encode == WanxiangPrefs.ENCODE_QUANPIN) "全拼" else "双拼"
                         },
                     ) {
-                        if (WanxiangPrefs.layout == WanxiangPrefs.LAYOUT_9) {
-                            toast("九键固定全拼，切回全键盘后可改")
-                        } else {
-                            pickString(
-                                "编码方式",
-                                listOf(
-                                    WanxiangPrefs.ENCODE_QUANPIN to "全拼",
-                                    WanxiangPrefs.ENCODE_SHUANGPIN to "双拼",
-                                ),
-                                WanxiangPrefs.encode,
-                            ) { WanxiangPrefs.encode = it; refresh() }
+                        pickString(
+                            "编码方式",
+                            listOf(
+                                WanxiangPrefs.ENCODE_QUANPIN to "全拼",
+                                WanxiangPrefs.ENCODE_SHUANGPIN to "双拼",
+                            ),
+                            WanxiangPrefs.encode,
+                        ) {
+                            if (it == WanxiangPrefs.ENCODE_SHUANGPIN && WanxiangPrefs.layout == WanxiangPrefs.LAYOUT_9) {
+                                toast("九键固定全拼：先把键盘形态换成 26 / 18 / 14 键")
+                            } else {
+                                WanxiangPrefs.encode = it
+                                refresh()
+                            }
                         }
                     }
 
@@ -145,33 +155,24 @@ class WanxiangFragment : PaddingPreferenceFragment() {
                             WanxiangPrefs.scheme,
                         ) {
                             WanxiangPrefs.scheme = it
-                            WanxiangPrefs.encode = WanxiangPrefs.ENCODE_SHUANGPIN
+                            if (WanxiangPrefs.layout == WanxiangPrefs.LAYOUT_9) {
+                                toast("已记下「$it」；九键固定全拼，换成 26 / 18 / 14 键后生效")
+                            } else {
+                                WanxiangPrefs.encode = WanxiangPrefs.ENCODE_SHUANGPIN
+                            }
                             refresh()
                         }
                     }
 
                     settingRow(
                         title = "辅助码",
-                        summary = if (ourId == null || !WanxiangCustom.isPro(ourId)) {
-                            "需要先装带辅助码的词库"
-                        } else if (WanxiangPrefs.layout == WanxiangPrefs.LAYOUT_9) {
-                            "九键没有字母键，辅助码用不上（切回全键盘后可开）"
-                        } else {
-                            when (WanxiangPrefs.aux) {
-                                WanxiangPrefs.AUX_DIRECT -> "直接辅助"
-                                WanxiangPrefs.AUX_INDIRECT -> "间接辅助"
-                                else -> "关闭"
-                            }
+                        summary = when {
+                            WanxiangPrefs.layout == WanxiangPrefs.LAYOUT_9 -> "九键不用辅助码"
+                            WanxiangPrefs.aux == WanxiangPrefs.AUX_DIRECT -> "直接辅助（用 Pro 词库）"
+                            WanxiangPrefs.aux == WanxiangPrefs.AUX_INDIRECT -> "间接辅助（用 Pro 词库）"
+                            else -> "关闭（用 Base 词库）"
                         },
                     ) {
-                        if (ourId == null || !WanxiangCustom.isPro(ourId)) {
-                            toast("先在「方案包与下载」里装带辅助码的词库")
-                            return@settingRow
-                        }
-                        if (WanxiangPrefs.layout == WanxiangPrefs.LAYOUT_9) {
-                            toast("九键下辅助码无效，切回全键盘再开")
-                            return@settingRow
-                        }
                         pickInt(
                             "辅助码",
                             listOf(
@@ -180,83 +181,37 @@ class WanxiangFragment : PaddingPreferenceFragment() {
                                 WanxiangPrefs.AUX_INDIRECT to "间接辅助",
                             ),
                             WanxiangPrefs.aux,
-                        ) { WanxiangPrefs.aux = it; refresh() }
+                        ) {
+                            WanxiangPrefs.aux = it
+                            if (WanxiangPrefs.layout == WanxiangPrefs.LAYOUT_9) {
+                                toast("已记下；九键没有字母键，换成 26 / 18 / 14 键后生效")
+                            }
+                            refresh()
+                        }
                     }
 
                     settingRow(
                         title = "模糊音",
                         summary = if (WanxiangPrefs.layout == WanxiangPrefs.LAYOUT_9) {
-                            "九键用不上"
+                            "九键当前不生效（切回全键盘后可开）"
                         } else if (WanxiangPrefs.fuzzy.isEmpty()) {
                             "关闭"
                         } else {
                             WanxiangPrefs.fuzzy.sorted().joinToString("、") { WanxiangPrefs.FUZZY_LABELS[it] ?: it }
                         },
                     ) {
-                        if (WanxiangPrefs.layout == WanxiangPrefs.LAYOUT_9) {
-                            toast("九键不跟随模糊音，切回全键盘再设")
-                            return@settingRow
-                        }
                         pickFuzzy()
                     }
 
                     settingRow(
                         title = "候选个数",
-                        summary = "${WanxiangPrefs.pageSize} 个（最大 6）",
+                        summary = "${WanxiangPrefs.pageSize} 个（最大 6，仅全键盘）",
                     ) {
                         pickInt(
                             "候选个数",
                             (3..6).map { it to "$it 个" },
                             WanxiangPrefs.pageSize,
                         ) { WanxiangPrefs.pageSize = it; refresh() }
-                    }
-
-                    settingRow(
-                        title = "用户词典（自动调频）",
-                        summary = if (WanxiangPrefs.userDict) "已开启" else "关闭",
-                    ) {
-                        pickBool("用户词典（自动调频）", WanxiangPrefs.userDict) {
-                            WanxiangPrefs.userDict = it; refresh()
-                        }
-                    }
-
-                    settingRow(
-                        title = "智能调频（上下文预测）",
-                        summary = if (!WanxiangPrefs.userDict) {
-                            "需要先开「用户词典」"
-                        } else if (WanxiangPrefs.contextual) {
-                            "已开启"
-                        } else {
-                            "关闭"
-                        },
-                    ) {
-                        if (!WanxiangPrefs.userDict) {
-                            toast("先打开「用户词典」")
-                            return@settingRow
-                        }
-                        pickBool("智能调频（上下文预测）", WanxiangPrefs.contextual) {
-                            WanxiangPrefs.contextual = it; refresh()
-                        }
-                    }
-
-                    settingRow(
-                        title = "九键候选个数",
-                        summary = "${WanxiangPrefs.t9PageSize} 个",
-                    ) {
-                        pickInt(
-                            "九键候选个数",
-                            (3..6).map { it to "$it 个" },
-                            WanxiangPrefs.t9PageSize,
-                        ) { WanxiangPrefs.t9PageSize = it; refresh() }
-                    }
-
-                    settingRow(
-                        title = "九键用户词典（自动调频）",
-                        summary = if (WanxiangPrefs.t9UserDict) "开启（官方默认）" else "关闭",
-                    ) {
-                        pickBool("九键用户词典（自动调频）", WanxiangPrefs.t9UserDict) {
-                            WanxiangPrefs.t9UserDict = it; refresh()
-                        }
                     }
 
                     settingRow(
