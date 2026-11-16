@@ -265,6 +265,20 @@ object WanxiangPrefs {
         ready().edit { remove(KEY_HINT_STATE); remove(KEY_HINT_STAMP) }
     }
 
+    /**
+     * 只重置「万象拼音」设置页那三项：候选个数 / 模糊音 / 是否调频。
+     *
+     * 编码方式、键盘形态、辅助码都归「设置向导」管，这里一个都不碰 —— 否则点一次
+     * 「恢复官方默认」就把用户在向导里做的选择全清掉，方案会当场变样。
+     */
+    fun resetScopeDefaults() {
+        ready().edit {
+            putInt(KEY_PAGE_SIZE, 6)
+            putBoolean(KEY_CONTEXTUAL, false)
+            putStringSet(KEY_FUZZY, emptySet())
+        }
+    }
+
     fun resetToDefaults() {
         ready().edit {
             putInt(KEY_LAYOUT, LAYOUT_26)

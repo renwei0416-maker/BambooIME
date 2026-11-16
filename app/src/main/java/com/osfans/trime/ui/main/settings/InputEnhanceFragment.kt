@@ -69,6 +69,16 @@ class InputEnhanceFragment : PaddingPreferenceFragment() {
                     ) {
                         AutoPairPrefs.quotes = it
                     }
+                    addSwitch(
+                        "引号左右轮替",
+                        "开（默认）＝引号键像普通键盘那样自己左右交替，轮到左引号时照样补全；" +
+                            "关＝永远只打左引号，靠补全补右半边",
+                        default = true,
+                        current = AutoPairPrefs.quoteAlternate,
+                        resetters = resetters,
+                    ) {
+                        AutoPairPrefs.quoteAlternate = it
+                    }
                 }
 
                 addCategory("说明", "什么情况下不会自动补") {

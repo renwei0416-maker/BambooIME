@@ -28,6 +28,7 @@ import com.osfans.trime.actions.glossary.GlossaryPrefs
 import com.osfans.trime.actions.handwriting.HandwritingWindow
 import com.osfans.trime.actions.ocr.OcrWindow
 import com.osfans.trime.actions.ocr.ThemeContrast
+import com.osfans.trime.data.packaging.PackageSchemaList
 import com.osfans.trime.data.packaging.SchemaPackageManager
 import com.osfans.trime.data.packaging.SchemaPackStore
 import com.osfans.trime.data.theme.ColorManager
@@ -67,6 +68,7 @@ class KeyPanelWindow : BoardWindow.NoBarBoardWindow() {
     private var rootView: View? = null
     private var bodyBox: LinearLayout? = null
     private var statusView: TextView? = null
+    private var t9Tab: TextView? = null
     private var baseTab: TextView? = null
     private var proTab: TextView? = null
 
@@ -159,7 +161,7 @@ class KeyPanelWindow : BoardWindow.NoBarBoardWindow() {
             }
         header.addView(statusView, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
 
-        // Base/Pro 两段胶囊：装不装 Pro 决定能不能点，省一格位置
+        // T9/Base/Pro 三段胶囊：点哪段就把**当前方案**切过去，不写任何偏好参数
         val capsule =
             LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -171,10 +173,12 @@ class KeyPanelWindow : BoardWindow.NoBarBoardWindow() {
                 setPadding(dp(2), dp(2), dp(2), dp(2))
                 clipToOutline = true
             }
-        baseTab = capsuleTab("Base") { switchPackage(SchemaPackStore.BASE_ID) }
-        proTab = capsuleTab("Pro") { switchPackage(SchemaPackStore.PRO_ID) }
+        t9Tab = capsuleTab("T9") { switchSchema(SCHEMA_T9) }
+        baseTab = capsuleTab("Base") { switchSchema(SCHEMA_BASE) }
+        proTab = capsuleTab("Pro") { switchSchema(SCHEMA_PRO) }
+        capsule.addView(t9Tab, LinearLayout.LayoutParams(dp(34), dp(24)))
         capsule.addView(baseTab, LinearLayout.LayoutParams(dp(40), dp(24)))
-        capsule.addView(proTab, LinearLayout.LayoutParams(dp(36), dp(24)))
+        capsule.addView(proTab, LinearLayout.LayoutParams(dp(34), dp(24)))
         header.addView(
             capsule,
             LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { marginEnd = dp(4) },
@@ -245,16 +249,20 @@ class KeyPanelWindow : BoardWindow.NoBarBoardWindow() {
 
     private fun rebuild() {
         val box = bodyBox ?: return
-        val pkg = WanxiangCustom.activePackage()
-        val isPro = WanxiangCustom.isPro(pkg)
+        // 状态行读**真实状态**，不用偏好拼：当前键盘取自 KeyboardWindow，
+        // 当前方案取自引擎，用户自己的方案（rime_ice / luna_pinyin 等）也照实显示。
+        val currentKb = keyboard()?.currentId.orEmpty()
+        val currentSchema = RimeDaemon.currentSchemaId
         statusView?.text = buildString {
-            append(if (isPro) "Pro" else "Base")
-            append(" · ").append(layoutName(WanxiangPrefs.layout))
-            append(" · ").append(if (WanxiangPrefs.encode == WanxiangPrefs.ENCODE_SHUANGPIN) "双拼" else "全拼")
-            if (WanxiangPrefs.aux != WanxiangPrefs.AUX_NONE) append(" · 辅助码")
+            append(keyboardLabel(currentKb))
+            append(" · ")
+            append(currentSchema.ifEmpty { "未选方案" })
         }
-        baseTab?.let { styleTab(it, !isPro, SchemaPackStore.isInstalled(SchemaPackStore.BASE_ID)) }
-        proTab?.let { styleTab(it, isPro, SchemaPackStore.isInstalled(SchemaPackStore.PRO_ID)) }
+        val baseInstalled = SchemaPackStore.isInstalled(SchemaPackStore.BASE_ID)
+        val proInstalled = SchemaPackStore.isInstalled(SchemaPackStore.PRO_ID)
+        t9Tab?.let { styleTab(it, currentSchema == SCHEMA_T9, baseInstalled) }
+        baseTab?.let { styleTab(it, currentSchema == SCHEMA_BASE, baseInstalled) }
+        proTab?.let { styleTab(it, currentSchema == SCHEMA_PRO, proInstalled) }
 
         box.removeAllViews()
         val current = keyboard()?.currentId.orEmpty()
@@ -430,28 +438,32 @@ class KeyPanelWindow : BoardWindow.NoBarBoardWindow() {
         }
     }
 
-    private fun switchPackage(target: String) {
-        val name = if (target == SchemaPackStore.PRO_ID) "Pro" else "Base"
-        if (!SchemaPackStore.isInstalled(target)) {
-            toast("还没装 $name 词库：设置 → 万象拼音 → 方案包与下载")
+    /**
+     * 切**当前方案**（不是切偏好）。
+     *
+     * 只做三件事：激活方案所在的包 → 把该包的 `schema_list` 写成只剩这个方案 → 部署。
+     * 编码方式/键盘形态/辅助码一律不写：那些归「设置向导」，这里只切当前用哪个方案。
+     */
+    private fun switchSchema(schema: String) {
+        if (RimeDaemon.currentSchemaId == schema) {
+            toast("当前就是这个方案")
             return
         }
-        if (SchemaPackStore.isActive(target)) {
-            toast("已经在用 $name")
+        val pkg =
+            if (schema == SCHEMA_PRO) SchemaPackStore.PRO_ID else SchemaPackStore.BASE_ID
+        if (!SchemaPackStore.isInstalled(pkg)) {
+            toast("您没有部署当前方案，进「设置向导」中可部署。")
             return
         }
-        // Pro 就是「双拼 + 辅助码」，Base 不带辅助码：这里不做推断，就按这个固定语义
-        WanxiangPrefs.aux =
-            if (target == SchemaPackStore.PRO_ID) WanxiangPrefs.AUX_DIRECT else WanxiangPrefs.AUX_NONE
-        WanxiangPrefs.sanitize()
-        if (!WanxiangCustom.writeAll(target)) {
-            toast("写配置失败，去设置页看看")
-            return
-        }
-        SchemaPackageManager.setActivePackageId(target)
-        toast("正在切到 $name，部署约 2–4 分钟")
-        runCatching { RimeDaemon.restartRime(fullCheck = true) }
-            .onFailure { Timber.w(it, "key panel: restart rime failed") }
+        toast("正在切到 $schema，部署中…")
+        runCatching {
+            SchemaPackageManager.setActivePackageId(pkg)
+            if (!PackageSchemaList.write(pkg, listOf(schema))) {
+                toast("写方案列表失败：检查 Documents 目录是否可写")
+                return
+            }
+            RimeDaemon.restartRime(fullCheck = false)
+        }.onFailure { Timber.w(it, "key panel: switch schema failed") }
         rebuild()
     }
 
@@ -491,6 +503,20 @@ class KeyPanelWindow : BoardWindow.NoBarBoardWindow() {
             includeFontPadding = false
             isClickable = true
             setOnClickListener { onTap() }
+        }
+
+    /** 键盘 id → 显示名；认不出就直接显示 id，绝不假装成我们的键盘。 */
+    private fun keyboardLabel(id: String): String =
+        when (id) {
+            "" -> "未显示键盘"
+            "default" -> "26 键"
+            "wanxiang_t9" -> "九宫格"
+            "wanxiang_18key" -> "18 键"
+            "wanxiang_14key" -> "14 键"
+            "qijian" -> "四排七键"
+            "xiaohe" -> "小鹤"
+            "wanxiang_english" -> "English"
+            else -> id
         }
 
     private fun layoutName(layout: Int): String =
@@ -581,6 +607,11 @@ class KeyPanelWindow : BoardWindow.NoBarBoardWindow() {
 
         /** 每行最多几格（多了自动换行）。 */
         const val COLUMNS = 4
+
+        /** 当前方案（三个官方方案 id）。 */
+        const val SCHEMA_T9 = "wanxiang_t9"
+        const val SCHEMA_BASE = "wanxiang"
+        const val SCHEMA_PRO = "wanxiang_pro"
 
         fun isToken(text: String): Boolean = text.equals(TOKEN, ignoreCase = true)
 

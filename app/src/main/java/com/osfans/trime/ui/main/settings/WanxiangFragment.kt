@@ -164,7 +164,8 @@ class WanxiangFragment : PaddingPreferenceFragment() {
 
                     settingRow(
                         title = "恢复官方默认",
-                        summary = "把上面这些改回官方默认值（辅助码关闭、调频关闭、候选 6、模糊音全关），然后应用",
+                        summary = "只把候选个数（6）、模糊音（全关）、是否调频（关）恢复成官方默认，然后应用；" +
+                            "编码方式、键盘形态、辅助码不动（那些在「设置向导」里）",
                     ) {
                         confirmRestoreDefaults()
                     }
@@ -540,7 +541,7 @@ class WanxiangFragment : PaddingPreferenceFragment() {
                 return@launch
             }
             toast("正在部署，请稍候…")
-            deployToOurPackage(target)
+            deployToOurPackage(target, fullCheck = false)
             refresh()
         }
     }
@@ -550,12 +551,18 @@ class WanxiangFragment : PaddingPreferenceFragment() {
      *
      * 注意：这里不能用 `selectSchemaCrossPackage("wanxiang_pro")` —— 那个 API 是按方案 id
      * 反查包的，用户自己的包里也有同名 `wanxiang_pro` 时会被切到人家的包（实测踩过）。
-     * 所以一律按包 id 激活，部署则由 `restartRime(fullCheck = true)` 完成（它会读
-     * `default.custom.yaml` 里的 schema_list，我们刚刚只写了一个方案）。
+     * 所以一律按包 id 激活，部署则由 `restartRime` 完成（它会读 `default.custom.yaml`
+     * 里的 schema_list，我们刚刚只写了一个方案）。
+     *
+     * [fullCheck] 只在**装包/换包/更新包**时用 true（无条件重编词库，2–4 分钟）；
+     * 应用设置只需要重新生成方案配置，走 false 的增量比对（只重建改动项，几十秒）。
      */
-    private suspend fun deployToOurPackage(pkgId: String = WanxiangCustom.targetPackage()) {
+    private suspend fun deployToOurPackage(
+        pkgId: String = WanxiangCustom.targetPackage(),
+        fullCheck: Boolean = true,
+    ) {
         SchemaPackageManager.setActivePackageId(pkgId)
-        runCatching { RimeDaemon.restartRime(fullCheck = true) }
+        runCatching { RimeDaemon.restartRime(fullCheck = fullCheck) }
             .onFailure { toast("部署失败：${it.message ?: it.javaClass.simpleName}") }
     }
 
@@ -563,13 +570,16 @@ class WanxiangFragment : PaddingPreferenceFragment() {
         AlertDialog.Builder(requireContext())
             .setTitle("恢复官方默认")
             .setMessage(
-                "会把方案设置改回官方默认：辅助码关闭、用户词典与智能调频关闭、" +
-                    "候选 6 个、模糊音全部关闭、26 键全拼。\n\n" +
+                "只恢复这三项：\n\n" +
+                    "· 候选个数 → 6\n" +
+                    "· 模糊音 → 全部关闭\n" +
+                    "· 是否调频 → 关闭\n\n" +
+                    "编码方式、键盘形态、辅助码不受影响（那些在「设置向导」里改）。\n" +
                     "改完会立刻写盘并重新部署一次。",
             )
             .setNegativeButton("取消", null)
             .setPositiveButton("恢复") { _, _ ->
-                WanxiangPrefs.resetToDefaults()
+                WanxiangPrefs.resetScopeDefaults()
                 applyAndDeploy()
             }
             .show()

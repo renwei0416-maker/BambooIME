@@ -407,15 +407,17 @@ object BambooActions {
         // 所以必须放在总开关之前：用户关掉 AI/回退后引号键照样能用。
         if (token == BambooTokens.QUOTE || token == BambooTokens.QUOTE_SINGLE) {
             val isDouble = token == BambooTokens.QUOTE
-            // 两个开关都开才走补全：总开关「符号补全」+ 子开关「引号也配对」。
-            // 任意一个关了，就把原键还给引擎，回到原来的引号交替行为。
-            if (AutoPairPrefs.enabled && AutoPairPrefs.quotes) {
+            // 「引号左右轮替」只决定走哪条路，AutoPair 的补全逻辑一行不动：
+            //   关 → 提交一个普通左引号，AutoPair 照常补全，和别的成对符号完全一致；
+            //   开 → 把原键还给引擎，跟键盘上那个引号键一模一样，由 librime 自己左右交替；
+            //        轮到左引号时 AutoPair 命中补全，轮到右引号时走「关掉重复的右半边」。
+            if (!AutoPairPrefs.quoteAlternate) {
                 // 先把正在打的拼音上屏，再提交真正的左引号；
                 // 右半边与光标居中由 AutoPair 在 commitText 里完成。
                 api.commitComposition()
                 service.commitText(if (isDouble) "\u201C" else "\u2018")
             } else {
-                // 补全没开（或「引号也配对」关了）：把原键还给引擎，引号交替照旧
+                // 普通键盘上的那个引号键：交替交给引擎
                 api.simulateKeySequence(if (isDouble) "\"" else "'")
             }
             return true
