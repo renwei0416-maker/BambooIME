@@ -118,3 +118,42 @@ Rime 用户数据各自独立：
 - API Key 用 Android Keystore 加密，不随备份迁移，换机需重填。
 - 手写一次识别一个字；抬笔识别，不是边写边识（见 `docs/ROADMAP.md`）。
 - 仅 arm64-v8a（x86_64 需改 `gradle.properties` 的 `buildABI`）。
+
+
+## 发布产物目录约定（每个版本都必须遵守）
+
+一次发版会产生两组文件，**都必须按版本各自建目录**，不许散落在上级目录里。
+
+### 1. 发布资产 → `BambooIME\dist\release-<版本>\`
+
+只放会被上传到 GitHub Release 的三件（版本号与 tag 一致）：
+
+```
+dist\release-3.0.0\
+    BambooIME-3.0.0-release-arm64-v8a.apk
+    themes-3.0.0.7z
+    whats-new-3.0.0.md
+```
+
+开发期的中间包（`*-dev-<代号>-arm64-v8a-debug.apk`）仍放在 `dist\` 根目录，不进 release 目录。
+
+### 2. 本地备份 → `BambooIME\backup\<日期>_<版本>\`
+
+一个版本一个目录，装下该版本的全部产物 + 一个源码 7z（不再往 `backup\` 根目录扔任何文件）：
+
+```
+backup\2026-11-16_3.0.0\
+    BambooIME-3.0.0-release-arm64-v8a.apk
+    themes-3.0.0.7z
+    whats-new-3.0.0.md
+    README-<版本>-live.md          线上 README 原文
+    BambooIME-<版本>-src.7z        源码包（源码 zip + 主 bundle + 子模块 bundle + librime 补丁 + keys + theme）
+    BambooIME-main-<版本>.bundle    主仓库全部 refs
+    BambooIME-src-<版本>.zip       git archive 的受控文件
+    submodules\*.bundle            各子模块 --all
+    librime-working\               子模块里未提交的补丁文件
+    keys\  theme\
+    SUBMODULES.txt                 子模块锁定提交 + bundle 名
+    SHA256SUMS.txt                 本目录全部文件校验和
+    RESTORE.md                     恢复步骤
+```
