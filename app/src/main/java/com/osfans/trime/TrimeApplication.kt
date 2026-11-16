@@ -23,6 +23,7 @@ import com.osfans.trime.data.clipboard.SyncClipboardManager
 import com.osfans.trime.data.db.ClipboardHelper
 import com.osfans.trime.data.db.SyncEntryType
 import com.osfans.trime.data.prefs.AppPrefs
+import com.osfans.trime.data.theme.BambooThemeSeed
 import com.osfans.trime.data.theme.ColorManager
 import com.osfans.trime.actions.bamboo.BambooPrefs
 import com.osfans.trime.data.theme.ThemeManager
@@ -119,6 +120,8 @@ class TrimeApplication : Application() {
             }
             val sharedPreferences = PreferenceManager.getDefaultSharedPreferences(applicationContext)
             val appPrefs = AppPrefs.initDefault(sharedPreferences)
+            // 出厂主题（Gboard）+ 字体先铺到用户主题目录，必须在首次读取主题之前。
+            BambooThemeSeed.ensure(this)
             ThemeManager.initNative()
             // record last pid for crash logs
             appPrefs.internal.pid.apply {
