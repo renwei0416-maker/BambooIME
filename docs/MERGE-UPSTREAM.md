@@ -129,6 +129,28 @@ git -C app/src/main/jni/librime apply "$P/rime_api_impl.h.patch"
 
 产物：`dist\BambooIME-3.0.0-dev-syncinput-arm64-v8a-debug.apk`（113,981,191 B，sha256 `33b1ba98c62b3a7f674f2924e4d78ae501a0915a7732e682180ddf75a1c341b9`）
 
-### 2026-11-17 · `59d508e3 update librime`（子模块指针，待做）
+### 2026-11-17 · `59d508e3 update librime`（子模块指针，已合）
 
-见第 5 节流程；要点：先把 `docs/upstream-patches/librime/` 的两个补丁在新指针上 `git apply --check`，再切指针、全量重编、按第 5 节回归。
+| 项 | 值 |
+| --- | --- |
+| 方式 | 直接切子模块指针（`59d508e3` 只改 2 个指针，无代码冲突） |
+| `app/src/main/jni/librime` | `3f778e97` → **`4dcfb5f3`**（17 个提交，含 `Merge librime-official/master`） |
+| `app/src/main/jni/librime-plugins/librime-ids-reverse` | `d1069442` → **`9d7a67e2`**（`ids_variants`、按字件搜索；我们不使用，跟随上游） |
+| 嵌套依赖 | `deps/googletest` `063de7e9`、`deps/leveldb` `bb74ef73`、`deps/yaml-cpp` `56e3bb55`（yaml-cpp 0.9.0） |
+| 我们的 11 行补丁 | `git apply --check` 在 `4dcfb5f3` 上**仍然通过**，已重打（`src/rime_api.h` +1、`src/rime_api_impl.h` +10） |
+
+上游 librime 里对我们最有价值的四条：`e930f57b`（**并行编译独立词库**，直指部署耗时）、`9777cb2f`（用户词典内存排序缓存）、`0ed3f95b`（编译期降内存）、`0e6b3090`（按运行时条件启用组件，新增 `compile_unit.cc`）。
+
+验证（2026-11-17）：
+
+- [x] `git apply --check` 两个补丁均通过；应用后 `git diff --stat` = `src/rime_api.h +1`、`src/rime_api_impl.h +10`
+- [x] `:app:assembleDebug` 通过（3m59s），日志里可见 `src/rime/lever/compile_unit.cc` 被编译 → 确认是**新** librime 源码；无 `error:`
+- [x] `:app:assembleRelease` 通过（5m22s），APK 77,712,223 B，V3 签名 `CN=BambooIME` `b24cf2f7…17d127`，`versionCode=20261117 versionName=3.0.0`
+- [x] dex 探针（debug 33.9 MB dex / release 6.7 MB dex）：`BambooKeyPanel`/`BambooAiPanel`/`BambooGlossary`/`wanxiang-base`/`wanxiang_14key`/`exitAll`/`CustomSignature`/`WenquxingTips`/`GlossaryTips`/`AutoPair`/`PieceTokenizer`/`ClipboardExtractScan` 全部命中
+- [x] native 产物齐全：`librime_jni.so`（debug 13.6 MB / release 5.3 MB）、`libbamboo_handwriting.so`、`libbamboo_ocr.so`
+- [ ] 真机冒烟 + **部署耗时对比**（预期明显变短）：打字 / 九键 / 辅助码 / 长句 / 手写 / 拍照 / 两个面板 / 文曲星 / 外语学习
+
+产物：`dist\BambooIME-3.0.0-dev-upstream-merged-arm64-v8a-debug.apk`（116,902,576 B，sha256 `725a89e8…74f0e6cd`）、
+`dist\BambooIME-3.0.0-dev-upstream-merged-arm64-v8a-release.apk`（77,712,223 B，sha256 `9716eacc…d98`）
+
+合并完成状态：**上游 `lyraime` 的 2 个提交已全部并入**（`HEAD` 到 `59d508e3` 无遗漏）。
