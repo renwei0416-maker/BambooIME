@@ -86,3 +86,91 @@ discoverPackages().find { pkg -> pkg.schemas.any { it.id == schemaId } }?.id
 **未改动 `findPackageForSchema()` 本身**（它是上游代码，改它会波及所有调用方）。
 
 `ensureActivePackage()` 是我们新增的（首次安装、只有一个包时自动选中，避免 `userDataDir` 退回 shared 目录导致部署失败）。详见 `../UPSTREAM-DIFF.md` 里该文件的增删行数。
+
+---
+
+## 3. `librime` 子模块 · 给 `RimeCandidate` 补 `type` 字段
+
+**子模块**：`app/src/main/jni/librime`（`https://github.com/Carlson24/librime-custom.git`，当前指针 `3f778e9`「fix: 优化长句转换性能」）
+**文件**：`src/rime_api.h`、`src/rime_api_impl.h`（快照与补丁放在 [`librime/`](./librime/)：`rime_api.h.orig` / `rime_api.h.patch` / `rime_api_impl.h.orig` / `rime_api_impl.h.patch`）
+
+### 上游原行为
+
+C++ 侧的 `Candidate` 一直有来源标记（`src/rime/candidate.h`）：
+
+```cpp
+const string& type() const { return type_; }   // recognized by translators in learning phase
+```
+
+但 **C API 的 `RimeCandidate` 没有透出它**：
+
+```c
+typedef struct rime_candidate_t {
+  char* text;
+  char* comment;
+  void* reserved;
+} RimeCandidate;
+```
+
+而我们的 JNI（`app/src/main/jni/librime_jni/`，**这部分在分叉点 `094e6894` 里就存在，不是我们改的**）已经有三处在读 `candidate.type`：
+
+- `helper-types.h:51` `type(c.type ? c.type : "") {}`
+- `helper-types.h:129-130` `if (candidate.type) { destCandidates.back().type = candidate.type; }`
+- `objconv.h:65` `*JString(env, candidate.type)` → 构造 Kotlin 的 `CandidateProto`
+
+`CandidateProto` 的 `type` 会被候选视图用来右键/长按操作（`PagedCandidatesUi.kt:119 onCandidateAction(position, text, candidate.type, v)`、`BaseUnrolledCandidateWindow.kt:143 showCandidateActionMenu(..., type = holder.type)`）。
+
+### 症状
+
+子模块指针 `3f778e9` 的 `src/rime_api.h` **没有** `char* type`，所以：
+
+- 干净 clone / `git submodule update` 之后，JNI 里那句 `c.type` **编译不过**；
+- 只有把下面这 11 行补回去才能构建。
+
+也就是说：这 11 行是「让子模块 HEAD 与我们的 JNI 期望对齐」的**必需品**，不是可选优化。
+
+### 我们补了什么（`librime/*.patch`，共 11 行）
+
+1. `src/rime_api.h`：结构体加一个字段
+
+   ```c
+   typedef struct rime_candidate_t {
+     char* text;
+     char* comment;
+     char* type;      // ← 新增
+     void* reserved;
+   } RimeCandidate;
+   ```
+
+2. `src/rime_api_impl.h`：
+   - `rime_candidate_copy()` 里把 `src->type()` 拷进 `dest->type`（空串则给 `nullptr`）；
+   - `RimeFreeContext()`、`RimeCandidateListNext()`、`RimeCandidateListEnd()` 三处释放路径各补 `delete[] ...candidates[i].type`，避免泄漏。
+
+### 怎么验证
+
+```powershell
+# 1. 子模块是否干净（应只剩 plugins/ 未跟踪）
+git -C app/src/main/jni/librime status --porcelain
+
+# 2. 补丁能重新打上
+git -C app/src/main/jni/librime stash            # 或手动恢复干净
+$P = (Resolve-Path docs/upstream-patches/librime).Path
+git -C app/src/main/jni/librime apply "$P/rime_api.h.patch"
+git -C app/src/main/jni/librime apply "$P/rime_api_impl.h.patch"
+
+# 3. 编译 app 的 native 部分，确认 JNI 里 c.type 不再报错
+.\gradlew :app:assembleDebug
+```
+
+功能侧验证：随便打几个字，长按/右键候选 → 候选操作菜单能弹出（它需要 `type` 才能判断候选来源）。
+
+### 合并上游时注意（**升级 librime 前必读**）
+
+- 上游 `e5b2f010` 只动 Kotlin，**不影响这里**；
+- 但上游 `59d508e3 update librime` 会把子模块指针从 `3f778e9` 推到 `4dcfb5f3`（librime 17 个提交）。我核对过 `4dcfb5f3` 的 `rime_api.h` **同样没有** `char* type`，所以：
+  1. 先 `git submodule` 切到目标提交；
+  2. **立刻重打这两个补丁**（否则编译直接失败，而且报错点会落在 `helper-types.h` / `objconv.h`，很容易误以为是 JNI 的问题）；
+  3. 再全量重编（librime 全量编译十几分钟）并回归：部署时长、九键、辅助码、长句转换、候选操作菜单。
+- 如果上游哪天在 C API 里正式加了 `type`（或换了字段名），**以他们的为准**，把这两个补丁删掉、改为按新结构适配 JNI；
+- 这个补丁目前只存在于工作区、没有提交进子模块（`git -C app/src/main/jni/librime status` 会显示 ` M src/rime_api.h`、` M src/rime_api_impl.h`），所以**换机 clone 或 `submodule update` 都会丢**——这也是本节存在的原因。
+

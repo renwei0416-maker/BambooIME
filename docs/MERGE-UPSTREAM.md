@@ -76,3 +76,28 @@ git rebase --onto upstream/lyraime 094e6894
   这样 `UPSTREAM-DIFF.md` 就只统计「最近一次合并之后我们又改了什么」；
 - 如果上游把 `findPackageForSchema()` 改好了（例如优先当前活动包），把 `docs/upstream-patches/` 里第 1 节标记为「已并入上游，可回退」，
   并把 `PackageListFragment` 的 `applySelection()` 简化回调用上游 API。
+
+## 5. 升级 `librime` 子模块前必读（本地 11 行补丁）
+
+`app/src/main/jni/librime` 里有 **11 行未提交进子模块的本地改动**：给 C API 的 `RimeCandidate`
+补 `char* type` 字段（`src/rime_api.h`），并在 `src/rime_api_impl.h` 的拷贝/释放路径上同步管理这块内存。
+
+这 11 行不是可选项——`librime_jni` 里 `helper-types.h:51`、`:129-130`、`objconv.h:65` 早在分叉点
+`094e6894` 就在读 `candidate.type`，没有它 JNI 编译不过。
+
+**所以每次动子模块指针（包括上游 `59d508e3 update librime` 那次）都要按这个顺序：**
+
+```powershell
+# 1. 切指针
+git submodule update --init app/src/main/jni/librime
+# 2. 立刻重打补丁（否则编译报错会落在 librime_jni，容易误判）
+$P = (Resolve-Path docs/upstream-patches/librime).Path
+git -C app/src/main/jni/librime apply "$P/rime_api.h.patch"
+git -C app/src/main/jni/librime apply "$P/rime_api_impl.h.patch"
+# 3. 全量重编（librime 十几分钟）+ 回归：部署时长 / 九键 / 辅助码 / 长句 / 候选操作菜单
+```
+
+细节与验证步骤见 [`upstream-patches/README.md`](./upstream-patches/README.md) 第 3 节；
+补丁与上游原始快照在 [`upstream-patches/librime/`](./upstream-patches/librime/)。
+
+若上游换了这套 C 结构（例如正式加了 `type` 或改名），**以上游为准**，删掉这两个补丁并按新结构适配 JNI。

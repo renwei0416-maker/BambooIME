@@ -1,0 +1,12 @@
+diff --git a/src/rime_api.h b/src/rime_api.h
+index 5b8985d..c2a48d3 100644
+--- a/src/rime_api.h
++++ b/src/rime_api.h
+@@ -127,6 +127,7 @@ typedef struct {
+ typedef struct rime_candidate_t {
+   char* text;
+   char* comment;
++  char* type;
+   void* reserved;
+ } RimeCandidate;
+ 
