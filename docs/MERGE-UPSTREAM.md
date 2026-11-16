@@ -153,4 +153,10 @@ git -C app/src/main/jni/librime apply "$P/rime_api_impl.h.patch"
 产物：`dist\BambooIME-3.0.0-dev-upstream-merged-arm64-v8a-debug.apk`（116,902,576 B，sha256 `725a89e8…74f0e6cd`）、
 `dist\BambooIME-3.0.0-dev-upstream-merged-arm64-v8a-release.apk`（77,712,223 B，sha256 `9716eacc…d98`）
 
-合并完成状态：**上游 `lyraime` 的 2 个提交已全部并入**（`HEAD` 到 `59d508e3` 无遗漏）。
+合并完成状态：**上游 `lyraime` 的 2 个提交已全部并入并建立血缘**。
+
+- 内容合并：`04631e05`（cherry-pick `e5b2f010`）+ `11bd4409`（子模块指针 → `4dcfb5f3` / `9d7a67e2`）
+- 血缘合并：`73ec74b3`（`git merge --no-ff origin/lyraime`，**空树改动**，仅把上游两个提交变成 HEAD 的祖先）
+- 结果：`git rev-list --left-right --count HEAD...origin/lyraime` = **155 / 0**（领先 155，落后 0）；
+  `merge-base --is-ancestor e5b2f010 HEAD` 与 `59d508e3 HEAD` 均为真
+- 下一次上游有新提交时，直接 `git merge origin/lyraime` 即可，不会再重复提示这两个旧提交
