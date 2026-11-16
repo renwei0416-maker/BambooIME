@@ -65,6 +65,8 @@ class WanxiangSetupFragment : Fragment() {
     private lateinit var next: Button
 
     private var page = 0
+
+    private val history = ArrayDeque<Int>()
     private var busy = false
 
     private val pages = 6
@@ -104,7 +106,13 @@ class WanxiangSetupFragment : Fragment() {
         }
         prev = Button(requireContext()).apply {
             text = "上一步"
-            setOnClickListener { if (page > 0) { page--; render() } }
+            setOnClickListener {
+                val back = history.removeLastOrNull()
+                if (back != null && page > 0) {
+                    page = back
+                    render()
+                }
+            }
         }
         next = Button(requireContext()).apply {
             text = "下一步"
@@ -128,8 +136,9 @@ class WanxiangSetupFragment : Fragment() {
         // 先留一份快照，若最后没点「完成并应用」就原样还原，避免显示值和实际文件不一致。
         backup = WanxiangPrefs.snapshotAll()
         applied = false
-        WanxiangPrefs.resetToDefaults()
         page = 0
+        history.clear()
+        WanxiangPrefs.resetToDefaults()
         render()
     }
 
@@ -153,6 +162,8 @@ class WanxiangSetupFragment : Fragment() {
             return
         }
         if (page < pages - 1) {
+            // 「上一步」要退回用户真正来的那一页：跳过双拼/辅助码时，栈里记的是跳转前的页
+            history.addLast(page)
             page ++
             // 九键只能是全拼、也不带辅助码 → 直接进收尾；全拼跳过双拼页
             if (page == 3 && (WanxiangPrefs.layout == WanxiangPrefs.LAYOUT_9 ||

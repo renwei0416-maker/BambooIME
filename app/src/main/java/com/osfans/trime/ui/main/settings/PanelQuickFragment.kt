@@ -112,15 +112,23 @@ class PanelQuickFragment : PaddingPreferenceFragment() {
             },
         )
         screen.addPreference(
-            Preference(context).apply {
-                key = "codes_note"
-                title = ""
-                summary =
-                    "面板里点一下「外语学习」也能开关，效果和打这份码一样。"
+            BambooClick(context).apply {
+                key = "reset_first_hint"
+                title = "重新显示首次提示"
+                summary = "把「还没配好」那张提示卡的状态清掉，切回键盘会再弹一次"
                 isIconSpaceReserved = false
-                isSelectable = false
+                setOnPreferenceClickListener {
+                    WanxiangPrefs.resetHint()
+                    toast("已重置，切回键盘会再弹一次")
+                    refreshScreen()
+                    true
+                }
             },
         )
+    }
+
+    private fun toast(msg: String) {
+        Toast.makeText(requireContext(), msg, Toast.LENGTH_SHORT).show()
     }
 
     private fun refreshScreen() {
