@@ -33,6 +33,14 @@ object WenquxingStore {
     /** 已载入的包名（按载入顺序）。 */
     fun packNames(): List<String> = packs.map { it.title }
 
+    /**
+     * 已载入包的 **id**（文件名去掉 `.bwx`，如 `mingju`）。
+     *
+     * 启用状态一律按 id 存：标题是可以改的展示名，用它当 key 会一改就对不上
+     * （3.3.0 的「全不勾」就是这么来的）。
+     */
+    fun packIds(): List<String> = packs.map { it.name }
+
     fun builtinDir(context: Context): File = File(context.filesDir, PRIVATE_DIR)
 
     fun userDir(): File =
@@ -77,7 +85,7 @@ object WenquxingStore {
             }
             loaded = true
             // 内置包集合变了：按默认表种一次启用状态（只种一次，不覆盖用户的选择）
-            WenquxingPrefs.ensureEnabledSeeded(packs.map { it.name })
+            WenquxingPrefs.ensureEnabledSeeded(packs.map { it.name }, packs.map { it.title })
             com.osfans.trime.util.BambooLog.wq.d(
                 "wenquxing",
                 "loaded packs=" + packs.size + " " + packs.joinToString(",") { it.name },

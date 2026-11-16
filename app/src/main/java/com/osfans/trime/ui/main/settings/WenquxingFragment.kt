@@ -496,23 +496,31 @@ class WenquxingFragment : PaddingPreferenceFragment() {
     }
 
     private fun packSummary(): String {
-        val names = WenquxingStore.packNames()
-        if (names.isEmpty()) return "还没有载入任何包"
-        val enabled = names.count { WenquxingPrefs.isPackEnabled(it) }
-        return "共 ${names.size} 个包，启用 $enabled 个"
+        val ids = WenquxingStore.packIds()
+        if (ids.isEmpty()) return "还没有载入任何包"
+        val enabled = ids.count { WenquxingPrefs.isPackEnabled(it) }
+        return "共 ${ids.size} 个包，启用 $enabled 个"
     }
 
+    /**
+     * 词包多选：**显示标题、存取 id**。
+     *
+     * 这两个名字不能混：标题来自 txt 首个 `#` 行、可以改；id 是文件名。
+     * 3.3.0 拿标题当 key，导致上线后十个全不勾。
+     */
     private fun showPackDialog() {
-        val names = WenquxingStore.packNames().toTypedArray()
-        if (names.isEmpty()) {
+        val ids = WenquxingStore.packIds()
+        val titles = WenquxingStore.packNames()
+        if (ids.isEmpty()) {
             Toast.makeText(requireContext(), "没有找到词包", Toast.LENGTH_SHORT).show()
             return
         }
-        val checked = BooleanArray(names.size) { WenquxingPrefs.isPackEnabled(names[it]) }
+        val labels = titles.toTypedArray()
+        val checked = BooleanArray(ids.size) { WenquxingPrefs.isPackEnabled(ids[it]) }
         AlertDialog.Builder(requireContext())
             .setTitle("选择要用的词包")
-            .setMultiChoiceItems(names, checked) { _, which, value ->
-                WenquxingPrefs.setPackEnabled(names[which], value)
+            .setMultiChoiceItems(labels, checked) { _, which, value ->
+                WenquxingPrefs.setPackEnabled(ids[which], value)
             }
             .setPositiveButton("好") { _, _ -> refresh() }
             .show()
@@ -534,7 +542,8 @@ class WenquxingFragment : PaddingPreferenceFragment() {
                 } != null
             }.getOrDefault(false)
         if (ok) {
-            // 刚导入的包直接启用：白名单模型下新包默认是关的，用户导入就是想用
+            // 刚导入的包直接启用：白名单模型下新包默认是关的，用户导入就是想用。
+            // 这里的 key 必须是 id（文件名去掉 .bwx），和词包列表用的是同一套。
             WenquxingPrefs.setPackEnabled(target.name.removeSuffix(".bwx"), true)
             WenquxingStore.reload(context)
             refresh()

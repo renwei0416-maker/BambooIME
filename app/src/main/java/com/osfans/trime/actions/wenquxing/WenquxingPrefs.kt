@@ -114,17 +114,40 @@ object WenquxingPrefs {
      *    既可能是"用户全开"，也可能是"包列表还没准备好就种过"（3.2.0 的 bug），
      *    两者无法区分，一律按默认表处理。
      */
-    fun ensureEnabledSeeded(packNames: List<String>) {
-        if (packNames.isEmpty()) return
-        if (p().getStringSet(KEY_ENABLED, null) != null) return
-        val legacyOff = p().getStringSet(KEY_DISABLED_LEGACY, null).orEmpty()
-        val seeded =
-            if (legacyOff.isEmpty()) {
-                packNames.filter { it in DEFAULT_ENABLED }.toSet()
-            } else {
-                packNames.filter { it !in legacyOff }.toSet()
-            }
-        p().edit().putStringSet(KEY_ENABLED, seeded).apply()
+    fun ensureEnabledSeeded(packIds: List<String>, titles: List<String> = emptyList()) {
+        if (packIds.isEmpty()) return
+        val stored = p().getStringSet(KEY_ENABLED, null)
+        if (stored == null) {
+            val legacyOff = p().getStringSet(KEY_DISABLED_LEGACY, null).orEmpty()
+            val seeded =
+                if (legacyOff.isEmpty()) {
+                    packIds.filter { it in DEFAULT_ENABLED }.toSet()
+                } else {
+                    packIds.filter { it !in legacyOff }.toSet()
+                }
+            p().edit().putStringSet(KEY_ENABLED, seeded).apply()
+            return
+        }
+        // 归一化：3.3.0 的设置页曾把「标题」写进这里，遇到就按 标题→id 映射回来，
+        // 认不出来的直接丢掉，避免脏数据把启用状态搅乱。
+        val idSet = packIds.toSet()
+        val titleToId = titles.zip(packIds).toMap()
+        var dirty = false
+        val fixed =
+            stored.mapNotNull { key ->
+                when {
+                    key in idSet -> key
+                    titleToId.containsKey(key) -> {
+                        dirty = true
+                        titleToId[key]
+                    }
+                    else -> {
+                        dirty = true
+                        null
+                    }
+                }
+            }.toSet()
+        if (dirty) p().edit().putStringSet(KEY_ENABLED, fixed).apply()
     }
 
     /** 当前启用的包名。没种过时按默认表推算，保证设置页与真实行为一致。 */
