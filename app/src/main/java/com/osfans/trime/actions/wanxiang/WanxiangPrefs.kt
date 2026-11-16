@@ -59,6 +59,7 @@ object WanxiangPrefs {
 
     private const val KEY_LAYOUT = "layout"
     private const val KEY_RESTORE_KEYBOARD = "restore_keyboard"
+    private const val KEY_LAST_KEYBOARD = "last_keyboard"
     private const val KEY_PANEL_LONG_PRESS = "panel_long_press"
     private const val KEY_PANEL_ACTIONS = "panel_actions"
     private const val KEY_ENCODE = "encode"
@@ -124,6 +125,16 @@ object WanxiangPrefs {
     var restoreKeyboard: Boolean
         get() = ready().getBoolean(KEY_RESTORE_KEYBOARD, true)
         set(v) = ready().edit { putBoolean(KEY_RESTORE_KEYBOARD, v) }
+
+    /**
+     * 用户上次主动切的键盘 id（`default` / `qijian` / `xiaohe` / `wanxiang_*` …）。
+     *
+     * 主题里所有键盘都是 `lock = false`，[com.osfans.trime.ime.keyboard.KeyboardWindow]
+     * 重建时只会回落 `default`，所以自己记一份；空串表示「没记过」。
+     */
+    var lastKeyboard: String
+        get() = ready().getString(KEY_LAST_KEYBOARD, "").orEmpty()
+        set(v) = ready().edit { putString(KEY_LAST_KEYBOARD, v) }
 
     /** 长按切换键是否打开我们的「键盘与方案」面板（默认开）。 */
     var panelOnLongPress: Boolean
@@ -258,6 +269,7 @@ object WanxiangPrefs {
         ready().edit {
             putInt(KEY_LAYOUT, LAYOUT_26)
             putBoolean(KEY_RESTORE_KEYBOARD, true)
+            putString(KEY_LAST_KEYBOARD, "")
             putString(KEY_ENCODE, ENCODE_QUANPIN)
             putString(KEY_SCHEME, SCHEMES.first())
             putInt(KEY_AUX, AUX_NONE)

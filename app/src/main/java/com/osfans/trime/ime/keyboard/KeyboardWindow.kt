@@ -276,6 +276,7 @@ class KeyboardWindow :
         val schemaId = runCatching { rime.run { statusCached }.schemaId }.getOrNull()
         if (schemaId.isNullOrEmpty() || !WanxiangKeyboard.owns(schemaId)) return
         WanxiangKeyboard.rememberLayout(keyboardId)
+        WanxiangKeyboard.rememberKeyboard(keyboardId)
     }
 
     /**
@@ -288,6 +289,7 @@ class KeyboardWindow :
         if (!WanxiangPrefs.isReady() || !WanxiangPrefs.restoreKeyboard) return null
         val schemaId = runCatching { rime.run { statusCached }.schemaId }.getOrNull() ?: return null
         if (schemaId.isEmpty()) return null
+        WanxiangKeyboard.rememberedKeyboard(presetKeyboardIds)?.let { return it }
         val layout = WanxiangPrefs.layout
         val target = WanxiangKeyboard.keyboardIdOf(schemaId, layout) ?: return null
         if (target !in presetKeyboardIds) {

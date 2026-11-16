@@ -208,7 +208,7 @@ sealed class NavigationRoute : Parcelable {
                 label = "外语学习"
             }
             fragment<PanelQuickFragment, PanelQuick> {
-                label = "面板与快捷"
+                label = "其它扩展功能设置"
             }
 
             fragment<WanxiangFragment, Wanxiang> {

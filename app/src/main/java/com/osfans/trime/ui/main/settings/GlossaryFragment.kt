@@ -262,6 +262,21 @@ class GlossaryFragment : PaddingPreferenceFragment() {
                     }
                 }
 
+                addCategory("快捷码", "打在编码里、以分号结束即生效") {
+                    addPreference(
+                        Preference(requireContext()).apply {
+                            key = "glossary_code"
+                            title = "外语学习开关码"
+                            summary = "当前 ${GlossaryPrefs.code}：打一遍开、再打一遍关"
+                            isIconSpaceReserved = false
+                            setOnPreferenceClickListener {
+                                editGlossaryCode()
+                                true
+                            }
+                        },
+                    )
+                }
+
                 addCategory("语言包", "全量中文→英文约 11.5 万词、18.7 万义项，8 MB") {
                     val files = GlossaryStore.installedFiles()
                     if (files.isEmpty()) {
@@ -450,6 +465,26 @@ class GlossaryFragment : PaddingPreferenceFragment() {
                     .show()
             }
         }
+    }
+
+    private fun editGlossaryCode() {
+        val input =
+            EditText(requireContext()).apply {
+                setText(GlossaryPrefs.code)
+                setSelection(text.length)
+                inputType = InputType.TYPE_CLASS_TEXT
+                hint = "wy;"
+            }
+        AlertDialog.Builder(requireContext())
+            .setTitle("外语学习开关码")
+            .setMessage("打完这一串（含结尾分号）就开/关外语学习；别和 AI 模式码、文曲星码、退出码撞车。")
+            .setView(input)
+            .setNegativeButton(R.string.cancel, null)
+            .setPositiveButton("保存") { _, _ ->
+                GlossaryPrefs.code = input.text.toString().trim().ifEmpty { "wy;" }
+                rebuildScreen()
+            }
+            .show()
     }
 
     private fun editDownloadUrl() {

@@ -20,13 +20,14 @@ import androidx.appcompat.app.AlertDialog
 import androidx.core.widget.doAfterTextChanged
 import android.text.InputType
 import android.widget.EditText
+import android.widget.Toast
 import android.widget.FrameLayout
 
 /**
- * 「面板与快捷」：功能面板的行为，以及几个可以打在编码里的快捷码。
+ * 「其它扩展功能设置」：面板行为、键盘形态与几个零散开关。
  *
- * 这些设置不属于「万象拼音」（方案包、编码方案那些），单独放一页，
- * 以后面板上加东西也往这里添。
+ * 这些不属于「万象拼音」（方案包、编码方案那些），也不属于某个具体模块，
+ * 单独放一页；以后面板上加东西也往这里添。
  */
 class PanelQuickFragment : PaddingPreferenceFragment() {
     override fun onCreatePreferences(
@@ -40,6 +41,40 @@ class PanelQuickFragment : PaddingPreferenceFragment() {
 
     private fun buildScreen(screen: PreferenceScreen) {
         val context = requireContext()
+
+        screen.addBambooCategory("键盘形态", "打完字换输入框时用哪个键盘") {
+            addPreference(
+                BambooClick(context).apply {
+                    key = "keyboard_layout"
+                    title = "键盘形态"
+                    summary = layoutLabel()
+                    isIconSpaceReserved = false
+                    setOnPreferenceClickListener {
+                        pickLayout()
+                        true
+                    }
+                },
+            )
+            addPreference(
+                BambooSwitch(context).apply {
+                    key = "restore_keyboard"
+                    title = "进输入框时恢复键盘"
+                    isChecked = WanxiangPrefs.restoreKeyboard
+                    summary =
+                        if (WanxiangPrefs.restoreKeyboard) {
+                            "开：换输入框后还停在上面选的形态（以及你上次手动切的键盘）"
+                        } else {
+                            "关：不干预，手动切了就一直手动"
+                        }
+                    isIconSpaceReserved = false
+                    setOnPreferenceChangeListener { _, newValue ->
+                        WanxiangPrefs.restoreKeyboard = newValue as Boolean
+                        refreshScreen()
+                        true
+                    }
+                },
+            )
+        }
 
         screen.addBambooCategory("面板", "长按「切换键盘」那个键弹什么") {}
         screen.addPreference(
@@ -78,18 +113,6 @@ class PanelQuickFragment : PaddingPreferenceFragment() {
         screen.addBambooCategory("快捷码", "打在编码里、以分号结束即生效") {}
         screen.addPreference(
             BambooClick(context).apply {
-                key = "glossary_code"
-                title = "外语学习开关码"
-                summary = "当前 ${GlossaryPrefs.code}：打一遍开、再打一遍关"
-                isIconSpaceReserved = false
-                setOnPreferenceClickListener {
-                    editCode()
-                    true
-                }
-            },
-        )
-        screen.addPreference(
-            BambooClick(context).apply {
                 key = "codes_overview"
                 title = "全部快捷码"
                 summary = "看看现在都能打哪些码"
@@ -118,27 +141,35 @@ class PanelQuickFragment : PaddingPreferenceFragment() {
         buildScreen(screen)
     }
 
-    private fun editCode() {
-        val ctx = requireContext()
-        val input =
-            EditText(ctx).apply {
-                setText(GlossaryPrefs.code)
-                setSelection(text.length)
-                inputType = InputType.TYPE_CLASS_TEXT
-                hint = "wy;"
-            }
-        val box =
-            FrameLayout(ctx).apply {
-                val pad = (20 * resources.displayMetrics.density).toInt()
-                setPadding(pad, pad / 2, pad, 0)
-                addView(input)
-            }
-        AlertDialog.Builder(ctx)
-            .setTitle("外语学习开关码")
-            .setMessage("打完这一串（含结尾分号）就会开/关外语学习；不要和 AI 模式码、文曲星码、退出码撞车。")
-            .setView(box)
-            .setPositiveButton("保存") { _, _ ->
-                GlossaryPrefs.code = input.text.toString()
+    private fun layoutLabel(): String =
+        when (WanxiangPrefs.layout) {
+            WanxiangPrefs.LAYOUT_18 -> "18 键"
+            WanxiangPrefs.LAYOUT_14 -> "14 键"
+            WanxiangPrefs.LAYOUT_9 -> "九宫格（9 键）"
+            else -> "全键盘（26 键）"
+        }
+
+    private fun pickLayout() {
+        val layouts =
+            intArrayOf(
+                WanxiangPrefs.LAYOUT_26,
+                WanxiangPrefs.LAYOUT_18,
+                WanxiangPrefs.LAYOUT_14,
+                WanxiangPrefs.LAYOUT_9,
+            )
+        val labels = arrayOf("全键盘（26 键）", "18 键", "14 键", "九宫格（9 键，固定全拼）")
+        val checked = layouts.indexOfFirst { it == WanxiangPrefs.layout }.coerceAtLeast(0)
+        AlertDialog.Builder(requireContext())
+            .setTitle("键盘形态")
+            .setSingleChoiceItems(labels, checked) { dialog, which ->
+                WanxiangPrefs.layout = layouts[which]
+                // 明确改了形态就以它为准，丢掉「上次手动切的键盘」
+                WanxiangPrefs.lastKeyboard = ""
+                WanxiangPrefs.sanitize()
+                if (layouts[which] == WanxiangPrefs.LAYOUT_9) {
+                    Toast.makeText(requireContext(), "九键固定全拼：已把编码改成全拼、关掉辅助码和模糊音", Toast.LENGTH_SHORT).show()
+                }
+                dialog.dismiss()
                 refreshScreen()
             }
             .setNegativeButton("取消", null)

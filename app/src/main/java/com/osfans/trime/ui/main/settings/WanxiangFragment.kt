@@ -101,39 +101,6 @@ class WanxiangFragment : PaddingPreferenceFragment() {
                         }.onFailure { toast("打不开下载页：${it.message}") }
                     }
 
-                    settingRow(
-                        title = "键盘形态",
-                        summary = layoutLabel(),
-                    ) {
-                        pickInt(
-                            "键盘形态",
-                            listOf(
-                                WanxiangPrefs.LAYOUT_26 to "全键盘（26 键）",
-                                WanxiangPrefs.LAYOUT_18 to "18 键",
-                                WanxiangPrefs.LAYOUT_14 to "14 键",
-                                WanxiangPrefs.LAYOUT_9 to "九宫格（9 键，固定全拼）",
-                            ),
-                            WanxiangPrefs.layout,
-                        ) {
-                            WanxiangPrefs.layout = it
-                            WanxiangPrefs.sanitize()
-                            if (it == WanxiangPrefs.LAYOUT_9) {
-                                toast("九键固定全拼：已把编码改成全拼、关掉辅助码和模糊音")
-                            }
-                            refresh()
-                        }
-                    }
-
-                    settingRow(
-                        title = "进输入框时恢复键盘",
-                        summary = if (WanxiangPrefs.restoreKeyboard) "开：每次弹出键盘都按上面的形态切换" else "关：不干预，手动切了就保持手动",
-                    ) {
-                        pickBool("进输入框时恢复键盘", WanxiangPrefs.restoreKeyboard) {
-                            WanxiangPrefs.restoreKeyboard = it
-                            refresh()
-                        }
-                    }
-
                                         settingRow(
                         title = "编码方式",
                         summary = if (WanxiangPrefs.layout == WanxiangPrefs.LAYOUT_9) {

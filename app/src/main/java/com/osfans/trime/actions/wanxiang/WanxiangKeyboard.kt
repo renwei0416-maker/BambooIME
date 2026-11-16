@@ -51,6 +51,27 @@ object WanxiangKeyboard {
         com.osfans.trime.util.BambooLog.wx.d("restore", "remember layout=$layout by $keyboardId")
     }
 
+    /** 借用型键盘：切过去只是临时用一下（打数字/符号/计算），不记。 */
+    private val TRANSIENT = setOf("number", "settings", "editor", "calculator")
+
+    /** 用户主动切到某个键盘后记下来；借用型键盘、相对指令、空 id 不记。 */
+    fun rememberKeyboard(keyboardId: String) {
+        if (!WanxiangPrefs.isReady()) return
+        val id = keyboardId.trim()
+        if (id.isEmpty() || id.startsWith(".") || id in TRANSIENT) return
+        if (WanxiangPrefs.lastKeyboard == id) return
+        WanxiangPrefs.lastKeyboard = id
+        com.osfans.trime.util.BambooLog.wx.d("restore", "remember keyboard=$id")
+    }
+
+    /** 上次记住的键盘；不在主题里（换主题/删布局）就返回 null。 */
+    fun rememberedKeyboard(available: Collection<String>): String? {
+        if (!WanxiangPrefs.isReady()) return null
+        val id = WanxiangPrefs.lastKeyboard
+        if (id.isEmpty() || id in TRANSIENT) return null
+        return if (id in available) id else null
+    }
+
     fun keyboardIdOf(schemaId: String, layout: Int): String? {
         if (!owns(schemaId)) return null
         return when (layout) {
