@@ -5,3 +5,7 @@
 # Handle line endings automatically for files detected as text
 # and leave all files detected as binary untouched.
 *	text=auto
+
+# 上游补丁与原始快照必须保持字节原样：一旦被自动转成 CRLF，`git apply` 会因上下文失配而失败
+docs/upstream-patches/**/*.patch	-text
+docs/upstream-patches/**/*.orig	-text
