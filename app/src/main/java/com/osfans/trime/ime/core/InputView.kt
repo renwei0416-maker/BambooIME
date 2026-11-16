@@ -51,6 +51,7 @@ import com.osfans.trime.daemon.RimeSession
 import com.osfans.trime.data.prefs.AppPrefs
 import com.osfans.trime.data.prefs.PreferenceDelegate
 import com.osfans.trime.data.theme.ColorManager
+import com.osfans.trime.data.theme.KeyActionManager
 import com.osfans.trime.data.theme.Theme
 import com.osfans.trime.ime.bar.InputBarDelegate
 import com.osfans.trime.ime.broadcast.EnterKeyDisplayDelegate
@@ -62,6 +63,7 @@ import com.osfans.trime.ime.composition.SyncInputBox
 import com.osfans.trime.ime.composition.SyncInputTextFormatter
 import com.osfans.trime.ime.composition.TargetTextSnapshot
 import com.osfans.trime.ime.dependency.InputDependencyManager
+import com.osfans.trime.ime.keyboard.CommonKeyboardActionListener
 import com.osfans.trime.ime.keyboard.KeyboardPrefs.isLandscapeMode
 import com.osfans.trime.ime.keyboard.KeyboardWindow
 import com.osfans.trime.ime.popup.PopupDelegate
@@ -141,13 +143,22 @@ class InputView(
     private val inputBar: InputBarDelegate by di.instance()
     private val keyboardWindow: KeyboardWindow by di.instance()
     private val liquidWindow: LiquidWindow by di.instance()
+    private val commonKeyboardActionListener: CommonKeyboardActionListener by di.instance()
 
-    private val syncInputBox =
+    private val syncInputBox by lazy {
         SyncInputBox(context, theme).apply {
             visibility = View.GONE
             onMoveCursor = { offset -> service.setTargetSelection(offset, offset) }
             onSelectRange = { start, end -> service.setTargetSelection(start, end) }
+            onAction = { action ->
+                if (action.isNotEmpty()) {
+                    commonKeyboardActionListener.listener.onAction(
+                        KeyActionManager.getAction(action),
+                    )
+                }
+            }
         }
+    }
 
     private val inlinePreeditMode by AppPrefs.defaultInstance().general.inlinePreeditMode
     private val appPrefs = AppPrefs.defaultInstance()
@@ -1258,6 +1269,9 @@ class InputView(
             return
         }
         syncInputBox.update(display)
+        if (syncInputBox.visibility != View.VISIBLE) {
+            syncInputBox.updateButtonStyle()
+        }
         syncInputBox.visibility = View.VISIBLE
         syncInputBox.translationX = keyboardView.translationX
         syncInputBox.translationY = keyboardView.translationY
@@ -1311,6 +1325,10 @@ class InputView(
                         applyFloatingLayout()
                     }
                     keyboardWindow.currentKeyboardView?.invalidateAllKeys()
+                }
+
+                if (syncInputBox.visibility == View.VISIBLE) {
+                    syncInputBox.updateButtonStyle()
                 }
             }
 
