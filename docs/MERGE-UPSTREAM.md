@@ -2,11 +2,14 @@
 
 场景：上游 `Carlson24/LyraIME` 有新提交，我们要把它的改动并进来。
 
-> 现状（2026-11-15）：上游 `lyraime` 相对我们的分叉点只多了 **2 个提交 / 9 个文件**，
+> 现状（2026-11-17）：上游 `lyraime` 相对我们的分叉点只有 **2 个提交 / 9 个文件**，
 > 其中只有 `app/src/main/java/com/osfans/trime/ime/core/InputView.kt` 与我们重叠。
 > 完整清单见 [`UPSTREAM-DIFF.md`](./UPSTREAM-DIFF.md)（`python tools/upstream-diff.py` 重新生成）。
+>
+> **2026-11-17 实测：`git fetch origin lyraime` 已可用**（不再需要第 0 节的 bundle 迂回），
+> `git ls-remote` 与 `api.github.com` 都通。第 0 节保留作为「万一又拉不到」的备用方案。
 
-## 0. 前置：本机拉不到 github.com
+## 0. 备用：万一本机又拉不到 github.com
 
 本机 `github.com` 主机不可达，`git fetch` 会超时。两条路：
 
@@ -101,3 +104,31 @@ git -C app/src/main/jni/librime apply "$P/rime_api_impl.h.patch"
 补丁与上游原始快照在 [`upstream-patches/librime/`](./upstream-patches/librime/)。
 
 若上游换了这套 C 结构（例如正式加了 `type` 或改名），**以上游为准**，删掉这两个补丁并按新结构适配 JNI。
+
+## 6. 合并记录
+
+### 2026-11-17 · `e5b2f010 add syncinput button`（Kotlin 部分，已合）
+
+| 项 | 值 |
+| --- | --- |
+| 方式 | `git cherry-pick e5b2f010`（**不整支 merge**，避免把 `59d508e3` 的子模块指针一起带进来） |
+| 分支 | `merge/syncinput` |
+| 合并提交 | `04631e05` |
+| 冲突 | **无**（`InputView.kt` 自动合并成功） |
+| 上游改动 | 7 文件 +208/−38：`SyncInput.kt`(+1)、`SyncInputBox.kt`(+167/−33，改 `HorizontalScrollView` + 按钮)、`SyncInputTextFormatter.kt`(+12)、`ToolButton.kt`(+6, 修 NPE)、`InputView.kt`(+20, `syncInputBox` 改 `by lazy` + `onAction` 回调 + `updateButtonStyle()`)、`catppuccin.lua`(+21)、新增 `SyncInputTextFormatterTest.kt`(+19) |
+
+验证（2026-11-17）：
+
+- [x] `InputView.kt` 相对合并前**只有新增 20 行，没有删掉我们任何一行**（`git diff ef7c12fe..HEAD -- …/InputView.kt` 逐行确认）
+- [x] 我们的 13 个 hunk 符号全部还在：`ocrCardHost`(23)/`showOcrCard`/`hideOcrCard`/`getOcrCardTouchRegion`/`setInputBarSuppressed`/`wantHandwriting`(7)/`wantAiPanel`(5)/`wantKeyPanel`/`schemaHintHost`(11)/`maybeShowSchemaHint`/`dismissSchemaHint`(4)/`isSchemaHintVisible`/`refreshPreedit`/`endOfParent()`(6)/`PreeditUi.tipsTouchable`/`OcrCard.deactivate`
+- [x] `:app:assembleDebug` 通过（1m59s）；`:app:assembleRelease` 通过（2m15s，75,791,420 B）
+- [x] `:app:testDebugUnitTest --tests "*SyncInputTextFormatter*"` 通过（27s，含上游新增测试）
+- [x] debug dex 探针：`BambooKeyPanel`/`BambooAiPanel`/`BambooGlossary`/`BambooVoiceAi`/`wanxiang-base`/`wanxiang_14key`/`wanxiang_18key`/`wanxiang_t9`/`last_keyboard`/`restore_keyboard`/`panel_long_press`/`exitAll`/`rememberedKeyboard`/`CustomSignature`/`SchemaPackStore`/`WenquxingTips`/`GlossaryTips`/`PieceTokenizer`/`ClipboardExtractScan`/`AutoPair` 全部命中
+- [x] release APK 资产完整：`assets/wanxiang-base` 83 条目、OCR det 4,819,576 B
+- [ ] 真机冒烟（打字/九键/手写/拍照/两个面板/文曲星/外语学习/语音/AI 面板/万象向导）——待用户实测
+
+产物：`dist\BambooIME-3.0.0-dev-syncinput-arm64-v8a-debug.apk`（113,981,191 B，sha256 `33b1ba98c62b3a7f674f2924e4d78ae501a0915a7732e682180ddf75a1c341b9`）
+
+### 2026-11-17 · `59d508e3 update librime`（子模块指针，待做）
+
+见第 5 节流程；要点：先把 `docs/upstream-patches/librime/` 的两个补丁在新指针上 `git apply --check`，再切指针、全量重编、按第 5 节回归。
