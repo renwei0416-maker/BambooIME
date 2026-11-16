@@ -24,6 +24,7 @@ import com.osfans.trime.R
 import com.osfans.trime.actions.bamboo.BambooActions
 import com.osfans.trime.actions.bamboo.BambooPrefs
 import com.osfans.trime.actions.wenquxing.WenquxingPrefs
+import com.osfans.trime.actions.wenquxing.WenquxingTips
 import com.osfans.trime.ime.core.TrimeInputMethodService
 import com.osfans.trime.actions.wenquxing.WenquxingStore
 import com.osfans.trime.ui.common.BambooClick
@@ -60,7 +61,7 @@ class WenquxingFragment : PaddingPreferenceFragment() {
         preferenceScreen =
             preferenceManager.createPreferenceScreen(requireContext()).apply {
                 addBambooCategory("文曲星", "把查到的诗词名句接在编码后面，逗号/句号直接上屏") {
-                    addRestoreAll(resetters, "把运行方式、触发码、显示条数、条目显示字数和上屏键恢复成出厂值（不动已导入的词包）")
+                    addRestoreAll(resetters, "把运行方式、触发码、显示条数、条目显示字数、两个字数门槛和上屏键恢复成出厂值（不动已导入的词包）")
 
                     addSwitchSetting(
                         title = "启用文曲星",
@@ -109,6 +110,36 @@ class WenquxingFragment : PaddingPreferenceFragment() {
                         unit = " 字",
                         resetters = resetters,
                     ) { WenquxingPrefs.displayLen = it }
+
+                    addSliderSetting(
+                        title = "诗词标题字数",
+                        summary = "`=` 前面的标题至少几个字才提示；设 3 时「春晓」不提示、「静夜思」提示",
+                        min = 1,
+                        max = 8,
+                        step = 1,
+                        default = 2,
+                        current = WenquxingPrefs.minTitleLen,
+                        unit = " 字",
+                        resetters = resetters,
+                    ) {
+                        WenquxingPrefs.minTitleLen = it
+                        WenquxingTips.requery()
+                    }
+
+                    addSliderSetting(
+                        title = "分句的字数",
+                        summary = "`{}` 里拆出来的分句至少几个字才提示；调大能少些零碎命中，调小更灵敏",
+                        min = 1,
+                        max = 8,
+                        step = 1,
+                        default = 4,
+                        current = WenquxingPrefs.minSegLen,
+                        unit = " 字",
+                        resetters = resetters,
+                    ) {
+                        WenquxingPrefs.minSegLen = it
+                        WenquxingTips.requery()
+                    }
 
                     addSliderSetting(
                         title = "字号",

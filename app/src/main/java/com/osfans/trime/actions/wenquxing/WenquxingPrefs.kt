@@ -81,6 +81,43 @@ object WenquxingPrefs {
         get() = p().getString("key_second", "period") ?: "period"
         set(value) = p().edit().putString("key_second", value).apply()
 
+    /**
+     * 诗词标题字数门槛：`=` 前那个条目名（K 类 key）短于这个字数的不提示。
+     * 默认 2＝不设限（等于编译期的 MIN_KEY_LEN）。
+     */
+    var minTitleLen: Int
+        get() = p().getInt("min_title_len", 2).coerceIn(1, 8)
+        set(value) = p().edit().putInt("min_title_len", value.coerceIn(1, 8)).apply()
+
+    /**
+     * 分句字数门槛：`{}` 里拆出来的每一句（S 类 key）短于这个字数的不提示。
+     * 默认 4＝不设限（等于编译期的 MIN_SEG_LEN）。
+     */
+    var minSegLen: Int
+        get() = p().getInt("min_seg_len", 4).coerceIn(1, 8)
+        set(value) = p().edit().putInt("min_seg_len", value.coerceIn(1, 8)).apply()
+
+    /** 首次启动默认只开这三个包（其余内置包由用户自己点开）。 */
+    private val DEFAULT_ENABLED = setOf("mingju", "songci1000", "tangshi1000")
+
+    /**
+     * 默认启用项版本：**只有升级到这个值时**才按上面的默认表重排一次，
+     * 之后用户改过的开关不会再被覆盖。
+     */
+    private const val SEED_VERSION = 1
+
+    /**
+     * 按默认表种一次「关掉的包」。
+     *
+     * 老用户从旧版本升上来时 `disabled_packs` 是空集（＝全开），需要在这里重置成
+     * 「只开三个」；已经种过的（`seed_version` 相等）直接返回，不再动用户的选择。
+     */
+    fun seedDefaultsIfNeeded(packNames: List<String>) {
+        if (p().getInt("seed_version", 0) >= SEED_VERSION) return
+        val off = packNames.filter { it !in DEFAULT_ENABLED }.toSet()
+        p().edit().putStringSet("disabled_packs", off).putInt("seed_version", SEED_VERSION).apply()
+    }
+
     /** 关掉的包名（空表示全部启用）。 */
     var disabledPacks: Set<String>
         get() = p().getStringSet("disabled_packs", emptySet()) ?: emptySet()

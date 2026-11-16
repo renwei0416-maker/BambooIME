@@ -23,7 +23,7 @@ object WenquxingStore {
     private const val MARKER = ".builtin-version"
 
     /** 内置包集合有变化时手动加一，让老安装能重拷。 */
-    private const val PACKS_STAMP = "2"
+    private const val PACKS_STAMP = "3"
 
     private val packs = ArrayList<WenquxingPack>()
 
@@ -76,6 +76,8 @@ object WenquxingStore {
                 }
             }
             loaded = true
+            // 内置包集合变了：按默认表种一次启用状态（只种一次，不覆盖用户的选择）
+            WenquxingPrefs.seedDefaultsIfNeeded(packs.map { it.name })
             com.osfans.trime.util.BambooLog.wq.d(
                 "wenquxing",
                 "loaded packs=" + packs.size + " " + packs.joinToString(",") { it.name },

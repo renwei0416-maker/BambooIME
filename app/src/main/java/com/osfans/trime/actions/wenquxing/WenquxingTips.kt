@@ -77,12 +77,18 @@ object WenquxingTips {
         if (!WenquxingPrefs.enabled) return 0
         val keys = keysOf(text)
         val texts = ArrayList<String>()
+        val minTitle = WenquxingPrefs.minTitleLen
+        val minSeg = WenquxingPrefs.minSegLen
         // 命中都算进去（共 N 组要真实），显示时再按「显示条数」截断
         for (key in keys) {
             BambooLog.wq.d("wenquxing", "query key=$key")
             val hits = WenquxingStore.query(key) { name -> WenquxingPrefs.isPackEnabled(name) }
             BambooLog.wq.d("wenquxing", "hit n=${hits.size}")
             for ((_, hit) in hits) {
+                // 两个字数门槛都在这里过滤：K/F 看「标题字数」，S 看「分句字数」。
+                // 命中键就是 keys 里的那一个，所以直接比它的长度。
+                val need = if (hit.type == WenquxingPack.TYPE_SEG) minSeg else minTitle
+                if (key.length < need) continue
                 if (hit.text.isEmpty() || hit.text in texts) continue
                 texts.add(hit.text)
                 if (texts.size >= COLLECT_LIMIT) break
@@ -181,6 +187,18 @@ object WenquxingTips {
             )
         }
         return out
+    }
+
+    /**
+     * 设置页改了字数门槛之后重查一次：用的是上一次的查询词，不用重新打字。
+     */
+    fun requery() {
+        val q = lastQuery ?: return
+        if (q.isEmpty()) return
+        show(q, shownPreedit)
+        Handler(Looper.getMainLooper()).post {
+            runCatching { TrimeInputMethodService.current?.refreshCandidatesPreedit() }
+        }
     }
 
     /** 真实命中组数，用于在块末尾跟「共 N 组」。 */
