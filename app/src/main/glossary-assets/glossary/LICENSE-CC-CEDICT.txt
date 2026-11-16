@@ -1,0 +1,15 @@
+CC-CEDICT — 许可与署名
+
+本目录下的 glossary-en-cedict-1.0.bge 由 CC-CEDICT 转换而来。
+
+CC-CEDICT 由 MDBG 发布，采用 Creative Commons Attribution-ShareAlike 4.0
+International License（CC BY-SA 4.0）。
+
+    项目主页：https://cc-cedict.org/
+    许可全文：https://creativecommons.org/licenses/by-sa/4.0/legalcode
+
+本 .bge 文件是 CC-CEDICT 的改编版本（字段重排、去除交叉引用、按 .bge 二进制格式打包），
+依 CC BY-SA 4.0 同样以 CC BY-SA 4.0 提供，可自由复制、修改、再分发，
+但须保留本署名并以相同许可分发。本 App 的 GPL-3.0 代码许可不覆盖本数据文件。
+
+条数：114,891 词 / 187,420 义项

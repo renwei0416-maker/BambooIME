@@ -138,11 +138,39 @@ object GlossaryPrefs {
         get() = p().getBoolean("show_cl", true)
         set(v) = p().edit().putBoolean("show_cl", v).apply()
 
-    /** 下载地址。 */
+    /** 要下载哪一份外文词库：日语（内置只有英语，所以下载项只给日语）或自定义地址。 */
+    const val PACK_JA = "ja"
+    const val PACK_CUSTOM = "custom"
+
+    var downloadPack: String
+        get() = p().getString("download_pack", PACK_JA) ?: PACK_JA
+        set(v) = p().edit().putString("download_pack", if (v == PACK_CUSTOM) PACK_CUSTOM else PACK_JA).apply()
+
+    /** 自定义地址（镜像）里的那个 URL；留空表示还没填。 */
+    var customDownloadUrl: String
+        get() = p().getString("download_url", "") ?: ""
+        set(v) = p().edit().putString("download_url", v.trim()).apply()
+
+    /**
+     * 当前实际要下载的地址。
+     *
+     * 选了「日语词库」就固定用发布资产里的地址（用户改过的自定义地址不参与），
+     * 这样切语言/切下拉不会因为残留的旧字符串下错包——这是 3.2.0 的 bug。
+     */
     var downloadUrl: String
-        get() = p().getString("download_url", defaultDownloadUrlFor(lang))
-            ?: defaultDownloadUrlFor(lang)
-        set(v) = p().edit().putString("download_url", v.ifBlank { defaultDownloadUrlFor(lang) }).apply()
+        get() = if (downloadPack == PACK_CUSTOM) {
+            customDownloadUrl.ifBlank { DEFAULT_DOWNLOAD_URL_JA }
+        } else {
+            DEFAULT_DOWNLOAD_URL_JA
+        }
+        set(v) {
+            customDownloadUrl = v
+        }
+
+    /** 下拉里「恢复默认地址」用：清掉自定义地址，回到日语官方地址。 */
+    fun resetDownloadUrl() {
+        p().edit().putString("download_pack", PACK_JA).putString("download_url", "").apply()
+    }
 
     fun resetToDefault() {
         p().edit()
@@ -160,7 +188,8 @@ object GlossaryPrefs {
             .putBoolean("show_style", true)
             .putBoolean("show_domain", false)
             .putBoolean("show_cl", true)
-            .putString("download_url", DEFAULT_DOWNLOAD_URL)
+            .putString("download_pack", PACK_JA)
+            .putString("download_url", "")
             .apply()
     }
 }

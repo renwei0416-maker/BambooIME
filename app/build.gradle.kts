@@ -34,6 +34,11 @@ val bundleOcrModel =
 val bundleWenquxingPacks =
     (project.findProperty("bundleWenquxingPacks") as String?)?.toBoolean() ?: true
 
+// 内置外语学习英文词库（CC-CEDICT 转 .bge，8.1 MB）；日语词库走下载，不打进包。
+// -PbundleGlossaryEn=false 出「无内置词库」版（设置页仍可自己下载/导入）。
+val bundleGlossaryEn =
+    (project.findProperty("bundleGlossaryEn") as String?)?.toBoolean() ?: true
+
 // 内置万象拼音 Pro 方案包（小鹤双拼 + 直接辅助码，非 custom 部分 84.7 MB，压缩后约 30 MB）；
 // -PbundleWanxiangPro=false 出「不带万象」的精简版（设置页仍会显示入口，但会提示未内置）。
 val bundleWanxiangPro =
@@ -55,6 +60,9 @@ android {
             if (bundleWenquxingPacks) {
                 assets.srcDir("src/main/wenquxing-assets")
             }
+            if (bundleGlossaryEn) {
+                assets.srcDir("src/main/glossary-assets")
+            }
             if (bundleWanxiangPro) {
                 // 一个根目录下两个子目录：wanxiang-pro（官方 77 个文件）与
                 // wanxiang-t9（九键 Pro 需要的 5 个文件），释放时叠进同一个包目录。
@@ -68,7 +76,7 @@ android {
         minSdk = 29
         targetSdk = 37
         versionCode = LocalDate.now(ZoneId.of("Asia/Shanghai")).format(DateTimeFormatter.BASIC_ISO_DATE).toInt()
-        versionName = "3.2.0"
+        versionName = "3.3.0"
 
         multiDexEnabled = true
         buildConfigField("String", "BUILDER", "\"${project.builder}\"")
@@ -88,6 +96,7 @@ android {
             "BUNDLED_WENQUXING_PACKS",
             "$bundleWenquxingPacks",
         )
+        buildConfigField("boolean", "BUNDLED_GLOSSARY_EN", "$bundleGlossaryEn")
         buildConfigField("boolean", "BUNDLED_WANXIANG_PRO", "$bundleWanxiangPro")
     }
 

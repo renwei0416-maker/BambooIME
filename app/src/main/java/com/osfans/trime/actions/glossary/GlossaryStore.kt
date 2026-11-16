@@ -6,6 +6,7 @@
 package com.osfans.trime.actions.glossary
 
 import android.util.Log
+import com.osfans.trime.BuildConfig
 import com.osfans.trime.TrimeApplication
 import java.io.File
 import java.io.InputStream
@@ -33,10 +34,51 @@ object GlossaryStore {
             ?.sortedBy { it.name }
             ?: emptyList()
 
+    /** 内置英文词库的资产名（见 `app/src/main/glossary-assets/glossary/`）。 */
+    private const val BUNDLED_EN = "glossary-en-cedict-1.0.bge"
+
+    /**
+     * 内置英文词库：**首次启动**从 assets 拷一份到私有目录，之后不再管。
+     *
+     * 用标记文件而不是"文件是否存在"来判定：用户主动删掉内置包时不该被偷偷补回来。
+     * 这里不调 [install]，因为它会 `reload()`，而我们正处在加载过程中。
+     */
+    private fun syncBundled() {
+        if (!BuildConfig.BUNDLED_GLOSSARY_EN) return
+        val marker = File(dir, ".bundled-en")
+        if (marker.isFile) return
+        val target = File(dir, BUNDLED_EN)
+        if (target.exists()) {
+            runCatching { marker.writeText("1") }
+            return
+        }
+        runCatching {
+            val tmp = File(dir, "$BUNDLED_EN.part")
+            TrimeApplication.getInstance().assets.open("glossary/$BUNDLED_EN").use { input ->
+                tmp.outputStream().use { out -> input.copyTo(out) }
+            }
+            val probe = GlossaryPack.open(tmp)
+            if (probe == null) {
+                tmp.delete()
+                Log.w(TAG, "bundled pack is broken, skipped")
+                return@runCatching
+            }
+            probe.close()
+            if (tmp.renameTo(target)) {
+                marker.writeText("1")
+                Log.i(TAG, "installed bundled pack: $BUNDLED_EN")
+            } else {
+                tmp.delete()
+                Log.w(TAG, "cannot rename bundled pack")
+            }
+        }.onFailure { Log.w(TAG, "install bundled pack failed: ${it.message}") }
+    }
+
     private fun ensureLoaded() {
         if (loaded) return
         synchronized(lock) {
             if (loaded) return
+            syncBundled()
             packs.clear()
             val want = GlossaryPrefs.langCodeOf(GlossaryPrefs.lang)
             installedFiles().forEach { f ->

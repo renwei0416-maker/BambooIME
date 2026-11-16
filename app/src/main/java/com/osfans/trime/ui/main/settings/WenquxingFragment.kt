@@ -534,6 +534,8 @@ class WenquxingFragment : PaddingPreferenceFragment() {
                 } != null
             }.getOrDefault(false)
         if (ok) {
+            // 刚导入的包直接启用：白名单模型下新包默认是关的，用户导入就是想用
+            WenquxingPrefs.setPackEnabled(target.name.removeSuffix(".bwx"), true)
             WenquxingStore.reload(context)
             refresh()
             Toast.makeText(context, "已导入 ${target.name}", Toast.LENGTH_SHORT).show()

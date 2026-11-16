@@ -80,7 +80,6 @@ class GlossaryFragment : PaddingPreferenceFragment() {
                         resetters = resetters,
                     ) { idx ->
                         GlossaryPrefs.lang = if (idx == 1) GlossaryPrefs.LANG_JA else GlossaryPrefs.LANG_EN
-                        GlossaryPrefs.downloadUrl = ""
                         GlossaryStore.reload()
                         rebuildScreen()
                     }
@@ -302,7 +301,32 @@ class GlossaryFragment : PaddingPreferenceFragment() {
                             "多个包会同时查询，结果合并显示",
                         )
                     }
-                    addRow("下载语言包", "约 8 MB，走下面这个地址（国内可换成任意镜像）") {
+                    addChoice(
+                        title = "下载外文词包",
+                        subtitle =
+                            if (GlossaryPrefs.downloadPack == GlossaryPrefs.PACK_CUSTOM) {
+                                "自定义地址（镜像）：${GlossaryPrefs.downloadUrl}"
+                            } else {
+                                "日语词库 · 约 16 MB（英语已内置，不用下载）"
+                            },
+                        entries = arrayOf("日语词库", "自定义地址（镜像）"),
+                        currentIndex =
+                            if (GlossaryPrefs.downloadPack == GlossaryPrefs.PACK_CUSTOM) 1 else 0,
+                        defaultIndex = 0,
+                        resetters = resetters,
+                    ) { idx ->
+                        GlossaryPrefs.downloadPack =
+                            if (idx == 1) GlossaryPrefs.PACK_CUSTOM else GlossaryPrefs.PACK_JA
+                        rebuildScreen()
+                    }
+                    addRow(
+                        "下载",
+                        if (GlossaryPrefs.downloadPack == GlossaryPrefs.PACK_CUSTOM) {
+                            "从自定义地址下载"
+                        } else {
+                            "下载日语词库"
+                        },
+                    ) {
                         confirmDownload()
                     }
                     addRow("从文件导入", "用系统的文件选择器挑一个 .bge") {
@@ -314,8 +338,10 @@ class GlossaryFragment : PaddingPreferenceFragment() {
                     ) {
                         importFromFolder()
                     }
-                    addRow("下载地址", GlossaryPrefs.downloadUrl) {
-                        editDownloadUrl()
+                    if (GlossaryPrefs.downloadPack == GlossaryPrefs.PACK_CUSTOM) {
+                        addRow("自定义地址", GlossaryPrefs.downloadUrl) {
+                            editDownloadUrl()
+                        }
                     }
                 }
 
@@ -340,7 +366,7 @@ class GlossaryFragment : PaddingPreferenceFragment() {
     private fun confirmDownload() {
         AlertDialog.Builder(requireContext())
             .setTitle("下载语言包")
-            .setMessage("将从下面的地址下载约 8 MB 的词库：\n\n${GlossaryPrefs.downloadUrl}")
+            .setMessage("将从下面的地址下载词库：\n\n${GlossaryPrefs.downloadUrl}")
             .setNegativeButton(R.string.cancel, null)
             .setPositiveButton("下载") { _, _ -> startDownload() }
             .show()
@@ -499,7 +525,7 @@ class GlossaryFragment : PaddingPreferenceFragment() {
             .setView(input)
             .setNegativeButton(R.string.cancel, null)
             .setNeutralButton("恢复默认") { _, _ ->
-                GlossaryPrefs.downloadUrl = GlossaryPrefs.DEFAULT_DOWNLOAD_URL
+                GlossaryPrefs.resetDownloadUrl()
                 rebuildScreen()
             }.setPositiveButton("保存") { _, _ ->
                 GlossaryPrefs.downloadUrl = input.text.toString().trim()

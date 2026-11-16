@@ -77,7 +77,7 @@ object WenquxingStore {
             }
             loaded = true
             // 内置包集合变了：按默认表种一次启用状态（只种一次，不覆盖用户的选择）
-            WenquxingPrefs.seedDefaultsIfNeeded(packs.map { it.name })
+            WenquxingPrefs.ensureEnabledSeeded(packs.map { it.name })
             com.osfans.trime.util.BambooLog.wq.d(
                 "wenquxing",
                 "loaded packs=" + packs.size + " " + packs.joinToString(",") { it.name },

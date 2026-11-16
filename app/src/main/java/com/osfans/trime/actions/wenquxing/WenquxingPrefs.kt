@@ -100,34 +100,43 @@ object WenquxingPrefs {
     /** 首次启动默认只开这三个包（其余内置包由用户自己点开）。 */
     private val DEFAULT_ENABLED = setOf("mingju", "songci1000", "tangshi1000")
 
-    /**
-     * 默认启用项版本：**只有升级到这个值时**才按上面的默认表重排一次，
-     * 之后用户改过的开关不会再被覆盖。
-     */
-    private const val SEED_VERSION = 1
+    /** 启用集（白名单）。旧版本的 `disabled_packs` 只在迁移时读一次。 */
+    private const val KEY_ENABLED = "enabled_packs"
+    private const val KEY_DISABLED_LEGACY = "disabled_packs"
 
     /**
-     * 按默认表种一次「关掉的包」。
+     * 首次按默认表写入启用集。
      *
-     * 老用户从旧版本升上来时 `disabled_packs` 是空集（＝全开），需要在这里重置成
-     * 「只开三个」；已经种过的（`seed_version` 相等）直接返回，不再动用户的选择。
+     * 三个前提条件缺一不可：
+     * 1. 包列表非空 —— 包还拷好之前不写，否则会把默认值"烧"成空集；
+     * 2. [KEY_ENABLED] 不存在 —— 写过就不再动用户的选择；
+     * 3. 老版本的 [KEY_DISABLED_LEGACY] 只在**非空**时才用来反推：旧实现里空集
+     *    既可能是"用户全开"，也可能是"包列表还没准备好就种过"（3.2.0 的 bug），
+     *    两者无法区分，一律按默认表处理。
      */
-    fun seedDefaultsIfNeeded(packNames: List<String>) {
-        if (p().getInt("seed_version", 0) >= SEED_VERSION) return
-        val off = packNames.filter { it !in DEFAULT_ENABLED }.toSet()
-        p().edit().putStringSet("disabled_packs", off).putInt("seed_version", SEED_VERSION).apply()
+    fun ensureEnabledSeeded(packNames: List<String>) {
+        if (packNames.isEmpty()) return
+        if (p().getStringSet(KEY_ENABLED, null) != null) return
+        val legacyOff = p().getStringSet(KEY_DISABLED_LEGACY, null).orEmpty()
+        val seeded =
+            if (legacyOff.isEmpty()) {
+                packNames.filter { it in DEFAULT_ENABLED }.toSet()
+            } else {
+                packNames.filter { it !in legacyOff }.toSet()
+            }
+        p().edit().putStringSet(KEY_ENABLED, seeded).apply()
     }
 
-    /** 关掉的包名（空表示全部启用）。 */
-    var disabledPacks: Set<String>
-        get() = p().getStringSet("disabled_packs", emptySet()) ?: emptySet()
-        set(value) = p().edit().putStringSet("disabled_packs", value).apply()
+    /** 当前启用的包名。没种过时按默认表推算，保证设置页与真实行为一致。 */
+    private var enabledPacks: Set<String>
+        get() = p().getStringSet(KEY_ENABLED, null)?.toSet() ?: DEFAULT_ENABLED
+        set(value) = p().edit().putStringSet(KEY_ENABLED, value).apply()
 
-    fun isPackEnabled(name: String): Boolean = name !in disabledPacks
+    fun isPackEnabled(name: String): Boolean = name in enabledPacks
 
     fun setPackEnabled(name: String, enabled: Boolean) {
-        val current = disabledPacks.toMutableSet()
-        if (enabled) current.remove(name) else current.add(name)
-        disabledPacks = current
+        val current = enabledPacks.toMutableSet()
+        if (enabled) current.add(name) else current.remove(name)
+        enabledPacks = current
     }
 }
