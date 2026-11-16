@@ -17,7 +17,6 @@ object WanxiangKeyboard {
         "wanxiang",        // Base 26/18/14 键
         "wanxiang_t9",     // Base 九宫格
         "wanxiang_pro",    // Pro 26/18/14 键
-        "wanxiang_t9_pro", // Pro 九宫格
     )
 
     /** 这个方案归我们管吗。 */

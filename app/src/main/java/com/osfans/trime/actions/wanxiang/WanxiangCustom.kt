@@ -178,6 +178,7 @@ object WanxiangCustom {
     private fun renderCustomBlock(
         nodes: List<String>,
         pageSize: Int,
+        contextual: Boolean = WanxiangPrefs.contextual,
     ): String = buildString {
         appendLine(BEGIN)
         appendLine("patch:")
@@ -185,6 +186,7 @@ object WanxiangCustom {
         appendLine("    __patch:")
         nodes.forEach { appendLine("      - $it") }
         appendLine("  menu/page_size: $pageSize")
+        appendLine("  translator/contextual_suggestions: $contextual")
         append(END)
     }
 
@@ -194,6 +196,137 @@ object WanxiangCustom {
         appendLine("  schema_list:")
         appendLine("    - schema: $schema")
         append(END)
+    }
+
+    // ------------------------------------------------------------ 当前方案
+
+    /**
+     * 当前真正在用的方案。设置页改哪份 custom，全看它。
+     *
+     * 引擎没起（冷启动直接进设置）时退回我们自己的记录，避免显示成「没配置」。
+     */
+    fun detectedSchemaId(): String? {
+        val live = com.osfans.trime.daemon.RimeDaemon.currentSchemaId
+        if (live.isNotBlank() && live != ".default") return live
+        return when (SchemaPackageManager.activePackageId) {
+            SchemaPackStore.BASE_ID ->
+                if (WanxiangPrefs.layout == WanxiangPrefs.LAYOUT_9) SCHEMA_BASE_T9 else SCHEMA_BASE_26
+            SchemaPackStore.PRO_ID -> SCHEMA_PRO_26
+            else -> null
+        }
+    }
+
+    /** 六种判定里只留五种：Base 26 / Base 九键 / Pro / 别人的方案 / 没配置。 */
+    enum class Scope { BASE_26, BASE_9, PRO_26, FOREIGN, NONE }
+
+    fun currentScope(): Scope {
+        val schema = detectedSchemaId() ?: return Scope.NONE
+        return when {
+            SchemaPackageManager.activePackageId == SchemaPackStore.BASE_ID && schema == SCHEMA_BASE_26 ->
+                Scope.BASE_26
+            SchemaPackageManager.activePackageId == SchemaPackStore.BASE_ID && schema == SCHEMA_BASE_T9 ->
+                Scope.BASE_9
+            SchemaPackageManager.activePackageId == SchemaPackStore.PRO_ID && schema == SCHEMA_PRO_26 ->
+                Scope.PRO_26
+            else -> Scope.FOREIGN
+        }
+    }
+
+    /** 这个作用域改哪份 custom；null = 不归我们管，不写。 */
+    fun scopeTarget(): String? = when (currentScope()) {
+        Scope.BASE_26, Scope.BASE_9 -> SchemaPackStore.BASE_ID
+        Scope.PRO_26 -> SchemaPackStore.PRO_ID
+        else -> null
+    }
+
+    /**
+     * 能不能在设置页里改这三项。
+     *
+     * 九键不给改：`wanxiang_t9` 没有独立的 custom（我们按约定不新建），写包里那份
+     * `wanxiang.custom.yaml` 只对 26 键方案生效，改了九键也没反应 —— 所以整块灰掉。
+     */
+    fun scopeEditable(): Boolean = when (currentScope()) {
+        Scope.BASE_26, Scope.PRO_26 -> true
+        else -> false
+    }
+
+    // ------------------------------------------------------------ 合并写入
+
+    /** 取出现有托管块（含首尾标记行）。 */
+    private fun blockOf(text: String): String {
+        val b = text.indexOf(BEGIN)
+        val e = text.indexOf(END)
+        return if (b >= 0 && e > b) text.substring(b, e + END.length) else ""
+    }
+
+    /**
+     * 只改托管块里的三处：模糊音节点、`menu/page_size`、`translator/contextual_suggestions`。
+     *
+     * 其余行（向导写进去的编码方案、键位折叠、用户自己加的子键）一个字节都不动 ——
+     * 早先的实现是拿 prefs 重建整段 algebra，那样会把向导的选择覆盖掉。
+     */
+    private fun mergeBlock(
+        block: String,
+        fuzzy: Set<String>,
+        pageSize: Int,
+        contextual: Boolean,
+    ): String {
+        val lines = block.lines().toMutableList()
+
+        lines.removeAll { it.trimStart().startsWith("- wanxiang_algebra:/模糊音_") }
+
+        val wanted =
+            WanxiangPrefs.FUZZY_KEYS.filter { fuzzy.contains(it) }
+                .map { "      - wanxiang_algebra:/模糊音_$it" }
+        if (wanted.isNotEmpty()) {
+            val at = lines.indexOfFirst { it.trim() == "__patch:" }
+            if (at >= 0) lines.addAll(at + 1, wanted)
+        }
+
+        fun setOrAppend(prefix: String, line: String) {
+            val i = lines.indexOfFirst { it.trimStart().startsWith(prefix) }
+            if (i >= 0) {
+                lines[i] = line
+            } else {
+                val end = lines.indexOfFirst { it.trim() == END }
+                if (end >= 0) lines.add(end, line) else lines.add(line)
+            }
+        }
+        setOrAppend("menu/page_size:", "  menu/page_size: $pageSize")
+        setOrAppend("translator/contextual_suggestions:", "  translator/contextual_suggestions: $contextual")
+
+        return lines.joinToString("\n")
+    }
+
+    /**
+     * 设置页「应用并部署」用这个：只改那三行，不重建 algebra。
+     *
+     * @return 写入成功与否；[pkgId] 目录不存在直接返回 false（不去创建）。
+     */
+    fun applySettings(
+        pkgId: String,
+        fuzzy: Set<String>,
+        pageSize: Int,
+        contextual: Boolean,
+    ): Boolean = runCatching {
+        val dir = SchemaPackStore.dir(pkgId)
+        if (!dir.isDirectory) {
+            Timber.w("wanxiang: applySettings skipped, %s not installed", pkgId)
+            return@runCatching false
+        }
+        val file = File(dir, customFileOf(pkgId))
+        val old = if (file.isFile) file.readText() else ""
+        val base =
+            if (hasMarkers(old)) {
+                blockOf(old)
+            } else {
+                renderCustomBlock(algebraNodes(pkgId), pageSize, contextual)
+            }
+        writeManaged(file, mergeBlock(base, fuzzy, pageSize, contextual))
+        true
+    }.getOrElse {
+        Timber.w(it, "wanxiang: applySettings failed")
+        false
     }
 
     // ------------------------------------------------------------ 写入

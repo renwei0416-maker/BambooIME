@@ -114,6 +114,11 @@ object RimeDaemon {
 
     val isAsciiMode: Boolean get() = realRime.statusCached.isAsciiMode
     val isComposing: Boolean get() = realRime.statusCached.isComposing
+
+    /** 当前方案 id；引擎没起时为空串（设置页判「改哪份 custom」用）。 */
+    val currentSchemaId: String
+        get() = if (realRime.isReady) realRime.statusCached.schemaId.orEmpty() else ""
+
     val hasMenu: Boolean get() = realRime.hasMenu
     val isPaging: Boolean get() = realRime.paging
 

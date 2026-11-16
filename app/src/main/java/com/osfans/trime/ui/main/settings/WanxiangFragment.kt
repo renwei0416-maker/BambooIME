@@ -62,20 +62,23 @@ class WanxiangFragment : PaddingPreferenceFragment() {
         val installed = ourId != null && SchemaPackStore.isInstalled(ourId)
         preferenceScreen =
             preferenceManager.createPreferenceScreen(requireContext()).apply {
-                val activeId = SchemaPackageManager.activePackageId
-                val anyInstalled =
-                    SchemaPackStore.isInstalled(SchemaPackStore.BASE_ID) ||
-                        SchemaPackStore.isInstalled(SchemaPackStore.PRO_ID)
+                val scope = WanxiangCustom.currentScope()
+                val editable = WanxiangCustom.scopeEditable()
                 addRow(
-                    title = when {
-                        ourId != null -> "当前生效：$ourId"
-                        anyInstalled -> "当前生效：${activeId}（不是内置包）"
-                        else -> "还没配置"
+                    title = when (scope) {
+                        WanxiangCustom.Scope.BASE_26,
+                        WanxiangCustom.Scope.BASE_9,
+                        WanxiangCustom.Scope.PRO_26,
+                        -> "当前生效：${scopeLabel(scope)}"
+                        WanxiangCustom.Scope.FOREIGN -> "当前生效：不是内置方案"
+                        WanxiangCustom.Scope.NONE -> "还没配置"
                     },
-                    summary = when {
-                        ourId != null -> "${layoutLabel()} · ${encodeLabel()}"
-                        anyInstalled -> "应用后会切到内置包 · ${layoutLabel()} · ${encodeLabel()}"
-                        else -> "进「设置向导」配置，1 分钟"
+                    summary = when (scope) {
+                        WanxiangCustom.Scope.BASE_26,
+                        WanxiangCustom.Scope.BASE_9,
+                        WanxiangCustom.Scope.PRO_26,
+                        -> "${layoutLabel()} · ${encodeLabel()} · 改的是 ${WanxiangCustom.scopeTarget()} 那份配置"
+                        else -> scopeBlockedReason(scope)
                     },
                 )
                 addBambooCategory("方案设置", "改完点「应用并部署」生效") {
@@ -102,104 +105,50 @@ class WanxiangFragment : PaddingPreferenceFragment() {
                     }
 
                     settingRow(
-                        title = "编码方式",
-                        summary = if (WanxiangPrefs.layout == WanxiangPrefs.LAYOUT_9) {
-                            "九键固定全拼"
-                        } else {
-                            if (WanxiangPrefs.encode == WanxiangPrefs.ENCODE_QUANPIN) "全拼" else "双拼"
-                        },
-                    ) {
-                        pickString(
-                            "编码方式",
-                            listOf(
-                                WanxiangPrefs.ENCODE_QUANPIN to "全拼",
-                                WanxiangPrefs.ENCODE_SHUANGPIN to "双拼",
-                            ),
-                            WanxiangPrefs.encode,
-                        ) {
-                            if (it == WanxiangPrefs.ENCODE_SHUANGPIN && WanxiangPrefs.layout == WanxiangPrefs.LAYOUT_9) {
-                                toast("九键固定全拼：先把键盘形态换成 26 / 18 / 14 键")
-                            } else {
-                                WanxiangPrefs.encode = it
-                                refresh()
-                            }
-                        }
-                    }
-
-                    settingRow(
-                        title = "你使用的键盘形态",
-                        summary = layoutLabel(),
-                    ) {
-                        pickLayout()
-                    }
-
-                    settingRow(
-                        title = "双拼方案",
-                        summary = WanxiangPrefs.scheme,
-                    ) {
-                        pickString(
-                            "双拼方案",
-                            WanxiangPrefs.SCHEMES.map { it to it },
-                            WanxiangPrefs.scheme,
-                        ) {
-                            WanxiangPrefs.scheme = it
-                            if (WanxiangPrefs.layout == WanxiangPrefs.LAYOUT_9) {
-                                toast("已记下「$it」；九键固定全拼，换成 26 / 18 / 14 键后生效")
-                            } else {
-                                WanxiangPrefs.encode = WanxiangPrefs.ENCODE_SHUANGPIN
-                            }
-                            refresh()
-                        }
-                    }
-
-                    settingRow(
-                        title = "辅助码",
-                        summary = when {
-                            WanxiangPrefs.layout == WanxiangPrefs.LAYOUT_9 -> "九键不用辅助码"
-                            WanxiangPrefs.aux == WanxiangPrefs.AUX_DIRECT -> "直接辅助（用 Pro 词库）"
-                            WanxiangPrefs.aux == WanxiangPrefs.AUX_INDIRECT -> "间接辅助（用 Pro 词库）"
-                            else -> "关闭（用 Base 词库）"
-                        },
-                    ) {
-                        pickInt(
-                            "辅助码",
-                            listOf(
-                                WanxiangPrefs.AUX_NONE to "关闭",
-                                WanxiangPrefs.AUX_DIRECT to "直接辅助",
-                                WanxiangPrefs.AUX_INDIRECT to "间接辅助",
-                            ),
-                            WanxiangPrefs.aux,
-                        ) {
-                            WanxiangPrefs.aux = it
-                            if (WanxiangPrefs.layout == WanxiangPrefs.LAYOUT_9) {
-                                toast("已记下；九键没有字母键，换成 26 / 18 / 14 键后生效")
-                            }
-                            refresh()
-                        }
-                    }
-
-                    settingRow(
-                        title = "模糊音",
-                        summary = if (WanxiangPrefs.layout == WanxiangPrefs.LAYOUT_9) {
-                            "九键当前不生效（切回全键盘后可开）"
-                        } else if (WanxiangPrefs.fuzzy.isEmpty()) {
-                            "关闭"
-                        } else {
-                            WanxiangPrefs.fuzzy.sorted().joinToString("、") { WanxiangPrefs.FUZZY_LABELS[it] ?: it }
-                        },
-                    ) {
-                        pickFuzzy()
-                    }
-
-                    settingRow(
                         title = "候选个数",
-                        summary = "${WanxiangPrefs.pageSize} 个（最大 6，仅全键盘）",
+                        summary = if (!editable) {
+                            scopeBlockedReason(scope)
+                        } else {
+                            "${WanxiangPrefs.pageSize} 个（最大 6）"
+                        },
+                        enabled = editable,
                     ) {
                         pickInt(
                             "候选个数",
                             (3..6).map { it to "$it 个" },
                             WanxiangPrefs.pageSize,
                         ) { WanxiangPrefs.pageSize = it; refresh() }
+                    }
+
+                    settingRow(
+                        title = "模糊音",
+                        summary = if (!editable) {
+                            scopeBlockedReason(scope)
+                        } else if (WanxiangPrefs.fuzzy.isEmpty()) {
+                            "关闭"
+                        } else {
+                            WanxiangPrefs.fuzzy.sorted().joinToString("、") { WanxiangPrefs.FUZZY_LABELS[it] ?: it }
+                        },
+                        enabled = editable,
+                    ) {
+                        pickFuzzy()
+                    }
+
+                    settingRow(
+                        title = "是否调频",
+                        summary = if (!editable) {
+                            scopeBlockedReason(scope)
+                        } else if (WanxiangPrefs.contextual) {
+                            "开启（按上文预测，越用越准）"
+                        } else {
+                            "关闭"
+                        },
+                        enabled = editable,
+                    ) {
+                        pickBool("是否调频", WanxiangPrefs.contextual) {
+                            WanxiangPrefs.contextual = it
+                            refresh()
+                        }
                     }
 
                     settingRow(
@@ -401,11 +350,27 @@ class WanxiangFragment : PaddingPreferenceFragment() {
     private fun PreferenceGroup.settingRow(
         title: String,
         summary: String,
+        enabled: Boolean = true,
         onClick: () -> Unit,
     ) {
         addRow(title = title, summary = summary) {
-            if (ensureWritable()) onClick()
-        }
+            if (enabled && ensureWritable()) onClick()
+        }.apply { isEnabled = enabled }
+    }
+
+    private fun scopeLabel(scope: WanxiangCustom.Scope): String = when (scope) {
+        WanxiangCustom.Scope.BASE_26 -> "万象 Base（全键盘）"
+        WanxiangCustom.Scope.BASE_9 -> "万象 Base（九键）"
+        WanxiangCustom.Scope.PRO_26 -> "万象 Pro"
+        else -> "—"
+    }
+
+    private fun scopeBlockedReason(scope: WanxiangCustom.Scope): String = when (scope) {
+        WanxiangCustom.Scope.BASE_9 -> "九键方案没有独立的配置文件，这三项在这里改不了"
+        WanxiangCustom.Scope.FOREIGN ->
+            "您使用的不是内置的 Base 方案以及万象 Pro 方案。不对您自己的方案提供修改。"
+        WanxiangCustom.Scope.NONE -> "请先在「设置向导」里配置你的输入方案"
+        else -> "当前方案不支持"
     }
 
     private fun downloadSummary(): String {
@@ -537,8 +502,13 @@ class WanxiangFragment : PaddingPreferenceFragment() {
     }
 
     private fun applyAndDeploy() {
+        val scoped = WanxiangCustom.scopeTarget()
+        if (scoped == null) {
+            toast(scopeBlockedReason(WanxiangCustom.currentScope()))
+            return
+        }
         lifecycleScope.launch {
-            val target = WanxiangCustom.targetPackage()
+            val target = scoped
 
             // 目标是 Base 而没解包：直接解（67 MB，几秒），解完再配。
             if (target == SchemaPackStore.BASE_ID && !SchemaPackStore.isInstalled(SchemaPackStore.BASE_ID)) {
@@ -557,7 +527,14 @@ class WanxiangFragment : PaddingPreferenceFragment() {
             }
 
             toast("正在写入配置…")
-            val ok = withContext(Dispatchers.IO) { WanxiangCustom.writeAll(target) }
+            val ok = withContext(Dispatchers.IO) {
+                WanxiangCustom.applySettings(
+                    pkgId = target,
+                    fuzzy = WanxiangPrefs.fuzzy,
+                    pageSize = WanxiangPrefs.pageSize,
+                    contextual = WanxiangPrefs.contextual,
+                )
+            }
             if (!ok) {
                 toast("写入失败：检查 Documents 目录是否可写")
                 return@launch
