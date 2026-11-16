@@ -6,7 +6,7 @@
     python tools/upstream-diff.py                # 写到 docs/UPSTREAM-DIFF.md
     python tools/upstream-diff.py --print        # 只打印
 
-分叉点取环境变量 UPSTREAM_BASE，默认 `094e6894`
+分叉点取环境变量 UPSTREAM_BASE，默认 `59d508e3`
 （= 我们第一个提交 `b5d3a195 bamboo: 1.1.0 baseline` 的父提交，上游 Carlson24/LyraIME）。
 
 注意：本机 `github.com` 主机不通，`git fetch origin` 拉不到上游新提交，
@@ -19,7 +19,7 @@ import subprocess
 import sys
 import urllib.request
 
-BASE = os.environ.get("UPSTREAM_BASE", "094e6894")
+BASE = os.environ.get("UPSTREAM_BASE", "59d508e3")
 REPO = "Carlson24/LyraIME"
 OUT = os.path.join("docs", "UPSTREAM-DIFF.md")
 # 需要人工写「为什么改」的热点文件（其余文件在清单里只列状态与行数）
