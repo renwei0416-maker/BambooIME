@@ -42,19 +42,7 @@ class PanelQuickFragment : PaddingPreferenceFragment() {
     private fun buildScreen(screen: PreferenceScreen) {
         val context = requireContext()
 
-        screen.addBambooCategory("键盘形态", "打完字换输入框时用哪个键盘") {
-            addPreference(
-                BambooClick(context).apply {
-                    key = "keyboard_layout"
-                    title = "键盘形态"
-                    summary = layoutLabel()
-                    isIconSpaceReserved = false
-                    setOnPreferenceClickListener {
-                        pickLayout()
-                        true
-                    }
-                },
-            )
+        screen.addBambooCategory("键盘", "换输入框时用不用恢复你上次的键盘") {
             addPreference(
                 BambooSwitch(context).apply {
                     key = "restore_keyboard"
@@ -141,42 +129,7 @@ class PanelQuickFragment : PaddingPreferenceFragment() {
         buildScreen(screen)
     }
 
-    private fun layoutLabel(): String =
-        when (WanxiangPrefs.layout) {
-            WanxiangPrefs.LAYOUT_18 -> "18 键"
-            WanxiangPrefs.LAYOUT_14 -> "14 键"
-            WanxiangPrefs.LAYOUT_9 -> "九宫格（9 键）"
-            else -> "全键盘（26 键）"
-        }
-
-    private fun pickLayout() {
-        val layouts =
-            intArrayOf(
-                WanxiangPrefs.LAYOUT_26,
-                WanxiangPrefs.LAYOUT_18,
-                WanxiangPrefs.LAYOUT_14,
-                WanxiangPrefs.LAYOUT_9,
-            )
-        val labels = arrayOf("全键盘（26 键）", "18 键", "14 键", "九宫格（9 键，固定全拼）")
-        val checked = layouts.indexOfFirst { it == WanxiangPrefs.layout }.coerceAtLeast(0)
-        AlertDialog.Builder(requireContext())
-            .setTitle("键盘形态")
-            .setSingleChoiceItems(labels, checked) { dialog, which ->
-                WanxiangPrefs.layout = layouts[which]
-                // 明确改了形态就以它为准，丢掉「上次手动切的键盘」
-                WanxiangPrefs.lastKeyboard = ""
-                WanxiangPrefs.sanitize()
-                if (layouts[which] == WanxiangPrefs.LAYOUT_9) {
-                    Toast.makeText(requireContext(), "九键固定全拼：已把编码改成全拼、关掉辅助码和模糊音", Toast.LENGTH_SHORT).show()
-                }
-                dialog.dismiss()
-                refreshScreen()
-            }
-            .setNegativeButton("取消", null)
-            .show()
-    }
-
-    private fun showCodes() {
+private fun showCodes() {
         val lines =
             buildList {
                 add("外语学习：${GlossaryPrefs.code}")
