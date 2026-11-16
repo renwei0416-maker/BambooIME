@@ -160,3 +160,6 @@ git -C app/src/main/jni/librime apply "$P/rime_api_impl.h.patch"
 - 结果：`git rev-list --left-right --count HEAD...origin/lyraime` = **155 / 0**（领先 155，落后 0）；
   `merge-base --is-ancestor e5b2f010 HEAD` 与 `59d508e3 HEAD` 均为真
 - 下一次上游有新提交时，直接 `git merge origin/lyraime` 即可，不会再重复提示这两个旧提交
+
+**已合回主干（2026-11-17）**：`git merge --no-ff merge/syncinput` → `408a7147`；随后 `chore(release): 3.1.0` → `06b0a0a0`，
+标签 `bamboo-3.1.0`。主干 `lyraime` 现在领先上游 157 / 落后 0。

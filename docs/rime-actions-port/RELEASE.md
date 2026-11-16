@@ -4,14 +4,16 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 版本名 | `1.1.0` |
-| 版本号 | `20261108`（日期式，每天自增） |
+| 版本名 | `3.1.0`（2026-11-17 发布；上一版 3.0.0） |
+| 版本号 | `20261117`（日期式，每天自增） |
 | 包名（release） | `com.bambooime` |
 | 包名（debug） | `com.bambooime.debug` |
 | ABI | `arm64-v8a` |
 | minSdk / targetSdk / compileSdk | 29 / 37 / 37 |
-| release APK 体积 | 29.21 MB（30,623,813 B） |
-| release SHA-256 | `c0ba6efe264b9f806e80d9c3f33514b5feee7ba9d5b7abfad231386178aa258b` |
+| release APK 体积 | 74.11 MB（77,712,238 B） |
+| release SHA-256 | `7583f6c57392f56942cd3a4fdc04cbf87b1c560fbcad3c6ce5b0999b29408a9b` |
+| 上游基线 | `Carlson24/LyraIME` @ `59d508e3`（已追平，落后 0） |
+| librime | `4dcfb5f3`（+ 本地 11 行 `RimeCandidate.type` 补丁） |
 | 签名 | 自建 keystore（`bambooime.jks`，alias `bambooime`），APK Signature Scheme v3 |
 
 ## 1.1.0 相对 1.0.0
