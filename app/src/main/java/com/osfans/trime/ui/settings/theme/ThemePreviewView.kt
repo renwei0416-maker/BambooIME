@@ -143,6 +143,7 @@ class ThemePreviewView(context: Context, attrs: AttributeSet? = null) : View(con
         val raw = rawKeyboard()
         val selfConfig = draft?.patchedKeyboard(raw ?: return) ?: return
         val scheme = currentScheme() ?: ColorScheme("default", emptyMap())
+        lastTheme = theme
         resolver = ThemeResourceResolver(theme, scheme)
         val kb = Keyboard(context, theme, selfConfig, resolver!!)
         kb.recalculateLayout(referenceWidth)
@@ -268,6 +269,35 @@ class ThemePreviewView(context: Context, attrs: AttributeSet? = null) : View(con
         textSize = 11f * density
     }
 
+    // ---- 候选栏 / 编码行：尺寸与颜色全部来自 Theme，只有示意文本是常量 ----
+    private val preeditPaint = Paint().apply { isAntiAlias = true }
+    private val candTextPaint = Paint().apply { isAntiAlias = true }
+    private val candCommentPaint = Paint().apply { isAntiAlias = true }
+    private val candLabelPaint = Paint().apply { isAntiAlias = true }
+    private val candBgPaint = Paint().apply { isAntiAlias = true }
+
+    /** 最近一次 rebuild 用的 Theme（含 preedit 等模块），供各层取尺寸/颜色。 */
+    private var lastTheme: Theme? = null
+
+    /** 按键区在预览画布里的 y 偏移（theme px）= 候选栏高 + 编码行高。 */
+    private var contentTop = 0f
+
+    /** 取色：解析失败就用兜底，绝不让预览因缺键而中断。 */
+    private fun colorOr(key: String, fallback: Int): Int =
+        runCatching { resolver?.getColor(key) ?: fallback }.getOrDefault(fallback)
+
+    /** 候选栏高度：与真机 `InputBarDelegate.themedHeight` 同源（candidate_view_height + comment_height，dp）。 */
+    private fun candidateBarHeight(): Float =
+        dp((style.candidateViewHeight + style.commentHeight).toFloat())
+
+    /** 编码行高度：用真实字体度量算（includeFontPadding 默认开启 → top..bottom）。 */
+    private fun preeditHeight(): Float {
+        val t = lastTheme ?: ThemeManager.activeTheme
+        preeditPaint.textSize = sp(t.preedit.foreground.fontSize)
+        val fm = preeditPaint.fontMetrics
+        return (fm.bottom - fm.top).coerceAtLeast(1f)
+    }
+
     private val iconCache = LruCache<String, IconicsDrawable>(16)
 
     private var boldBase: Typeface? = null
@@ -278,7 +308,8 @@ class ThemePreviewView(context: Context, attrs: AttributeSet? = null) : View(con
         val kb = keyboard ?: return null
         if (drawScale <= 0f) return null
         val cx = (x - drawTx) / drawScale
-        val cy = (y - drawTy) / drawScale
+        // 画布里按键区在候选栏 + 编码行之下
+        val cy = (y - drawTy) / drawScale - contentTop
         kb.keys.forEachIndexed { index, key ->
             val left = (key.x - key.extraWidthLeft).toFloat()
             val right = left + key.width + key.extraWidthLeft + key.extraWidthRight
@@ -336,15 +367,25 @@ class ThemePreviewView(context: Context, attrs: AttributeSet? = null) : View(con
 
         val kbWidth = kb.minWidth.coerceAtLeast(1).toFloat()
         val kbHeight = kb.height.coerceAtLeast(1).toFloat()
+
+        // 预览画布 = 候选栏 + 编码行 + 键盘 + 键盘下留白，四段高度全部来自 Theme
+        val candH = candidateBarHeight()
+        val preeditH = preeditHeight()
+        val bottomPad = dp(style.keyboardPaddingBottom.toFloat())
+        contentTop = candH + preeditH
+        val fullHeight = contentTop + kbHeight + bottomPad
+
         val scale = when (mode) {
-            Mode.FIT -> minOf(w / kbWidth, h / kbHeight)
-            Mode.CROP -> maxOf(w / kbWidth, h / kbHeight)
+            Mode.FIT -> minOf(w / kbWidth, h / fullHeight)
+            Mode.CROP -> maxOf(w / kbWidth, h / fullHeight)
         }
         drawScale = scale
         drawTx = (w - kbWidth * scale) / 2f
-        drawTy = (h - kbHeight * scale) / 2f
+        drawTy = (h - fullHeight * scale) / 2f
 
         val fonts = style.fonts
+        // 与真机同源：enter_labels 由 EnterKeyDisplayDelegate 选，预览按 default 取（可能是 ic@xxx 图标）
+        val enterLabelText = style.enterLabel.default.takeIf { it.isNotBlank() } ?: "Enter"
         val typeface = FontManager.getTypeface()
         if (boldBase !== typeface) {
             boldBase = typeface
@@ -354,6 +395,13 @@ class ThemePreviewView(context: Context, attrs: AttributeSet? = null) : View(con
         canvas.save()
         canvas.translate(drawTx, drawTy)
         canvas.scale(scale, scale)
+
+        // 候选栏（上）与编码行（下）：几何/配色全部取自 Theme
+        drawCandidateBar(canvas, kbWidth, candH)
+        drawPreeditRow(canvas, kbWidth, candH, preeditH)
+
+        canvas.save()
+        canvas.translate(0f, contentTop)
 
         kb.keys.forEachIndexed { index, key ->
             key.setPressed(pressedIndex == index)
@@ -410,7 +458,7 @@ class ThemePreviewView(context: Context, attrs: AttributeSet? = null) : View(con
                     symbolColor = key.getSymbolColor(),
                     showSymbols = true,
                     showHints = true,
-                    enterLabel = "回车",
+                    enterLabel = enterLabelText,
                     schemaName = "方案",
                     keyTextSizeSp = fonts.key_size,
                     keyLongTextSizeSp = fonts.key_long_size.takeIf { it > 0f } ?: fonts.key_size,
@@ -475,7 +523,89 @@ class ThemePreviewView(context: Context, attrs: AttributeSet? = null) : View(con
             }
         }
 
-        canvas.restore()
+        canvas.restore() // contentTop 平移
+        canvas.restore() // 整体缩放
+    }
+
+    /**
+     * 候选栏：高度 = candidate_view_height + comment_height；配色全部走配色方案，
+     * 结构照真机（序号 + 候选词 + 注释，首项高亮）。示意文本固定，其余不写死。
+     */
+    private fun drawCandidateBar(canvas: Canvas, widthPx: Float, heightPx: Float) {
+        if (heightPx <= 0f) return
+        val fonts = style.fonts
+        candBgPaint.color = colorOr("candidate_back_color", colorOr("back_color", 0xFF1F2023.toInt()))
+        canvas.drawRect(0f, 0f, widthPx, heightPx, candBgPaint)
+
+        val items = CANDIDATE_SAMPLES
+        val padH = dp(style.candidatePadding.toFloat())
+        val gap = dp(style.candidateSpacing.toFloat())
+        val radius = dp(style.candidateCornerRadius)
+
+        candTextPaint.textSize = sp(fonts.candidate_size)
+        candCommentPaint.textSize =
+            sp(if (fonts.comment_size > 0f) fonts.comment_size else fonts.candidate_size * 0.6f)
+        candLabelPaint.textSize =
+            sp(if (fonts.candidate_label_size > 0f) fonts.candidate_label_size else fonts.candidate_size * 0.7f)
+
+        val textColor = colorOr("candidate_text_color", colorOr("text_color", 0xFFE3E6EB.toInt()))
+        val commentColor = colorOr("comment_text_color", textColor)
+        val labelColor = colorOr("label_color", commentColor)
+        val hiBack = colorOr("hilited_candidate_back_color", colorOr("back_color", 0xFF2D4A77.toInt()))
+        val hiText = colorOr("hilited_candidate_text_color", colorOr("hilited_text_color", textColor))
+
+        var x = padH
+        val fm = candTextPaint.fontMetrics
+        val baseline = (heightPx - (fm.bottom - fm.top)) / 2f - fm.top
+        items.forEachIndexed { i, (word, comment) ->
+            val wordW = candTextPaint.measureText(word)
+            val commentW = candCommentPaint.measureText(comment)
+            val labelText = (i + 1).toString()
+            val labelW = if (style.candidateLabel) candLabelPaint.measureText(labelText) + dp(4f) else 0f
+            val itemW = labelW + wordW + if (comment.isNotEmpty()) dp(4f) + commentW else 0f
+            val right = (x + itemW + padH).coerceAtMost(widthPx)
+            if (right - x <= 0f) return@forEachIndexed
+
+            if (i == 0) {
+                candBgPaint.color = hiBack
+                canvas.drawRoundRect(RectF(x, dp(2f), right, heightPx - dp(2f)), radius, radius, candBgPaint)
+            }
+            var tx = x + (if (i == 0) 0f else padH * 0.2f)
+            if (labelW > 0f) {
+                candLabelPaint.color = if (i == 0) hiText else labelColor
+                canvas.drawText(labelText, tx, baseline, candLabelPaint)
+                tx += labelW
+            }
+            candTextPaint.color = if (i == 0) hiText else textColor
+            canvas.drawText(word, tx, baseline, candTextPaint)
+            tx += wordW
+            if (comment.isNotEmpty()) {
+                candCommentPaint.color = if (i == 0) hiText else commentColor
+                canvas.drawText(comment, tx + dp(4f), baseline, candCommentPaint)
+            }
+            x = right + gap
+        }
+    }
+
+    /**
+     * 编码行（预编辑）：背景 text_back_color × preedit.alpha，字号 preedit.foreground.fontSize，
+     * 左右内缩 preedit.horizontalPadding；示意编码固定。
+     */
+    private fun drawPreeditRow(canvas: Canvas, widthPx: Float, topPx: Float, heightPx: Float) {
+        if (heightPx <= 0f) return
+        val t = lastTheme ?: ThemeManager.activeTheme
+        val back = colorOr("text_back_color", 0x00000000)
+        val alpha = (t.preedit.alpha * 255).toInt().coerceIn(0, 255)
+        // 不用 ColorUtils：直接按 alpha 重算 ARGB，避免多一个依赖
+        candBgPaint.color = (back and 0x00FFFFFF) or (alpha shl 24)
+        canvas.drawRect(0f, topPx, widthPx, topPx + heightPx, candBgPaint)
+
+        preeditPaint.textSize = sp(t.preedit.foreground.fontSize)
+        preeditPaint.color = colorOr("text_color", 0xFF000000.toInt())
+        preeditPaint.typeface = FontManager.getTypeface()
+        val fm = preeditPaint.fontMetrics
+        val baseline = topPx + (heightPx - (fm.bottom - fm.top)) / 2f - fm.top
+        canvas.drawText(PREEDIT_SAMPLE, dp(t.preedit.horizontalPadding.toFloat()), baseline, preeditPaint)
     }
 
     /** 与真机 KeyboardView 一致的阴影留白计算，返回 (sLeft, sTop, sRight, sBottom)。 */
@@ -505,6 +635,19 @@ class ThemePreviewView(context: Context, attrs: AttributeSet? = null) : View(con
             }
         }
         return intArrayOf(sLeft, sTop, sRight, sBottom)
+    }
+
+    private companion object {
+        /** 候选栏示意数据（固定的词 + 拼音），只用于看样式，不参与输入。 */
+        val CANDIDATE_SAMPLES = listOf(
+            "好" to "hǎo",
+            "号" to "hào",
+            "郝" to "hào",
+            "浩" to "hào",
+        )
+
+        /** 编码行示意编码。 */
+        const val PREEDIT_SAMPLE = "ni'hao"
     }
 
     private fun dp(v: Float): Float = v * density

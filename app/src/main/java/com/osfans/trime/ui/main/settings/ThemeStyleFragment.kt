@@ -24,6 +24,7 @@ import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
 import com.osfans.trime.R
 import com.osfans.trime.data.prefs.ThemeStylePrefs
@@ -37,7 +38,10 @@ import com.osfans.trime.ui.settings.theme.ThemeDraft
 import com.osfans.trime.ui.settings.theme.KeyPath
 import com.osfans.trime.ui.settings.theme.ThemePreviewView
 import com.osfans.trime.ui.settings.theme.ThemeLuaExporter
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -68,6 +72,7 @@ class ThemeStyleFragment : Fragment() {
     /** 下拉覆盖层的宿主（createView 里把整页包了一层 FrameLayout）。 */
     private var overlayHost: FrameLayout? = null
     private var pressedDemo = false
+    private val expandedColorGroups = linkedSetOf("基础")
     private lateinit var tabsRow: LinearLayout
     private lateinit var content: LinearLayout
     private lateinit var scroll: ScrollView
@@ -102,10 +107,16 @@ class ThemeStyleFragment : Fragment() {
         val patches: Map<KeyPath, Map<String, kotlinx.serialization.json.JsonElement?>>,
     )
 
-    private val tabs = listOf("配色", "键盘", "字号", "候选栏", "阴影", "按键")
+    private val tabs = listOf(
+        "键盘", "候选栏", "预编辑", "气泡", "工具栏", "液态键盘", "配色", "按键", "高级",
+    )
 
     private companion object {
         const val OVERLAY_TAG = "theme_style_picker_overlay"
+        const val SCOPE_ROW = 0
+        const val SCOPE_LETTERS = 1
+        const val SCOPE_FUNCS = 2
+        const val SCOPE_ALL = 3
     }
 
     private val keyboardLabels = mapOf(
@@ -202,7 +213,7 @@ class ThemeStyleFragment : Fragment() {
 
         preview.onKeyTapped = { path ->
             selectedKey = path
-            if (tab != 5) renderTab(5) else renderTab(5)
+            if (tab != 5) renderTab(7) else renderTab(7)
         }
 
         val handle = root.findViewById<FrameLayout>(R.id.theme_style_handle)
@@ -631,12 +642,15 @@ class ThemeStyleFragment : Fragment() {
         paintTabs()
         content.removeAllViews()
         when (index) {
-            0 -> renderColors()
-            1 -> renderKeyboard()
-            2 -> renderFonts()
-            3 -> renderCandidate()
-            4 -> renderShadow()
-            else -> renderKeyTab()
+            0 -> renderKeyboardAll()
+            1 -> renderCandidateAll()
+            2 -> renderPreedit()
+            3 -> renderBubble()
+            4 -> renderToolbarTab()
+            5 -> renderLiquidTab()
+            6 -> renderColors()
+            7 -> renderKeyTab()
+            else -> renderAdvanced()
         }
         scroll.scrollTo(0, 0)
     }
@@ -650,34 +664,163 @@ class ThemeStyleFragment : Fragment() {
             return
         }
         content.addView(sectionTitle("配色 · ${scheme.id}"))
-        content.addView(hint("只改当前这套配色；点右侧色块用色相条取色。"))
-        for ((key, label) in colorKeys()) {
-            content.addView(
-                colorRow(label, parseColor(scheme.colors[key])) { picked ->
-                    val colors = LinkedHashMap(scheme.colors)
-                    colors[key] = "0x" + String.format("%08x", picked)
-                    replaceScheme(scheme.copy(colors = colors))
-                    renderTab(0)
-                    refreshPreview()
-                },
-                rowParams(),
-            )
+        content.addView(
+            hint(
+                "共 ${colorGroups().sumOf { it.second.size }} 个颜色键，按用途分成 " +
+                    "${colorGroups().size} 组；括号里 ← 后面是「没设置时跟谁」，只改当前这套配色。",
+            ),
+        )
+
+        val actions = LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(dp(16), dp(2), dp(16), dp(8))
         }
+        actions.addView(
+            chip("全部展开", false) {
+                colorGroups().forEach { (g, _) -> expandedColorGroups.add(g) }
+                renderTab(6)
+            },
+            chipParams(),
+        )
+        actions.addView(
+            chip("全部折叠", false) {
+                expandedColorGroups.clear()
+                renderTab(6)
+            },
+            chipParams(),
+        )
+        content.addView(actions, rowParams())
+
+        for ((group, items) in colorGroups()) {
+            val open = group in expandedColorGroups
+            val mark = if (open) "▾" else "▸"
+            content.addView(plainRow("$mark $group（${items.size}）") {
+                if (open) expandedColorGroups.remove(group) else expandedColorGroups.add(group)
+                renderTab(6)
+            }, rowParams())
+            if (!open) continue
+            for (item in items) {
+                val key = item.first
+                val label = item.second
+                val fallback = item.third
+                val title = if (fallback.isEmpty()) label else "$label（←$fallback）"
+                content.addView(
+                    colorRow(title, parseColor(scheme.colors[key])) { picked ->
+                        val colors = LinkedHashMap(scheme.colors)
+                        colors[key] = "0x" + String.format("%08x", picked)
+                        replaceScheme(scheme.copy(colors = colors))
+                        renderTab(6)
+                        refreshPreview()
+                    },
+                    rowParams(),
+                )
+            }
+        }
+
+        content.addView(sectionTitle("删除自定义颜色"))
+        content.addView(
+            plainRow("清除本套配色里的所有「非标准」颜色键") {
+                val standard = colorGroups().flatMap { g -> g.second.map { it.first } }.toSet()
+                val colors = LinkedHashMap(scheme.colors.filterKeys { it in standard })
+                replaceScheme(scheme.copy(colors = colors))
+                dirty = true
+                updateActionState()
+                renderTab(6)
+                toast("已清理，共保留 ${colors.size} 个标准键")
+            },
+            rowParams(),
+        )
     }
 
-    private fun colorKeys(): List<Pair<String, String>> = listOf(
-        "back_color" to "键盘底色",
-        "key_back_color" to "按键底色",
-        "key_text_color" to "按键文字",
-        "key_symbol_color" to "按键符号",
-        "highlight_color" to "高亮底色",
-        "text_color" to "普通文字",
-        "hilited_candidate_back_color" to "首选词底色",
-        "hilited_candidate_text_color" to "首选词文字",
-        "candidate_back_color" to "候选栏底色",
-        "candidate_text_color" to "候选词文字",
-        "comment_text_color" to "释义文字",
-        "shadow_color" to "阴影颜色",
+    /** 配色分组：组名 → [(键, 显示名, 回退目标)]。回退目标来自 `theme-dsl.lua` 的 SchemeColors 注释。 */
+    private fun colorGroups(): List<Pair<String, List<Triple<String, String, String>>>> = listOf(
+        "基础" to listOf(
+            Triple("back_color", "键盘底色", ""),
+            Triple("text_color", "正文文字", ""),
+            Triple("border_color", "描边色", "back_color"),
+            Triple("shadow_color", "阴影色", "border_color"),
+            Triple("key_shadow_color", "按键阴影", "shadow_color"),
+            Triple("text_back_color", "编码区背景", "back_color"),
+            Triple("root_background", "根背景", "back_color"),
+        ),
+        "候选栏" to listOf(
+            Triple("candidate_text_color", "候选文字", "text_color"),
+            Triple("comment_text_color", "注释文字", "candidate_text_color"),
+            Triple("label_color", "候选序号", "candidate_text_color"),
+            Triple("candidate_background", "候选栏背景图", "back_color"),
+            Triple("candidate_border_color", "候选边框", "border_color"),
+            Triple("candidate_separator_color", "候选分隔线", "border_color"),
+            Triple("candidate_separator_color_unrolled", "候选分隔线(单行)", "candidate_separator_color"),
+            Triple("hilited_text_color", "编码高亮文字", "text_color"),
+            Triple("hilited_back_color", "编码高亮背景", "back_color"),
+            Triple("hilited_candidate_text_color", "首选词文字", "hilited_text_color"),
+            Triple("hilited_candidate_back_color", "首选词背景", "hilited_back_color"),
+            Triple("hilited_candidate_button_color", "候选按钮高亮", "hilited_candidate_back_color"),
+            Triple("hilited_label_color", "首选词序号", "hilited_candidate_text_color"),
+            Triple("hilited_comment_text_color", "首选词注释", "comment_text_color"),
+        ),
+        "按键" to listOf(
+            Triple("key_back_color", "按键底色", "back_color"),
+            Triple("key_text_color", "按键文字", "candidate_text_color"),
+            Triple("key_symbol_color", "按键符号", "comment_text_color"),
+            Triple("key_border_color", "按键描边", "border_color"),
+            Triple("hilited_key_back_color", "按下底色", "hilited_candidate_back_color"),
+            Triple("hilited_key_text_color", "按下文字", "hilited_candidate_text_color"),
+            Triple("hilited_key_symbol_color", "按下符号", "hilited_comment_text_color"),
+            Triple("keyboard_back_color", "键盘底板", "border_color"),
+            Triple("keyboard_background", "键盘背景图", "keyboard_back_color"),
+        ),
+        "开关按键" to listOf(
+            Triple("on_key_back_color", "开启-底色", "back_color"),
+            Triple("on_key_text_color", "开启-文字", "key_text_color"),
+            Triple("on_key_symbol_color", "开启-符号", "key_symbol_color"),
+            Triple("off_key_back_color", "关闭-底色", "key_back_color"),
+            Triple("off_key_text_color", "关闭-文字", "key_text_color"),
+            Triple("off_key_symbol_color", "关闭-符号", "key_symbol_color"),
+            Triple("hilited_on_key_back_color", "按下开启-底色", "hilited_key_back_color"),
+            Triple("hilited_on_key_text_color", "按下开启-文字", "hilited_key_text_color"),
+            Triple("hilited_on_key_symbol_color", "按下开启-符号", "hilited_key_symbol_color"),
+            Triple("hilited_off_key_back_color", "按下关闭-底色", "hilited_key_back_color"),
+            Triple("hilited_off_key_text_color", "按下关闭-文字", "hilited_key_text_color"),
+            Triple("hilited_off_key_symbol_color", "按下关闭-符号", "hilited_key_symbol_color"),
+        ),
+        "气泡与预览" to listOf(
+            Triple("popup_back_color", "气泡底色", "key_back_color"),
+            Triple("popup_text_color", "气泡文字", "key_text_color"),
+            Triple("hilited_popup_back_color", "气泡选中底色", "hilited_key_back_color"),
+            Triple("hilited_popup_text_color", "气泡选中文字", "hilited_key_text_color"),
+            Triple("preview_back_color", "长按预览底色", "key_back_color"),
+            Triple("preview_text_color", "长按预览文字", "key_text_color"),
+            Triple("hilited_preview_back_color", "预览选中底色", "hilited_key_back_color"),
+            Triple("hilited_preview_text_color", "预览选中文字", "hilited_key_text_color"),
+        ),
+        "长文本" to listOf(
+            Triple("long_text_color", "长文本文字", "text_color"),
+            Triple("long_text_back_color", "长文本背景", "back_color"),
+        ),
+        "液态键盘" to listOf(
+            Triple("liquid_keyboard_background", "面板背景", "back_color"),
+            Triple("liquid_keyboard_board", "面板底板", "keyboard_back_color"),
+            Triple("liquid_keyboard_divider_color", "面板分隔线", "border_color"),
+        ),
+        "侧栏(T9)" to listOf(
+            Triple("sidebar_back_color", "侧栏底色", "key_back_color"),
+            Triple("sidebar_hilited_back_color", "侧栏选中底色", "hilited_key_back_color"),
+            Triple("sidebar_text_color", "侧栏文字", "key_text_color"),
+            Triple("sidebar_border_color", "侧栏描边", "key_border_color"),
+            Triple("sidebar_spacing_color", "侧栏间隙", "border_color"),
+        ),
+        "剪贴板" to listOf(
+            Triple("clipboard_category_back_color", "分类标签底色", "back_color"),
+            Triple("clipboard_category_selected_back_color", "分类选中底色", "hilited_candidate_back_color"),
+            Triple("clipboard_category_selected_text_color", "分类选中文字", "hilited_candidate_text_color"),
+            Triple("clipboard_entry_back_color", "条目底色", "key_back_color"),
+            Triple("hilited_clipboard_entry_back_color", "条目选中底色", "hilited_key_back_color"),
+            Triple("clipboard_checkbox_color", "多选框颜色", "key_text_color"),
+        ),
+        "其它" to listOf(
+            Triple("highlight_color", "高亮底色(非标准)", ""),
+        ),
     )
 
     private fun replaceScheme(scheme: ColorScheme) {
@@ -1077,12 +1220,35 @@ class ThemeStyleFragment : Fragment() {
         content.addView(sectionTitle("形状"))
         content.addView(keyNumberRow("按键圆角", path, "round_corner", 0f, 24f, 1f, allowInherit = true), rowParams())
         content.addView(keyNumberRow("描边宽度", path, "key_border", 0f, 6f, 1f, allowInherit = true), rowParams())
+
+        content.addView(sectionTitle("按范围批量改色"))
+        content.addView(
+            hint(
+                "一次给同一范围内的所有键写同一个颜色。写的是键盘里的字面值（等于这些键各自" +
+                    "「不再继承」），预览立刻可见，切配色也不会变。",
+            ),
+        )
+        content.addView(batchRow("整行（第 " + (path.row + 1) + " 行）", SCOPE_ROW), rowParams())
+        content.addView(batchRow("本键盘所有字母键", SCOPE_LETTERS), rowParams())
+        content.addView(batchRow("本键盘所有功能键", SCOPE_FUNCS), rowParams())
+        content.addView(batchRow("本键盘全部键", SCOPE_ALL), rowParams())
+        content.addView(
+            plainRow("清除本键盘所有按键的覆盖") {
+                pushUndo()
+                draft.patches.keys.filter { it.keyboard == keyboardName }.forEach { draft.clearAll(it) }
+                onChange()
+                renderTab(7)
+                toast("已清空本键盘的按键覆盖")
+            },
+            rowParams(),
+        )
+
         content.addView(
             plainRow("清除这个键的全部覆盖") {
                 pushUndo()
                 draft.clearAll(path)
                 onChange()
-                renderTab(5)
+                renderTab(7)
             },
             rowParams(),
         )
@@ -1113,6 +1279,76 @@ class ThemeStyleFragment : Fragment() {
         "提示 Y" to "key_hint_offset_y",
     )
 
+    /** 本键盘里符合范围的非 spacer 键。 */
+    private fun keysInScope(scope: Int): List<KeyPath> {
+        val kb = ThemeManager.getKeyboard(keyboardName) ?: return emptyList()
+        val out = ArrayList<KeyPath>()
+        kb.rows.forEachIndexed { rowIndex, row ->
+            row.keys.forEachIndexed { colIndex, key ->
+                if (key.spacer) return@forEachIndexed
+                val click = runCatching { key.click }.getOrDefault("")
+                val isLetter = click.length == 1 && click[0] in 'a'..'z'
+                val take = when (scope) {
+                    SCOPE_ROW -> selectedKey?.row == rowIndex
+                    SCOPE_LETTERS -> isLetter
+                    SCOPE_FUNCS -> !isLetter
+                    else -> true
+                }
+                if (take) out.add(KeyPath(keyboardName, rowIndex, colIndex))
+            }
+        }
+        return out
+    }
+
+    private fun batchRow(title: String, scope: Int): View {
+        val targets = keysInScope(scope)
+        val shown = if (targets.isEmpty()) "没有可改的键" else "${targets.size} 个键"
+        return fieldRow(title, shown, null, onRestore = null) {
+            if (targets.isEmpty()) {
+                toast("这个范围里没有可改的键")
+                return@fieldRow
+            }
+            val fields = arrayOf("按键底色", "按键文字色", "按下底色", "按键符号色")
+            val jsonFields = arrayOf("key_back_color", "key_text_color", "hilited_key_back_color", "key_symbol_color")
+            androidx.appcompat.app.AlertDialog.Builder(requireContext())
+                .setTitle("$title · 改哪个颜色")
+                .setItems(fields) { _, fi -> pickBatchColor(title, targets, jsonFields[fi]) }
+                .show()
+        }
+    }
+
+    private fun pickBatchColor(title: String, targets: List<KeyPath>, field: String) {
+        val items = arrayOf("自定义颜色…", "引用配色里的色键…")
+        androidx.appcompat.app.AlertDialog.Builder(requireContext())
+            .setTitle("$title · $field")
+            .setItems(items) { _, which ->
+                if (which == 0) {
+                    ColorPickerDialog.show(requireContext(), "$title · $field", 0xFF33363B.toInt()) { picked ->
+                        applyBatch(targets, field, "0x" + String.format("%08x", picked))
+                    }
+                } else {
+                    val keys = schemeNow()?.colors?.keys?.sorted() ?: emptyList()
+                    if (keys.isEmpty()) {
+                        toast("当前配色没有可引用的色键")
+                        return@setItems
+                    }
+                    androidx.appcompat.app.AlertDialog.Builder(requireContext())
+                        .setTitle("选一个色键")
+                        .setItems(keys.toTypedArray()) { _, i -> applyBatch(targets, field, keys[i]) }
+                        .show()
+                }
+            }
+            .show()
+    }
+
+    private fun applyBatch(targets: List<KeyPath>, field: String, value: String) {
+        pushUndo()
+        for (p in targets) draft.setField(p, field, JsonPrimitive(value))
+        onChange()
+        renderTab(7)
+        toast("已写入 ${targets.size} 个键的 $field")
+    }
+
     private fun rawText(path: KeyPath, field: String): String? =
         draft.rawField(path, field)?.let { el ->
             runCatching { el.toString().trim('"') }.getOrNull()
@@ -1130,7 +1366,7 @@ class ThemeStyleFragment : Fragment() {
             pushUndo()
             draft.clearField(path, field)
             onChange()
-            renderTab(5)
+            renderTab(7)
         }) {
             val items = arrayOf("继承（跟随整套配色）", "指定配色里的色键…", "自定义颜色…")
             androidx.appcompat.app.AlertDialog.Builder(requireContext())
@@ -1141,7 +1377,7 @@ class ThemeStyleFragment : Fragment() {
                             pushUndo()
                             draft.clearField(path, field)
                             onChange()
-                            renderTab(5)
+                            renderTab(7)
                         }
 
                         1 -> {
@@ -1157,7 +1393,7 @@ class ThemeStyleFragment : Fragment() {
                                     pushUndo()
                                     draft.setField(path, field, JsonPrimitive(keys[i]))
                                     onChange()
-                                    renderTab(5)
+                                    renderTab(7)
                                 }
                                 .show()
                         }
@@ -1167,7 +1403,7 @@ class ThemeStyleFragment : Fragment() {
                                 pushUndo()
                                 draft.setField(path, field, JsonPrimitive("0x" + String.format("%08x", picked)))
                                 onChange()
-                                renderTab(5)
+                                renderTab(7)
                             }
                         }
                     }
@@ -1196,7 +1432,7 @@ class ThemeStyleFragment : Fragment() {
                 pushUndo()
                 draft.clearField(path, field)
                 onChange()
-                renderTab(5)
+                renderTab(7)
             }
         } else {
             null
@@ -1227,7 +1463,7 @@ class ThemeStyleFragment : Fragment() {
                         )
                     }
                     onChange()
-                    renderTab(5)
+                    renderTab(7)
                 }
                 .setNegativeButton("取消", null)
                 .show()
@@ -1385,6 +1621,10 @@ class ThemeStyleFragment : Fragment() {
                     )
                 }
             }
+            // 界面模块（preedit / sync_input / window / tool_bar / candidates_tool / liquid_keyboard）
+            for ((moduleName, moduleJson) in moduleDrafts) {
+                put(moduleName, moduleJson)
+            }
         }
         if (!BambooThemeOverrides.write(themeId, obj)) {
             toast("写入失败，检查存储权限")
@@ -1395,6 +1635,566 @@ class ThemeStyleFragment : Fragment() {
         undoStack.clear()
         updateActionState()
         toast("已应用，键盘已更新")
+    }
+
+    // ---------------------------------------------------------------- 键盘（样式全字段）
+
+    private fun renderKeyboardAll() {
+        renderKeyboard()
+        content.addView(sectionTitle("横屏"))
+        content.addView(
+            sliderRow("横屏键盘高度", style.keyboardHeightLand.toFloat(), 120f, 360f, 1f, "dp") {
+                style = style.copy(keyboardHeightLand = it.toInt())
+                onChange()
+            },
+        )
+        content.addView(
+            sliderRow("横屏左右边距", style.keyboardPaddingLand.toFloat(), 0f, 20f, 1f, "dp") {
+                style = style.copy(keyboardPaddingLand = it.toInt())
+                onChange()
+            },
+        )
+        content.addView(
+            sliderRow("横屏底部边距", style.keyboardPaddingLandBottom.toFloat(), 0f, 40f, 1f, "dp") {
+                style = style.copy(keyboardPaddingLandBottom = it.toInt())
+                onChange()
+            },
+        )
+        content.addView(
+            sliderRow("面板内容内缩", style.contentPadding.toFloat(), 0f, 40f, 1f, "dp") {
+                style = style.copy(contentPadding = it.toInt())
+                onChange()
+            },
+        )
+        content.addView(hint("「面板内容内缩」用于图片背景的透明边框，普通主题保持 0。"))
+
+        renderShadow()
+
+        content.addView(sectionTitle("按键字号"))
+        content.addView(hint("单位 sp。0 = 跟随「按键文字」。"))
+        val f = style.fonts
+        content.addView(
+            sliderRow("按键文字", f.key_size, 10f, 34f, 0.5f, "sp") {
+                style = style.copy(fonts = style.fonts.copy(key_size = it))
+                onChange()
+            },
+        )
+        content.addView(
+            sliderRow("长按文字", f.key_long_size, 8f, 30f, 0.5f, "sp") {
+                style = style.copy(fonts = style.fonts.copy(key_long_size = it))
+                onChange()
+            },
+        )
+        content.addView(
+            sliderRow("副标签", f.label_size, 0f, 30f, 0.5f, "sp") {
+                style = style.copy(fonts = style.fonts.copy(label_size = it))
+                onChange()
+            },
+        )
+        content.addView(
+            sliderRow("上滑符号", f.symbol_size, 0f, 20f, 0.5f, "sp") {
+                style = style.copy(fonts = style.fonts.copy(symbol_size = it))
+                onChange()
+            },
+        )
+        content.addView(
+            sliderRow("下滑提示", f.hint_size, 0f, 22f, 0.5f, "sp") {
+                style = style.copy(fonts = style.fonts.copy(hint_size = it))
+                onChange()
+            },
+        )
+
+        content.addView(sectionTitle("文字与图标位置微调"))
+        content.addView(hint("正数向右/向下；一般只在主题本身没对齐时才需要动。"))
+        content.addView(
+            sliderRow("按键文字 X", style.keyTextOffsetX, -20f, 20f, 1f, "dp") {
+                style = style.copy(keyTextOffsetX = it)
+                onChange()
+            },
+        )
+        content.addView(
+            sliderRow("按键文字 Y", style.keyTextOffsetY, -20f, 20f, 1f, "dp") {
+                style = style.copy(keyTextOffsetY = it)
+                onChange()
+            },
+        )
+        content.addView(
+            sliderRow("符号 X", style.keySymbolOffsetX, -20f, 20f, 1f, "dp") {
+                style = style.copy(keySymbolOffsetX = it)
+                onChange()
+            },
+        )
+        content.addView(
+            sliderRow("符号 Y", style.keySymbolOffsetY, -20f, 20f, 1f, "dp") {
+                style = style.copy(keySymbolOffsetY = it)
+                onChange()
+            },
+        )
+        content.addView(
+            sliderRow("提示 X", style.keyHintOffsetX, -20f, 20f, 1f, "dp") {
+                style = style.copy(keyHintOffsetX = it)
+                onChange()
+            },
+        )
+        content.addView(
+            sliderRow("提示 Y", style.keyHintOffsetY, -20f, 20f, 1f, "dp") {
+                style = style.copy(keyHintOffsetY = it)
+                onChange()
+            },
+        )
+        content.addView(
+            sliderRow("按下位移 X", style.keyPressOffsetX, -10f, 10f, 1f, "dp") {
+                style = style.copy(keyPressOffsetX = it)
+                onChange()
+            },
+        )
+        content.addView(
+            sliderRow("按下位移 Y", style.keyPressOffsetY, -10f, 10f, 1f, "dp") {
+                style = style.copy(keyPressOffsetY = it)
+                onChange()
+            },
+        )
+    }
+
+    // ---------------------------------------------------------------- 候选栏（含注释）
+
+    private fun renderCandidateAll() {
+        renderCandidate()
+        content.addView(
+            sliderRow("候选项内边距", style.candidatePadding.toFloat(), 0f, 24f, 1f, "dp") {
+                style = style.copy(candidatePadding = it.toInt())
+                onChange()
+            },
+        )
+        content.addView(
+            sliderRow("候选间距", style.candidateSpacing, 0f, 24f, 1f, "dp") {
+                style = style.copy(candidateSpacing = it)
+                onChange()
+            },
+        )
+        content.addView(
+            sliderRow("候选文字垂直偏移", style.candidateTextVerticalBias, 0f, 1f, 0.05f, "") {
+                style = style.copy(candidateTextVerticalBias = it)
+                onChange()
+            },
+        )
+        content.addView(
+            sliderRow("候选边框粗细", style.candidateBorder.toFloat(), 0f, 6f, 1f, "dp") {
+                style = style.copy(candidateBorder = it.toInt())
+                onChange()
+            },
+        )
+        content.addView(
+            sliderRow("候选项圆角", style.candidateCornerRadius, 0f, 24f, 0.5f, "dp") {
+                style = style.copy(candidateCornerRadius = it)
+                onChange()
+            },
+        )
+        content.addView(
+            sliderRow("候选边框圆角", style.candidateBorderRound, 0f, 24f, 0.5f, "dp") {
+                style = style.copy(candidateBorderRound = it)
+                onChange()
+            },
+        )
+        content.addView(
+            multiChipsRow(
+                "显示候选序号",
+                listOf("on" to "显示", "off" to "不显示"),
+                if (style.candidateLabel) setOf("on") else setOf("off"),
+            ) { picked ->
+                style = style.copy(candidateLabel = "on" in picked)
+                onChange()
+            },
+        )
+
+        content.addView(sectionTitle("注释 / 释义"))
+        content.addView(
+            sliderRow("注释区高度", style.commentHeight.toFloat(), 0f, 40f, 1f, "dp") {
+                style = style.copy(commentHeight = it.toInt())
+                onChange()
+            },
+        )
+        content.addView(
+            multiChipsRow(
+                "注释位置",
+                listOf("RIGHT" to "右侧", "TOP" to "上方", "OVERLAY" to "叠加"),
+                setOf(
+                    when (style.commentPosition.name.uppercase()) {
+                        "TOP" -> "TOP"
+                        "OVERLAY" -> "OVERLAY"
+                        else -> "RIGHT"
+                    },
+                ),
+            ) { picked ->
+                val v = picked.firstOrNull() ?: "RIGHT"
+                style = style.copy(
+                    commentPosition = com.osfans.trime.data.theme.model.GeneralStyle.CommentPosition.valueOf(v),
+                )
+                onChange()
+            },
+        )
+        content.addView(
+            sliderRow("注释垂直偏移", style.commentVerticalBias, 0f, 1f, 0.05f, "") {
+                style = style.copy(commentVerticalBias = it)
+                onChange()
+            },
+        )
+        content.addView(
+            sliderRow("候选序号字号", style.fonts.candidate_label_size, 0f, 24f, 0.5f, "sp") {
+                style = style.copy(fonts = style.fonts.copy(candidate_label_size = it))
+                onChange()
+            },
+        )
+        content.addView(
+            sliderRow("注释字号", style.fonts.comment_size, 6f, 22f, 0.5f, "sp") {
+                style = style.copy(fonts = style.fonts.copy(comment_size = it))
+                onChange()
+            },
+        )
+    }
+
+    // ---------------------------------------------------------------- 预编辑区 / 同步输入框（模块）
+
+    private fun renderPreedit() {
+        content.addView(sectionTitle("预编辑区"))
+        content.addView(hint("输入框上方那行编码区的样式。这些字段属于主题的 preedit 模块，点「应用」后生效。"))
+        content.addView(moduleSliderRow("preedit", "horizontal_padding", "左右内边距", 0f, 32f, 1f, "dp", 8f))
+        content.addView(moduleSliderRow("preedit", "alpha", "不透明度", 0.1f, 1f, 0.05f, "", 0.8f))
+        content.addView(moduleSliderRow("preedit", "top_end_radius", "上方圆角", 0f, 32f, 1f, "dp", 0f))
+        content.addView(moduleSliderRow("preedit", "foreground.font_size", "字号", 10f, 30f, 0.5f, "sp", 16f))
+
+        content.addView(sectionTitle("悬浮同步输入框"))
+        content.addView(hint("外接键盘「同步输入框」用的那条悬浮输入条。"))
+        content.addView(moduleSliderRow("sync_input", "font_size", "字号", 10f, 30f, 0.5f, "sp", 16f))
+        content.addView(moduleSliderRow("sync_input", "corner_radius", "圆角", 0f, 24f, 1f, "dp", 8f))
+        content.addView(moduleSliderRow("sync_input", "horizontal_padding", "左右内边距", 0f, 32f, 1f, "dp", 8f))
+        content.addView(moduleSliderRow("sync_input", "vertical_padding", "上下内边距", 0f, 24f, 1f, "dp", 6f))
+        content.addView(moduleSliderRow("sync_input", "alpha", "不透明度", 0.1f, 1f, 0.05f, "", 0.8f))
+        content.addView(moduleSliderRow("sync_input", "max_height", "最大高度（0=不限制）", 0f, 400f, 10f, "dp", 0f))
+    }
+
+    // ---------------------------------------------------------------- 气泡 / 候选窗口
+
+    private fun renderBubble() {
+        content.addView(sectionTitle("按键气泡"))
+        content.addView(hint("长按按键时弹出来的那个提示框。"))
+        content.addView(
+            sliderRow("气泡宽度", style.popupWidth.toFloat(), 20f, 90f, 1f, "dp") {
+                style = style.copy(popupWidth = it.toInt())
+                onChange()
+            },
+        )
+        content.addView(
+            sliderRow("气泡高度", style.popupHeight.toFloat(), 20f, 90f, 1f, "dp") {
+                style = style.copy(popupHeight = it.toInt())
+                onChange()
+            },
+        )
+        content.addView(
+            sliderRow("气泡按键高", style.popupKeyHeight.toFloat(), 20f, 90f, 1f, "dp") {
+                style = style.copy(popupKeyHeight = it.toInt())
+                onChange()
+            },
+        )
+        content.addView(
+            sliderRow("气泡底部边距", style.popupBottomMargin.toFloat(), 0f, 40f, 1f, "dp") {
+                style = style.copy(popupBottomMargin = it.toInt())
+                onChange()
+            },
+        )
+        content.addView(
+            sliderRow("气泡字号", style.fonts.popup_size, 0f, 30f, 0.5f, "sp") {
+                style = style.copy(fonts = style.fonts.copy(popup_size = it))
+                onChange()
+            },
+        )
+
+        content.addView(sectionTitle("候选窗口"))
+        content.addView(hint("悬浮候选窗口（不是候选栏）的四周边距与字号；window 模块。"))
+        content.addView(moduleSliderRow("window", "insets.vertical", "上下外距", 0f, 40f, 1f, "dp", 4f))
+        content.addView(moduleSliderRow("window", "insets.horizontal", "左右外距", 0f, 40f, 1f, "dp", 4f))
+        content.addView(moduleSliderRow("window", "item_padding.vertical", "项上下内距", 0f, 24f, 1f, "dp", 2f))
+        content.addView(moduleSliderRow("window", "item_padding.horizontal", "项左右内距", 0f, 24f, 1f, "dp", 4f))
+        content.addView(moduleSliderRow("window", "min_width", "最小宽度", 0f, 400f, 4f, "dp", 0f))
+        content.addView(moduleSliderRow("window", "corner_radius", "圆角", 0f, 32f, 1f, "dp", 0f))
+        content.addView(moduleSliderRow("window", "border", "边框粗细", 0f, 8f, 1f, "dp", 0f))
+        content.addView(moduleSliderRow("window", "alpha", "不透明度", 0.1f, 1f, 0.05f, "", 1f))
+        content.addView(moduleSliderRow("window", "foreground.text_font_size", "候选字号", 8f, 32f, 0.5f, "sp", 20f))
+        content.addView(moduleSliderRow("window", "foreground.comment_font_size", "注释字号", 6f, 24f, 0.5f, "sp", 20f))
+        content.addView(moduleSliderRow("window", "foreground.label_font_size", "序号字号", 6f, 24f, 0.5f, "sp", 20f))
+    }
+
+    // ---------------------------------------------------------------- 工具栏 / 候选工具栏
+
+    private fun renderToolbarTab() {
+        content.addView(sectionTitle("工具栏"))
+        content.addView(hint("键盘上方那条工具条；按钮列表（buttons）是数组，这里只调样式，增删按钮请改主题文件。"))
+        content.addView(moduleTextRow("tool_bar", "back_style", "返回按钮图标"))
+        content.addView(moduleSliderRow("tool_bar", "primary_button.background.corner_radius", "主按钮圆角", 0f, 32f, 1f, "dp", 10f))
+        content.addView(moduleSliderRow("tool_bar", "primary_button.background.vertical_inset", "主按钮上下内缩", 0f, 16f, 1f, "dp", 4f))
+        content.addView(moduleSliderRow("tool_bar", "primary_button.background.horizontal_inset", "主按钮左右内缩", 0f, 16f, 1f, "dp", 4f))
+        content.addView(moduleSliderRow("tool_bar", "primary_button.foreground.font_size", "主按钮字号", 8f, 30f, 0.5f, "sp", 18f))
+        content.addView(moduleSliderRow("tool_bar", "primary_button.foreground.padding", "主按钮内边距", 0f, 16f, 1f, "dp", 4f))
+        content.addView(moduleColorRow("tool_bar", "primary_button.foreground.normal", "主按钮图标色"))
+
+        content.addView(sectionTitle("候选工具栏"))
+        content.addView(hint("候选栏右侧那排小按钮；主题里没有这个模块时保持默认。"))
+        content.addView(moduleSliderRow("candidates_tool", "nav_width", "导航条宽度", 0f, 120f, 1f, "dp", 44f))
+        content.addView(moduleSliderRow("candidates_tool", "popup_width", "弹出宽度", 0f, 240f, 2f, "dp", 0f))
+        content.addView(moduleSliderRow("candidates_tool", "popup_text_size", "弹出字号", 8f, 24f, 0.5f, "sp", 14f))
+        content.addView(moduleColorRow("candidates_tool", "popup_text_color", "弹出文字色"))
+        content.addView(moduleColorRow("candidates_tool", "popup_background_color", "弹出背景色"))
+        content.addView(moduleColorRow("candidates_tool", "separator_color", "分隔线颜色"))
+    }
+
+    // ---------------------------------------------------------------- 液态键盘
+
+    private fun renderLiquidTab() {
+        content.addView(sectionTitle("液态键盘（符号面板）"))
+        content.addView(hint("就是左侧「符号」按钮打开的那个网格面板的尺寸。"))
+        content.addView(moduleSliderRow("liquid_keyboard", "columns", "列数", 3f, 9f, 1f, "", 6f))
+        content.addView(moduleSliderRow("liquid_keyboard", "rows", "行数", 2f, 8f, 1f, "", 5f))
+        content.addView(moduleSliderRow("liquid_keyboard", "bottom_padding", "底部边距", 0f, 40f, 1f, "dp", 0f))
+        content.addView(hint("面板列表（keyboards）里每一项是「单页/符号/分页/历史/变长」之一，增删页签请改主题文件。"))
+    }
+
+    // ---------------------------------------------------------------- 高级（其它样式）
+
+    private fun renderAdvanced() {
+        content.addView(sectionTitle("行为开关"))
+        content.addView(
+            multiChipsRow(
+                "自动句首大写",
+                listOf("on" to "开", "off" to "关"),
+                if (style.autoCaps) setOf("on") else setOf("off"),
+            ) { picked ->
+                style = style.copy(autoCaps = "on" in picked)
+                onChange()
+            },
+        )
+        content.addView(
+            multiChipsRow(
+                "切换焦点时重置英文模式",
+                listOf("on" to "开", "off" to "关"),
+                if (style.resetAsciiModeOnFocusChange) setOf("on") else setOf("off"),
+            ) { picked ->
+                style = style.copy(resetAsciiModeOnFocusChange = "on" in picked)
+                onChange()
+            },
+        )
+        content.addView(
+            multiChipsRow(
+                "回车键文字模式",
+                listOf("0" to "不显示", "1" to "仅动作名", "2" to "优先", "3" to "回退"),
+                setOf(style.enterLabelMode.coerceIn(0, 3).toString()),
+            ) { picked ->
+                val v = picked.firstOrNull()?.toIntOrNull() ?: 1
+                style = style.copy(enterLabelMode = v)
+                onChange()
+            },
+        )
+
+        content.addView(sectionTitle("回车键文案"))
+        content.addView(hint("上面模式选「不显示」时这里无效。"))
+        val el = style.enterLabel
+        content.addView(moduleTextRow("__enter_label__", "send", "发送（send）", el.send))
+        content.addView(moduleTextRow("__enter_label__", "search", "搜索（search）", el.search))
+        content.addView(moduleTextRow("__enter_label__", "default", "默认（default）", el.default))
+
+        content.addView(sectionTitle("侧栏与其它"))
+        content.addView(
+            sliderRow("侧栏圆角（-1 跟随按键圆角）", style.sidebarRoundCorner, -1f, 32f, 1f, "dp") {
+                style = style.copy(sidebarRoundCorner = it)
+                onChange()
+            },
+        )
+        content.addView(moduleTextRow("__style__", "background_folder", "背景图子目录"))
+        content.addView(moduleTextRow("__style__", "font_list", "字体列表（逗号分隔）"))
+
+        content.addView(sectionTitle("其它字号"))
+        val f = style.fonts
+        content.addView(
+            sliderRow("剪贴板分类字号", f.clipboard_category_size, 8f, 24f, 0.5f, "sp") {
+                style = style.copy(fonts = style.fonts.copy(clipboard_category_size = it))
+                onChange()
+            },
+        )
+        content.addView(
+            sliderRow("剪贴板字号", f.clipboard_size, 8f, 24f, 0.5f, "sp") {
+                style = style.copy(fonts = style.fonts.copy(clipboard_size = it))
+                onChange()
+            },
+        )
+        content.addView(
+            sliderRow("侧栏字号（-1 跟随按键）", f.sidebar_size, -1f, 34f, 0.5f, "sp") {
+                style = style.copy(fonts = style.fonts.copy(sidebar_size = it))
+                onChange()
+            },
+        )
+        content.addView(
+            sliderRow("液态键盘页签字号（-1 跟随候选）", f.liquid_tabs_size, -1f, 34f, 0.5f, "sp") {
+                style = style.copy(fonts = style.fonts.copy(liquid_tabs_size = it))
+                onChange()
+            },
+        )
+    }
+
+    // ---------------------------------------------------------------- 模块字段读写（preedit / sync_input / window / tool_bar / candidates_tool / liquid_keyboard）
+
+    private var themeRootCache: JsonObject? = null
+    private val moduleDrafts = LinkedHashMap<String, JsonObject>()
+
+    private fun themeRoot(): JsonObject {
+        themeRootCache?.let { return it }
+        val j = runCatching {
+            Theme.json.encodeToJsonElement(Theme.serializer(), ThemeManager.activeTheme).jsonObject
+        }.getOrNull() ?: JsonObject(emptyMap())
+        themeRootCache = j
+        return j
+    }
+
+    private fun moduleOf(name: String): JsonObject =
+        moduleDrafts[name] ?: (themeRoot()[name] as? JsonObject) ?: JsonObject(emptyMap())
+
+    private fun digJson(obj: JsonObject?, path: String): JsonElement? {
+        var cur: JsonElement? = obj
+        for (seg in path.split('.')) {
+            cur = (cur as? JsonObject)?.get(seg) ?: return null
+        }
+        return cur
+    }
+
+    private fun moduleText(name: String, path: String): String {
+        if (name == "__style__") {
+            return when (path) {
+                "background_folder" -> style.backgroundFolder
+                "font_list" -> style.fonts.font_list.joinToString(",")
+                else -> ""
+            }
+        }
+        if (name == "__enter_label__") {
+            val el = style.enterLabel
+            return when (path) {
+                "send" -> el.send
+                "search" -> el.search
+                else -> el.default
+            }
+        }
+        return (digJson(moduleOf(name), path) as? JsonPrimitive)?.content ?: ""
+    }
+
+    private fun moduleNum(name: String, path: String, def: Float): Float =
+        (digJson(moduleOf(name), path) as? JsonPrimitive)?.content?.toFloatOrNull() ?: def
+
+    private fun moduleSet(name: String, path: String, value: JsonElement) {
+        val root = moduleOf(name)
+        val parts = path.split('.')
+        fun build(depth: Int, node: JsonObject): JsonObject {
+            val key = parts[depth]
+            val next: JsonElement = if (depth == parts.size - 1) {
+                value
+            } else {
+                build(depth + 1, (node[key] as? JsonObject) ?: JsonObject(emptyMap()))
+            }
+            return JsonObject(node.toMutableMap().also { it[key] = next })
+        }
+        moduleDrafts[name] = build(0, root)
+    }
+
+    private fun moduleSliderRow(
+        name: String,
+        path: String,
+        title: String,
+        min: Float,
+        max: Float,
+        step: Float,
+        unit: String,
+        def: Float,
+    ): View = sliderRow(title, moduleNum(name, path, def), min, max, step, unit) { v ->
+        val integral = v % 1f == 0f
+        moduleSet(name, path, JsonPrimitive(if (integral) v.toInt() else v))
+        dirty = true
+        updateActionState()
+    }
+
+    private fun moduleColorRow(name: String, path: String, title: String): View =
+        colorRow(title, parseColor(moduleText(name, path))) { picked ->
+            moduleSet(name, path, JsonPrimitive("0x" + String.format("%08x", picked)))
+            dirty = true
+            updateActionState()
+        }
+
+    private fun moduleTextRow(name: String, path: String, title: String, preset: String? = null): View {
+        val wrap = LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(8), dp(16), dp(8))
+        }
+        wrap.addView(
+            TextView(requireContext()).apply {
+                text = title
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+                setTextColor(textColor)
+            },
+        )
+        val valueView = TextView(requireContext()).apply {
+            text = (preset ?: moduleText(name, path)).ifEmpty { "（未设置）" }
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            setTextColor(accentColor)
+            setPadding(0, dp(4), 0, 0)
+        }
+        wrap.addView(valueView)
+        wrap.setOnClickListener {
+            val edit = android.widget.EditText(requireContext()).apply {
+                setText(preset ?: moduleText(name, path))
+                setSelection(text.length)
+            }
+            AlertDialog.Builder(requireContext())
+                .setTitle(title)
+                .setView(edit)
+                .setPositiveButton("确定") { _, _ ->
+                    val v = edit.text.toString()
+                    when (name) {
+                        "__style__" -> {
+                            style = when (path) {
+                                "background_folder" -> style.copy(backgroundFolder = v)
+                                "font_list" -> style.copy(
+                                    fonts = style.fonts.copy(
+                                        font_list = v.split(',').map { it.trim() }.filter { it.isNotEmpty() },
+                                    ),
+                                )
+                                else -> style
+                            }
+                            onChange()
+                        }
+
+                        "__enter_label__" -> {
+                            val el = style.enterLabel
+                            style = style.copy(
+                                enterLabel = when (path) {
+                                    "send" -> el.copy(send = v)
+                                    "search" -> el.copy(search = v)
+                                    else -> el.copy(default = v)
+                                },
+                            )
+                            onChange()
+                        }
+
+                        else -> {
+                            moduleSet(name, path, JsonPrimitive(v))
+                            dirty = true
+                            updateActionState()
+                        }
+                    }
+                    renderTab(tab)
+                }
+                .setNegativeButton("取消", null)
+                .show()
+        }
+        return LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(wrap, rowParams())
+            addView(divider())
+        }
     }
 
     private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()

@@ -528,3 +528,45 @@ $env:LYRAIME_DL_CACHE="C:\Users\Administrator\Downloads\lyraime-build-env"
 - 主题样式页：**六个页签全部可用**（配色 12 项 / 键盘 8 项 / 字号 8 项 / 候选栏 4 项 / 阴影 3 项 / 按键 N 项），预览与真机同源（共用 `KeyRenderer` + `resolver`），可点击选中键、可长按看 popup 气泡、可拖动改预览高度、可切换键盘与配色、可导出独立 `.lua`。
 - 最近交付：`dist/BambooIME-3.3.1-dev-pickerchips2-arm64-v8a-debug.apk`（sha256 `ad5e8dc4…`）。
 - 未做：候选栏/工具栏/键盘下方留白进预览、每项 ↺ 逐项复位、点行首批量改整行、像素 diff 测试、`.bbt` 完整包导出。
+
+## 13. P1 完成记录（2026-11-18）
+
+### 13.1 页签重排为 9 个（可横滑）
+
+顺序固定为：`键盘 / 候选栏 / 预编辑 / 气泡 / 工具栏 / 液态键盘 / 配色 / 按键 / 高级`。
+
+`renderTab(index)` 的分派表：
+
+| index | 页签 | 渲染函数 |
+|---|---|---|
+| 0 | 键盘 | `renderKeyboardAll()` = `renderKeyboard()` + 横屏 3 项 + `contentPadding` + `renderShadow()` + 按键字号 5 项 + 8 个偏移 |
+| 1 | 候选栏 | `renderCandidateAll()` = `renderCandidate()` + 内边距/间距/垂直偏移/边框/圆角 6 项 + 候选序号开关 + 注释区 4 项 |
+| 2 | 预编辑 | `renderPreedit()` = `preedit` 模块 4 项 + `sync_input` 模块 6 项 |
+| 3 | 气泡 | `renderBubble()` = `popup_*` 5 项 + `window` 模块 10 项 |
+| 4 | 工具栏 | `renderToolbarTab()` = `tool_bar` 7 项 + `candidates_tool` 6 项 |
+| 5 | 液态键盘 | `renderLiquidTab()` = `liquid_keyboard` 3 项 |
+| 6 | 配色 | `renderColors()`（本轮仍是 12 项，66 色分组见 P2） |
+| 7 | 按键 | `renderKeyTab()`（逐键 18 项） |
+| 8 | 高级 | `renderAdvanced()` = 行为开关 3 项 + 回车文案 3 项 + 侧栏圆角/背景目录/字体列表 + 其它字号 4 项 |
+
+**踩坑**：原代码里 9 处写死 `renderTab(5)` 指向「按键」，重排后必须全部改成 `renderTab(7)`（`theme_editor` 补丁脚本已做，`assert` 校验命中数）。
+
+### 13.2 界面模块的通用编辑机制
+
+主题的 `preedit / sync_input / window / tool_bar / candidates_tool / liquid_keyboard` 六个模块是**独立 JSON 子树**，没有 Kotlin 可变模型。实现方式：
+
+1. `themeRoot()`：`Theme.json.encodeToJsonElement(Theme.serializer(), ThemeManager.activeTheme)`，**按需一次性缓存**；
+2. `moduleOf(name)`：优先取草稿 `moduleDrafts[name]`，否则取 themeRoot 里的子树；
+3. `moduleSet(name, path, value)`：按 `a.b.c` 路径**不可变重建**子树（不改原对象），写进 `moduleDrafts`；
+4. `applyOverrides()` 把 `moduleDrafts` 里的每个模块整体写进覆盖层 JSON（`put(moduleName, moduleJson)`）；
+5. 行控件复用 `sliderRow / colorRow`，并新增 `moduleSliderRow / moduleColorRow / moduleTextRow`。
+
+**约定**：模块字段没有"继承"概念（不像 `style`），写出即固定值；不需要的字段保持不写（读的是主题原值）。
+
+### 13.3 仍缺（P2 起）
+
+- 配色：12 → 66 个语义键（分 12 组折叠 + 每项标「回退自 X」）；
+- 按键页签的「按行/按功能键批量改色」（走主题原生的 `<key_id>_<field>` + `fallback_colors` 写法）；
+- 每个调节项的 ↺ 单项复位（现在只有整页撤销）；
+- 输入测试按钮（唤起真机键盘）；
+- 14 个按键行为的动作编辑（当前只读展示 click/popup）。
