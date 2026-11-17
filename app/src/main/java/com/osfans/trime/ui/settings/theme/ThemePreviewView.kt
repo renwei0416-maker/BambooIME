@@ -88,6 +88,9 @@ class ThemePreviewView(context: Context, attrs: AttributeSet? = null) : View(con
     /** 上次布局用的键区宽，宽度变化时用它判断要不要重排。 */
     private var lastReferenceWidth = 0
 
+    /** 上次重建用的键盘配置，自证用（数有多少键带显式 keyBackColor）。 */
+    private var lastSelfConfig: TextKeyboard? = null
+
     fun setDraft(draft: ThemeDraft) {
         this.draft = draft
         this.style = draft.style
@@ -113,6 +116,15 @@ class ThemePreviewView(context: Context, attrs: AttributeSet? = null) : View(con
 
     fun refresh() = invalidate()
 
+    /**
+     * 强制下次绘制重建键盘（用户 m35281：改配色后预览不重算）。
+     * 只 invalidate 不够——Key 的颜色是 ResettableLazy，必须换一批 Key 实例。
+     */
+    fun invalidateKeyboard() {
+        keyboard = null
+        lastReferenceWidth = 0
+    }
+
     /** 自证用：当前解析出的关键颜色，显示在顶栏方便对照真机。 */
     fun colorSummary(): String {
         val s = currentScheme()
@@ -121,7 +133,14 @@ class ThemePreviewView(context: Context, attrs: AttributeSet? = null) : View(con
         val text = r?.getColorOr("key_text_color", 0) ?: 0
         val cols = s?.colors?.size ?: 0
         val fb = ThemeManager.activeTheme.fallbackColors.size
-        return "scheme=${s?.id ?: "无"} cols=$cols fb=$fb back=${hex(back)} text=${hex(text)}"
+        val kbk = r?.getColorOr("keyboard_back_color", 0) ?: 0
+        // 有多少键自带显式 keyBackColor：这些键不吃配色里的 key_back_color，
+        // 改配色时它们不会变色——这是「改了键底色但预览不动」的常见原因。
+        val explicit = lastSelfConfig?.rows?.sumOf { row ->
+            row.keys.count { !it.keyBackColor.isNullOrEmpty() }
+        } ?: 0
+        return "scheme=${s?.id ?: "无"} cols=$cols fb=$fb back=${hex(back)} text=${hex(text)}" +
+            " kbk=${hex(kbk)} kexp=$explicit"
     }
 
     fun firstLetterKeyIndex(): Int? {
@@ -153,9 +172,22 @@ class ThemePreviewView(context: Context, attrs: AttributeSet? = null) : View(con
     private fun rebuild() {
         val theme = draftTheme()
         val raw = rawKeyboard()
-        val selfConfig = draft?.patchedKeyboard(raw ?: return) ?: return
+        if (raw == null) {
+            android.util.Log.w("ThemePreview", "rebuild: no keyboard '$keyboardName'")
+            keyboard = null
+            invalidate()
+            return
+        }
+        val selfConfig = draft?.patchedKeyboard(raw)
+        if (selfConfig == null) {
+            android.util.Log.w("ThemePreview", "rebuild: patchedKeyboard null '$keyboardName'")
+            keyboard = null
+            invalidate()
+            return
+        }
         val scheme = currentScheme() ?: ColorScheme("default", emptyMap())
         lastTheme = theme
+        lastSelfConfig = selfConfig
         resolver = ThemeResourceResolver(theme, scheme)
         val kb = Keyboard(context, theme, selfConfig, resolver!!)
         val refW = referenceWidth

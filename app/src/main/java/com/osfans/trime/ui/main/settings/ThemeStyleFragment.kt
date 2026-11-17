@@ -179,7 +179,7 @@ class ThemeStyleFragment : Fragment() {
         setupActions(view)
         setupTabs()
         rebuildChips()
-        renderTab(0)
+        renderTab(0, keepScroll = false)
         refreshPreview()
     }
 
@@ -219,7 +219,7 @@ class ThemeStyleFragment : Fragment() {
 
         preview.onKeyTapped = { path ->
             selectedKey = path
-            if (tab != 5) renderTab(7) else renderTab(7)
+            renderTab(7, keepScroll = false)
         }
 
         val handle = root.findViewById<FrameLayout>(R.id.theme_style_handle)
@@ -626,7 +626,7 @@ class ThemeStyleFragment : Fragment() {
                 setPadding(dp(14), 0, dp(14), 0)
                 text = title
                 setOnClickListener {
-                    if (tab != index) renderTab(index)
+                    if (tab != index) renderTab(index, keepScroll = false)
                 }
             }
             tabsRow.addView(
@@ -661,7 +661,13 @@ class ThemeStyleFragment : Fragment() {
         }
     }
 
-    private fun renderTab(index: Int) {
+    /**
+     * 重画某个页签。
+     * [keepScroll] 默认 true：改色/改数值后停在原来那一行（用户 m35281 第 2 条）；
+     * 切页签、切模式、首次进入时传 false，回到顶部。
+     */
+    private fun renderTab(index: Int, keepScroll: Boolean = true) {
+        val savedScroll = if (keepScroll) scroll.scrollY else 0
         tab = index
         paintTabs()
         content.removeAllViews()
@@ -676,7 +682,7 @@ class ThemeStyleFragment : Fragment() {
             7 -> renderKeyTab()
             else -> renderAdvanced()
         }
-        scroll.scrollTo(0, 0)
+        scroll.scrollTo(0, savedScroll)
     }
 
     // ---------------------------------------------------------------- 配色
@@ -1662,6 +1668,8 @@ class ThemeStyleFragment : Fragment() {
         draft.schemeId = schemeId
         draft.keyboardName = keyboardName
         if (pressedDemo) preview.selectedKey = preview.selectedKey else preview.selectedKey = selectedKey
+        // 用户 m35281：改色后预览不重算 → 先丢掉旧键盘，逼 setDraft 走到 rebuild
+        preview.invalidateKeyboard()
         preview.setDraft(draft)
         syncPreviewHeightToContent()
         titleView?.text = themeId + " · " + schemeId
