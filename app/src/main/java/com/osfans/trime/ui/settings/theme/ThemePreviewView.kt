@@ -244,23 +244,9 @@ class ThemePreviewView(context: Context, attrs: AttributeSet? = null) : View(con
     var neededHeightPx = 0f
         private set
 
-    /**
-     * 供外层把预览框撑到「键盘宽度铺满」时内容真正需要的高度（dp）。
-     *
-     * 这里必须**直接按键盘几何算**，不能用上一次绘制的结果：
-     * 否则「框按上次高度撑高」和「本次按框高缩放」会互相追，框永远长不到位，
-     * 于是键盘被 min() 误判成「装不下」而整体缩小（左右留白）。
-     */
-    fun neededHeightDp(): Int {
-        val kb = keyboard ?: return 0
-        if (kb.keys.isEmpty() || kb.height <= 0) return 0
-        val w = if (width > 0) width.toFloat() else resources.displayMetrics.widthPixels.toFloat()
-        val kbWidth = kb.minWidth.coerceAtLeast(1).toFloat()
-        val kbHeight = kb.height.coerceAtLeast(1).toFloat()
-        val full = candidateBarHeight() + preeditHeight() + kbHeight +
-            dp(style.keyboardPaddingBottom.toFloat())
-        return (full * (w / kbWidth) / resources.displayMetrics.density).toInt()
-    }
+    /** 供外层把预览框撑到内容真实高度（dp）；尚未绘制时返回 0。 */
+    fun neededHeightDp(): Int =
+        if (neededHeightPx <= 0f) 0 else (neededHeightPx / resources.displayMetrics.density).toInt()
 
     private val hintPaint = Paint().apply {
         isAntiAlias = true
