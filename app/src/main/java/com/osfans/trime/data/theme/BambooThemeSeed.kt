@@ -61,7 +61,7 @@ object BambooThemeSeed {
 
         val themeAsset = "$ASSET_ROOT/$THEME_DIR/$THEME_ID.lua"
         val themeTarget = File(themesDir, "$THEME_ID.lua")
-        syncBundledFile(context, themeAsset, themeTarget, keepBackup = true)
+        syncBundledFile(context, themeAsset, themeTarget)
 
         val marker = File(themesDir, MARKER)
         if (marker.takeIf { it.isFile }?.readText()?.trim() != STAMP) {
@@ -119,14 +119,13 @@ object BambooThemeSeed {
      * 主题文件与内置保持同步。
      *
      * `Gboard.lua` 这个 id 只由我们发行，所以内容不同就说明是**旧版内置**（或用户改过）。
-     * 两种情况都覆盖成新版（否则老用户的「默认深色」永远不生效），
-     * 但覆盖前把旧文件另存为 `Gboard.lua.bak-<sha8>`，用户想找回随时能找。
+     * 两种情况都直接覆盖成新版（否则老用户的「默认深色」永远不生效）。
+     * 不另存 `.bak` 副本：用户明确要求 App 不在磁盘上留备份文件。
      */
     private fun syncBundledFile(
         context: Context,
         assetPath: String,
         target: File,
-        keepBackup: Boolean,
     ) {
         val assetBytes = runCatching { context.assets.open(assetPath).use { it.readBytes() } }
             .getOrNull() ?: run {
@@ -138,13 +137,6 @@ object BambooThemeSeed {
         if (target.isFile) {
             val current = runCatching { target.readBytes() }.getOrNull()
             if (current != null && current.sha256() == assetSha) return
-            if (keepBackup && current != null) {
-                val bak = File(target.parentFile, "${target.name}.bak-${current.sha256().take(8)}")
-                if (!bak.exists()) {
-                    runCatching { bak.writeBytes(current) }
-                    Timber.d("BambooThemeSeed: 备份旧主题 ${bak.name}")
-                }
-            }
         }
 
         runCatching {

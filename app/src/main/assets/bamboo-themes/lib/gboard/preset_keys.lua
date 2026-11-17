@@ -131,7 +131,7 @@ AiPanel            = { label = "AI", popup_label = "'ic@robot'", text = "BambooA
   ReverseLookup      = { label = "ic@magnify", text = "`" },                                         -- 反查
   AddDict            = { label = "ic@pen-plus", text = "``" },                                       -- 造词
   Calculator         = { label = "ic@calculator-variant", actions = { "KeyboardCalculator", "V" } }, -- 计算器
-  T9Clean            = { label = "ic@close-octagon-outline", command = "t9_clear" },                 -- T9 布局清空
+  T9Clean            = { label = "ic@close-octagon-outline", command = "sidebar_clear" },                 -- T9 布局清空
 
   -- 计算器函数
   -- ==== ASCII 处理 ====
