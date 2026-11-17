@@ -244,6 +244,12 @@ class ThemePreviewView(context: Context, attrs: AttributeSet? = null) : View(con
     var neededHeightPx = 0f
         private set
 
+    /**
+     * true = 等比塞进预览框（用户拖动过高度手柄时的行为，键盘会跟着缩放）；
+     * false = 宽度定标（改键盘高度/字号时只影响高度，不压缩宽度）。
+     */
+    var fitToBox = false
+
     /** 供外层把预览框撑到内容真实高度（dp）；尚未绘制时返回 0。 */
     fun neededHeightDp(): Int =
         if (neededHeightPx <= 0f) 0 else (neededHeightPx / resources.displayMetrics.density).toInt()
@@ -384,10 +390,13 @@ class ThemePreviewView(context: Context, attrs: AttributeSet? = null) : View(con
         contentTop = candH + preeditH
         val fullHeight = contentTop + kbHeight + bottomPad
 
-        // 与真机一致：宽度恒定＝预览宽，高度只随内容变，绝不反向压缩宽度/字号。
-        val scale = when (mode) {
-            Mode.FIT -> w / kbWidth
-            Mode.CROP -> 1f
+        // 自动模式（改参数）＝宽度定标：宽度恒定，高度只随内容变，绝不反向压缩宽度/字号。
+        // 手动模式（拖手柄）＝等比塞进框里，恢复「拖动就缩放」的老手感。
+        val scale = when {
+            fitToBox && mode == Mode.CROP -> maxOf(w / kbWidth, h / fullHeight)
+            fitToBox -> minOf(w / kbWidth, h / fullHeight)
+            mode == Mode.CROP -> 1f
+            else -> w / kbWidth
         }
         val scaledHeight = fullHeight * scale
         neededHeightPx = scaledHeight
