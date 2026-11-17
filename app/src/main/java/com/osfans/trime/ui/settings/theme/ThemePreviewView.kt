@@ -72,11 +72,21 @@ class ThemePreviewView(context: Context, attrs: AttributeSet? = null) : View(con
     private var resolver: ThemeResourceResolver? = null
 
     private val density = resources.displayMetrics.density
+    /**
+     * 键区宽度（theme px）：预览宽 − 框外留缝 − 2×两侧留白。
+     * 与真机 `InputView` 的 leftPaddingSpace/rightPaddingSpace 同口径，
+     * 这样「两侧留白」调大 = 所有按键离底板边框更远，而不是被缩放抵消。
+     */
     private val referenceWidth: Int
         get() {
-            val pad = ThemeManager.activeTheme.generalStyle.keyboardPadding
-            return (resources.displayMetrics.widthPixels - 2 * pad).coerceAtLeast(320)
+            val w = if (width > 0) width else resources.displayMetrics.widthPixels
+            val outer = dp(OUTER_PAD_DP).toInt()
+            val side = dp(style.keyboardPadding.toFloat()).toInt()
+            return (w - outer * 2 - side * 2).coerceAtLeast(160)
         }
+
+    /** 上次布局用的键区宽，宽度变化时用它判断要不要重排。 */
+    private var lastReferenceWidth = 0
 
     fun setDraft(draft: ThemeDraft) {
         this.draft = draft
@@ -148,7 +158,9 @@ class ThemePreviewView(context: Context, attrs: AttributeSet? = null) : View(con
         lastTheme = theme
         resolver = ThemeResourceResolver(theme, scheme)
         val kb = Keyboard(context, theme, selfConfig, resolver!!)
-        kb.recalculateLayout(referenceWidth)
+        val refW = referenceWidth
+        lastReferenceWidth = refW
+        kb.recalculateLayout(refW)
         keyboard = kb
         keyPaths = buildKeyPaths(selfConfig)
         invalidate()
@@ -167,7 +179,8 @@ class ThemePreviewView(context: Context, attrs: AttributeSet? = null) : View(con
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
-        if (keyboard == null) rebuild()
+        // 键区宽随视图宽度与两侧留白变化；变了就重排，否则按键会按旧宽度画。
+        if (keyboard == null || referenceWidth != lastReferenceWidth) rebuild()
     }
 
     // ------------------------------------------------------------------ 触摸
@@ -351,7 +364,7 @@ class ThemePreviewView(context: Context, attrs: AttributeSet? = null) : View(con
     private fun hitIndex(x: Float, y: Float): Int? {
         val kb = keyboard ?: return null
         if (drawScale <= 0f) return null
-        val cx = (x - drawTx) / drawScale
+        val cx = (x - drawTx) / drawScale - dp(style.keyboardPadding.toFloat())
         // 画布里按键区在候选栏 + 编码行之下
         val cy = (y - drawTy) / drawScale - contentTop
         kb.keys.forEachIndexed { index, key ->
@@ -408,15 +421,19 @@ class ThemePreviewView(context: Context, attrs: AttributeSet? = null) : View(con
         val kbWidth = kb.minWidth.coerceAtLeast(1).toFloat()
         val kbHeight = kb.height.coerceAtLeast(1).toFloat()
         val outerPad = dp(OUTER_PAD_DP)
+        // 三种留白都是「按键到键盘底板边框的距离」，全部按 dp 取，来自 Theme
+        val sidePad = dp(style.keyboardPadding.toFloat())
+        val topPad = dp(style.keyboardPaddingTop.toFloat())
         // 方框可用区域：框外这几 dp 就是露出底板的地方
-        val boxW = (w - outerPad * 2f).coerceAtLeast(1f)
+        val boxAvailW = (w - outerPad * 2f).coerceAtLeast(1f)
         val boxAvailH = (h - outerPad * 2f).coerceAtLeast(1f)
 
         // 预览画布 = 候选栏 + 编码行 + 键盘 + 键盘下留白，四段高度全部来自 Theme
         val candH = candidateBarHeight()
         val preeditH = preeditHeight()
         val bottomPad = dp(style.keyboardPaddingBottom.toFloat())
-        contentTop = candH + preeditH
+        // 键区上沿 = 编码行 + 候选行 + 顶部留白（顶部留白靠整体下移，不缩行高）
+        contentTop = candH + preeditH + topPad
         val fullHeight = contentTop + kbHeight + bottomPad
 
         // 单一公式（用户 m34976 口径）：
@@ -425,7 +442,8 @@ class ThemePreviewView(context: Context, attrs: AttributeSet? = null) : View(con
         // neededHeightPx 必须按「宽度铺满」来算，否则会和外层「框跟着长高」互相追。
         // 只跟「方框」比：方框宽 = 预览宽 - 两侧留缝；因此调键盘高度不会横向收缩，
         // 只有方框高度装不下时才整体等比缩小（用户 m34976/m35040 口径）。
-        val widthScale = boxW / kbWidth
+        val contentW = kbWidth + sidePad * 2f
+        val widthScale = boxAvailW / contentW
         neededHeightPx = fullHeight * widthScale + outerPad * 2f
         val scale = when (mode) {
             Mode.CROP -> maxOf(widthScale, boxAvailH / fullHeight)
@@ -433,12 +451,12 @@ class ThemePreviewView(context: Context, attrs: AttributeSet? = null) : View(con
         }
         val boxH = fullHeight * scale
         drawScale = scale
-        drawTx = (w - kbWidth * scale) / 2f
+        drawTx = (w - contentW * scale) / 2f
         // 方框比可用区矮则垂直居中；更高则贴顶，超出部分由外层裁剪
         drawTy = if (boxH < h) (h - boxH) / 2f else outerPad
 
         // 方框（键盘显示区）：框内铺键盘底色，与真机 InputView.keyboardBackground 同源
-        val boxRect = RectF(drawTx, drawTy, drawTx + kbWidth * scale, drawTy + boxH)
+        val boxRect = RectF(drawTx, drawTy, drawTx + contentW * scale, drawTy + boxH)
         val kbBg = runCatching { resolver.getDrawable("keyboard_background") }.getOrNull()
         canvas.save()
         canvas.clipRect(boxRect)
@@ -472,6 +490,8 @@ class ThemePreviewView(context: Context, attrs: AttributeSet? = null) : View(con
         canvas.save()
         canvas.translate(drawTx, drawTy)
         canvas.scale(scale, scale)
+        // 框内再按两侧留白内缩：编码行、候选行、键区一起，才叫「离边框更远」
+        canvas.translate(sidePad, 0f)
 
         // 与真机同序：编码行在上、候选行在下（PreeditUi 在候选栏之上）
         drawPreeditRow(canvas, kbWidth, 0f, preeditH)
@@ -490,8 +510,9 @@ class ThemePreviewView(context: Context, attrs: AttributeSet? = null) : View(con
             val viewHeight = key.height + sTop + sBottom
 
             val padL = (kb.horizontalGap * kb.horizontalGapScale / 2f).toInt() + key.extraWidthLeft + sLeft
+            // 顶部留白靠键区整体下移实现，这里只用行间距（用 keyboardPaddingTop 会压扁键背景）
             val padT = if (key.edgeFlags and Keyboard.EDGE_TOP != 0) {
-                maxOf(kb.keyboardPaddingTop, kb.verticalGap / 2) + sTop
+                kb.verticalGap / 2 + sTop
             } else {
                 kb.verticalGap / 2
             }
