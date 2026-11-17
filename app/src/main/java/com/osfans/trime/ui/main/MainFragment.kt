@@ -139,7 +139,7 @@ class MainFragment : PaddingPreferenceFragment() {
                 addPreference("输入增强", "成对符号自动补全：打左半边自动补右半边，光标停在中间", R.drawable.ic_baseline_spellcheck_24) {
                     findNavController().navigateWithAnim(NavigationRoute.InputEnhance)
                 }
-                addPreference("主题样式", "可视化改当前主题的配色、尺寸与字号，改完能导出给别的用户", R.drawable.ic_baseline_color_lens_24) {
+                addPreference("主题编辑", "可视化改当前主题的配色、尺寸与字号，改完能导出给别的用户", R.drawable.ic_baseline_color_lens_24) {
                     findNavController().navigateWithAnim(NavigationRoute.ThemeStyle)
                 }
                 addPreference("外语学习", "让你边打字边学习外语", R.drawable.ic_baseline_language_24) {

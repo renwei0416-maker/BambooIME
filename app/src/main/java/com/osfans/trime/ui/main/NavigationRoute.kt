@@ -209,7 +209,7 @@ sealed class NavigationRoute : Parcelable {
                 label = "输入增强"
             }
             fragment<ThemeStyleFragment, ThemeStyle> {
-                label = "主题样式"
+                label = "主题编辑"
             }
             fragment<GlossaryFragment, Glossary> {
                 label = "外语学习"

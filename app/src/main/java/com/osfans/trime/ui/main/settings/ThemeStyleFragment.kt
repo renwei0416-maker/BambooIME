@@ -113,9 +113,25 @@ class ThemeStyleFragment : Fragment() {
         val patches: Map<KeyPath, Map<String, kotlinx.serialization.json.JsonElement?>>,
     )
 
+    /**
+     * 页签顺序（用户 m35394 第 3 条）：键盘、配色、按键靠前，其余在后。
+     * 序号一律走 [Tabs] 常量，禁止再写裸数字——否则挪页签必错位。
+     */
     private val tabs = listOf(
-        "键盘", "候选栏", "预编辑", "气泡", "工具栏", "液态键盘", "配色", "按键", "高级",
+        "键盘", "配色", "按键", "候选栏", "预编辑", "气泡", "工具栏", "液态键盘", "高级",
     )
+
+    private object Tabs {
+        const val KEYBOARD = 0
+        const val COLORS = 1
+        const val KEY = 2
+        const val CANDIDATE = 3
+        const val PREEDIT = 4
+        const val POPUP = 5
+        const val TOOLBAR = 6
+        const val LIQUID = 7
+        const val ADVANCED = 8
+    }
 
     private companion object {
         const val OVERLAY_TAG = "theme_style_picker_overlay"
@@ -179,7 +195,7 @@ class ThemeStyleFragment : Fragment() {
         setupActions(view)
         setupTabs()
         rebuildChips()
-        renderTab(0, keepScroll = false)
+        renderTab(Tabs.KEYBOARD, keepScroll = false)
         refreshPreview()
     }
 
@@ -219,7 +235,7 @@ class ThemeStyleFragment : Fragment() {
 
         preview.onKeyTapped = { path ->
             selectedKey = path
-            renderTab(7, keepScroll = false)
+            renderTab(Tabs.KEY, keepScroll = false)
         }
 
         val handle = root.findViewById<FrameLayout>(R.id.theme_style_handle)
@@ -672,14 +688,14 @@ class ThemeStyleFragment : Fragment() {
         paintTabs()
         content.removeAllViews()
         when (index) {
-            0 -> renderKeyboardAll()
-            1 -> renderCandidateAll()
-            2 -> renderPreedit()
-            3 -> renderBubble()
-            4 -> renderToolbarTab()
-            5 -> renderLiquidTab()
-            6 -> renderColors()
-            7 -> renderKeyTab()
+            Tabs.KEYBOARD -> renderKeyboardAll()
+            Tabs.COLORS -> renderColors()
+            Tabs.KEY -> renderKeyTab()
+            Tabs.CANDIDATE -> renderCandidateAll()
+            Tabs.PREEDIT -> renderPreedit()
+            Tabs.POPUP -> renderBubble()
+            Tabs.TOOLBAR -> renderToolbarTab()
+            Tabs.LIQUID -> renderLiquidTab()
             else -> renderAdvanced()
         }
         scroll.scrollTo(0, savedScroll)
@@ -697,7 +713,9 @@ class ThemeStyleFragment : Fragment() {
         content.addView(
             hint(
                 "共 ${colorGroups().sumOf { it.second.size }} 个颜色键，按用途分成 " +
-                    "${colorGroups().size} 组；括号里 ← 后面是「没设置时跟谁」，只改当前这套配色。",
+                    "${colorGroups().size} 组；括号里 ← 后面是「没设置时跟谁」，只改当前这套配色。" +
+                        "注意：自带显式底色的键（调色板主题的字母键）不受这里的「按键底色」影响，" +
+                        "可在「按键」页一键清除。",
             ),
         )
 
@@ -708,14 +726,14 @@ class ThemeStyleFragment : Fragment() {
         actions.addView(
             chip("全部展开", false) {
                 colorGroups().forEach { (g, _) -> expandedColorGroups.add(g) }
-                renderTab(6)
+                renderTab(Tabs.COLORS)
             },
             chipParams(),
         )
         actions.addView(
             chip("全部折叠", false) {
                 expandedColorGroups.clear()
-                renderTab(6)
+                renderTab(Tabs.COLORS)
             },
             chipParams(),
         )
@@ -726,7 +744,7 @@ class ThemeStyleFragment : Fragment() {
             val mark = if (open) "▾" else "▸"
             content.addView(plainRow("$mark $group（${items.size}）") {
                 if (open) expandedColorGroups.remove(group) else expandedColorGroups.add(group)
-                renderTab(6)
+                renderTab(Tabs.COLORS)
             }, rowParams())
             if (!open) continue
             for (item in items) {
@@ -738,7 +756,7 @@ class ThemeStyleFragment : Fragment() {
                     val colors = LinkedHashMap(scheme.colors)
                     colors[key] = "0x" + String.format("%08x", picked)
                     replaceScheme(scheme.copy(colors = colors))
-                    renderTab(6)
+                    renderTab(Tabs.COLORS)
                     refreshPreview()
                 }
                 content.addView(colorRowView, rowParams())
@@ -760,7 +778,7 @@ class ThemeStyleFragment : Fragment() {
                 replaceScheme(scheme.copy(colors = colors))
                 dirty = true
                 updateActionState()
-                renderTab(6)
+                renderTab(Tabs.COLORS)
                 toast("已清理，共保留 ${colors.size} 个标准键")
             },
             rowParams(),
@@ -1212,8 +1230,63 @@ class ThemeStyleFragment : Fragment() {
 
     // ---------------------------------------------------------------- 单键
 
+    /** 本键盘里「自带显式底色」的键数：这些键不跟随「配色 · 按键底色」（用户 m35390）。 */
+    private fun countKeyBackOverrides(): Int {
+        val raw = ThemeManager.getKeyboard(keyboardName) ?: return 0
+        val patched = draft.patchedKeyboard(raw)
+        return patched.rows.sumOf { row -> row.keys.count { !it.keyBackColor.isNullOrEmpty() } }
+    }
+
+    /** 把本键盘所有键的 `key_back_color` 删掉，让它们统一跟随配色的按键底色。 */
+    private fun clearAllKeyBackOverrides() {
+        pushUndo()
+        val raw = ThemeManager.getKeyboard(keyboardName)
+        var cleared = 0
+        if (raw != null) {
+            raw.rows.forEachIndexed { r, row ->
+                row.keys.forEachIndexed { c, key ->
+                    if (!key.keyBackColor.isNullOrEmpty()) {
+                        draft.setField(KeyPath(keyboardName, r, c), "key_back_color", null)
+                        cleared++
+                    }
+                }
+            }
+        }
+        onChange()
+        renderTab(Tabs.KEY)
+        toast("已清除 $cleared 个键的自定义底色，改为跟随配色")
+    }
+
     private fun renderKeyTab() {
         content.addView(sectionTitle("按键"))
+        // 用户 m35390：这些自带底色的键不吃配色里的「按键底色」，给出可一键清除的入口
+        val bgOverrides = countKeyBackOverrides()
+        content.addView(
+            hint(
+                if (bgOverrides > 0) {
+                    "本键盘有 $bgOverrides 个键自带显式底色（调色板类主题的字母键就是），" +
+                        "它们不跟随「配色 · 按键底色」。"
+                } else {
+                    "本键盘所有键都跟随「配色 · 按键底色」，改一次全部一起变。"
+                },
+            ),
+        )
+        if (bgOverrides > 0) {
+            content.addView(
+                plainRow("清除全部自定义底色（改为跟随配色） · $bgOverrides 个键") {
+                    AlertDialog.Builder(requireContext())
+                        .setTitle("清除 $bgOverrides 个键的自定义底色？")
+                        .setMessage(
+                            "清除后这些键统一跟随「配色 · 按键底色」，改一次全部一起变；\n" +
+                                "想单独调某个键，回到本页给它单独设色即可。可用「撤销」恢复。",
+                        )
+                        .setPositiveButton("清除") { _, _ -> clearAllKeyBackOverrides() }
+                        .setNegativeButton("取消", null)
+                        .show()
+                },
+                rowParams(),
+            )
+        }
         val path = selectedKey
         if (path == null) {
             content.addView(hint("点上面预览里的一个键，这里显示它所有可配置项；每项右边的 ↺ 恢复「继承」。"))
@@ -1272,7 +1345,7 @@ class ThemeStyleFragment : Fragment() {
                 pushUndo()
                 draft.patches.keys.filter { it.keyboard == keyboardName }.forEach { draft.clearAll(it) }
                 onChange()
-                renderTab(7)
+                renderTab(Tabs.KEY)
                 toast("已清空本键盘的按键覆盖")
             },
             rowParams(),
@@ -1283,7 +1356,7 @@ class ThemeStyleFragment : Fragment() {
                 pushUndo()
                 draft.clearAll(path)
                 onChange()
-                renderTab(7)
+                renderTab(Tabs.KEY)
             },
             rowParams(),
         )
@@ -1380,7 +1453,7 @@ class ThemeStyleFragment : Fragment() {
         pushUndo()
         for (p in targets) draft.setField(p, field, JsonPrimitive(value))
         onChange()
-        renderTab(7)
+        renderTab(Tabs.KEY)
         toast("已写入 ${targets.size} 个键的 $field")
     }
 
@@ -1410,7 +1483,7 @@ class ThemeStyleFragment : Fragment() {
                 pushUndo()
                 draft.clearField(path, field)
                 onChange()
-                renderTab(7)
+                renderTab(Tabs.KEY)
             },
             onValueClick = if (inherited) ({ jumpToColorKey(sourceKey) }) else null,
             onClick = {
@@ -1420,7 +1493,7 @@ class ThemeStyleFragment : Fragment() {
                         pushUndo()
                         draft.setField(path, field, JsonPrimitive("0x" + String.format("%08x", picked)))
                         onChange()
-                        renderTab(7)
+                        renderTab(Tabs.KEY)
                     }
                 } else {
                     val items = arrayOf("继承（跟随整套配色）", "指定配色里的色键…", "自定义颜色…")
@@ -1432,7 +1505,7 @@ class ThemeStyleFragment : Fragment() {
                                     pushUndo()
                                     draft.clearField(path, field)
                                     onChange()
-                                    renderTab(7)
+                                    renderTab(Tabs.KEY)
                                 }
 
                                 1 -> {
@@ -1448,7 +1521,7 @@ class ThemeStyleFragment : Fragment() {
                                             pushUndo()
                                             draft.setField(path, field, JsonPrimitive(keys[i]))
                                             onChange()
-                                            renderTab(7)
+                                            renderTab(Tabs.KEY)
                                         }
                                         .show()
                                 }
@@ -1462,7 +1535,7 @@ class ThemeStyleFragment : Fragment() {
                                         pushUndo()
                                         draft.setField(path, field, JsonPrimitive("0x" + String.format("%08x", picked)))
                                         onChange()
-                                        renderTab(7)
+                                        renderTab(Tabs.KEY)
                                     }
                                 }
                             }
@@ -1493,7 +1566,7 @@ class ThemeStyleFragment : Fragment() {
                 pushUndo()
                 draft.clearField(path, field)
                 onChange()
-                renderTab(7)
+                renderTab(Tabs.KEY)
             }
         } else {
             null
@@ -1524,7 +1597,7 @@ class ThemeStyleFragment : Fragment() {
                         )
                     }
                     onChange()
-                    renderTab(7)
+                    renderTab(Tabs.KEY)
                 }
                 .setNegativeButton("取消", null)
                 .show()
@@ -1649,7 +1722,7 @@ class ThemeStyleFragment : Fragment() {
         }
         expandedColorGroups.add(group.first)
         highlightColorKey = colorKey
-        renderTab(6)
+        renderTab(Tabs.COLORS)
         toast("改 $colorKey 会同时影响所有继承它的按键")
     }
 
