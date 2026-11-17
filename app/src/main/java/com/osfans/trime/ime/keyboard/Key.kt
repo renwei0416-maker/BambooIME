@@ -8,7 +8,6 @@ import android.graphics.drawable.Drawable
 import android.view.KeyEvent
 import androidx.annotation.ColorInt
 import com.osfans.trime.daemon.RimeDaemon
-import com.osfans.trime.data.theme.ColorManager
 import com.osfans.trime.data.theme.KeyActionManager
 import com.osfans.trime.data.theme.model.GeneralStyle
 import com.osfans.trime.data.theme.model.TextKeyboard
@@ -114,27 +113,27 @@ class Key(
         src: TextKeyboard.TextKey.() -> String,
         fallback: String,
     ): Int = selfConfig?.let {
-        runCatching { ColorManager.getColor(src(it)) }.getOrNull()
-    } ?: ColorManager.getColor(fallback)
+        runCatching { parent.resolver.getColor(src(it)) }.getOrNull()
+    } ?: parent.resolver.getColor(fallback)
 
     // get color from common color schemes or just fallback to default color
     private fun getColor(
         key: String,
         @ColorInt default: Int,
-    ): Int = runCatching { ColorManager.getColor(key) }.getOrDefault(default)
+    ): Int = runCatching { parent.resolver.getColor(key) }.getOrDefault(default)
 
     private fun getDrawable(
         src: TextKeyboard.TextKey.() -> String,
         fallback: String,
     ) = selfConfig?.let {
-        if (src(it).isEmpty()) null else ColorManager.getDrawable(src(it))
-    } ?: ColorManager.getDrawable(fallback)
+        if (src(it).isEmpty()) null else parent.resolver.getDrawable(src(it))
+    } ?: parent.resolver.getDrawable(fallback)
 
     private val keyBackgroundDelegate = ResettableLazy { getDrawable({ keyBackColor }, "key_back_color") }
     private val keyBackground: Drawable? by keyBackgroundDelegate
-    private val offKeyBackgroundDelegate = ResettableLazy { ColorManager.getDrawable("off_key_back_color") }
+    private val offKeyBackgroundDelegate = ResettableLazy { parent.resolver.getDrawable("off_key_back_color") }
     private val offKeyBackground: Drawable? by offKeyBackgroundDelegate
-    private val onKeyBackgroundDelegate = ResettableLazy { ColorManager.getDrawable("on_key_back_color") }
+    private val onKeyBackgroundDelegate = ResettableLazy { parent.resolver.getDrawable("on_key_back_color") }
     private val onKeyBackground: Drawable? by onKeyBackgroundDelegate
 
     private val keyTextColorDelegate = ResettableLazy { getColor({ keyTextColor }, "key_text_color") }
@@ -151,9 +150,9 @@ class Key(
     private val onKeySymbolColor: Int by onKeySymbolColorDelegate
     private val hlKeyBackgroundDelegate = ResettableLazy { getDrawable({ hlKeyBackColor }, "hilited_key_back_color") }
     private val hlKeyBackground: Drawable? by hlKeyBackgroundDelegate
-    private val hlOffKeyBackgroundDelegate = ResettableLazy { ColorManager.getDrawable("hilited_off_key_back_color") }
+    private val hlOffKeyBackgroundDelegate = ResettableLazy { parent.resolver.getDrawable("hilited_off_key_back_color") }
     private val hlOffKeyBackground: Drawable? by hlOffKeyBackgroundDelegate
-    private val hlOnKeyBackgroundDelegate = ResettableLazy { ColorManager.getDrawable("hilited_on_key_back_color") }
+    private val hlOnKeyBackgroundDelegate = ResettableLazy { parent.resolver.getDrawable("hilited_on_key_back_color") }
     private val hlOnKeyBackground: Drawable? by hlOnKeyBackgroundDelegate
     private val hlKeyTextColorDelegate = ResettableLazy { getColor({ hlKeyTextColor }, "hilited_key_text_color") }
     private val hlKeyTextColor: Int by hlKeyTextColorDelegate
@@ -171,9 +170,9 @@ class Key(
     private val keyBorderColorDelegate = ResettableLazy {
         val perKey = keyBorderColor
         if (perKey != null) {
-            runCatching { ColorManager.getColor(perKey) }.getOrDefault(ColorManager.getColor("key_border_color"))
+            runCatching { parent.resolver.getColor(perKey) }.getOrDefault(parent.resolver.getColor("key_border_color"))
         } else {
-            ColorManager.getColor("key_border_color")
+            parent.resolver.getColor("key_border_color")
         }
     }
     val keyBorderColorValue: Int by keyBorderColorDelegate
@@ -298,6 +297,13 @@ class Key(
     fun onReleased() {
         isPressed = false
         if (click!!.isSticky) isOn = !isOn
+    }
+
+    /**
+     * 仅供预览设置按下态用于绘制，不改变 sticky 键的开关状态（区别于 [onReleased]）。
+     */
+    fun setPressed(pressed: Boolean) {
+        isPressed = pressed
     }
 
     /**

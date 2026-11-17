@@ -8,6 +8,7 @@ package com.osfans.trime.ui.main.settings
 import android.annotation.SuppressLint
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
+import android.net.Uri
 import android.os.Bundle
 import android.util.TypedValue
 import android.view.GestureDetector
@@ -22,6 +23,7 @@ import android.widget.ScrollView
 import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.Fragment
 import com.osfans.trime.R
 import com.osfans.trime.data.prefs.ThemeStylePrefs
@@ -34,6 +36,7 @@ import com.osfans.trime.ui.settings.theme.ColorPickerDialog
 import com.osfans.trime.ui.settings.theme.ThemeDraft
 import com.osfans.trime.ui.settings.theme.KeyPath
 import com.osfans.trime.ui.settings.theme.ThemePreviewView
+import com.osfans.trime.ui.settings.theme.ThemeLuaExporter
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.buildJsonObject
@@ -60,6 +63,10 @@ class ThemeStyleFragment : Fragment() {
     private lateinit var preview: ThemePreviewView
     private lateinit var chipsRow: LinearLayout
     private var titleView: TextView? = null
+    private var modeChip: TextView? = null
+
+    /** 下拉覆盖层的宿主（createView 里把整页包了一层 FrameLayout）。 */
+    private var overlayHost: FrameLayout? = null
     private var pressedDemo = false
     private lateinit var tabsRow: LinearLayout
     private lateinit var content: LinearLayout
@@ -79,6 +86,16 @@ class ThemeStyleFragment : Fragment() {
     private var lastY = 0f
     private val undoStack = ArrayDeque<Snapshot>()
 
+    private var exportLuaContent: String = ""
+    private val exportLauncher = registerForActivityResult(
+        ActivityResultContracts.CreateDocument("text/x-lua"),
+    ) { uri ->
+        if (uri != null) {
+            val ok = writeToUri(uri, exportLuaContent)
+            toast(if (ok) "已导出主题" else "导出失败")
+        }
+    }
+
     private data class Snapshot(
         val style: GeneralStyle,
         val schemes: List<ColorScheme>,
@@ -86,6 +103,10 @@ class ThemeStyleFragment : Fragment() {
     )
 
     private val tabs = listOf("配色", "键盘", "字号", "候选栏", "阴影", "按键")
+
+    private companion object {
+        const val OVERLAY_TAG = "theme_style_picker_overlay"
+    }
 
     private val keyboardLabels = mapOf(
         "default" to "26键",
@@ -106,7 +127,20 @@ class ThemeStyleFragment : Fragment() {
         inflater: LayoutInflater,
         container: ViewGroup?,
         savedInstanceState: Bundle?,
-    ): View = inflater.inflate(R.layout.fragment_bamboo_theme_style, container, false)
+    ): View {
+        val root = inflater.inflate(R.layout.fragment_bamboo_theme_style, container, false)
+        // 包一层 FrameLayout：下拉覆盖层（遮罩+列表）要能盖在整页之上
+        val host = FrameLayout(inflater.context)
+        host.addView(
+            root,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+            ),
+        )
+        overlayHost = host
+        return host
+    }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
@@ -121,6 +155,7 @@ class ThemeStyleFragment : Fragment() {
         scroll = view.findViewById(R.id.theme_style_scroll)
         applyBtn = view.findViewById(R.id.theme_style_apply)
         undoBtn = view.findViewById(R.id.theme_style_undo)
+        modeChip = view.findViewById(R.id.theme_style_mode)
 
         loadState()
         setupPreviewBox(view)
@@ -210,39 +245,234 @@ class ThemeStyleFragment : Fragment() {
 
     private fun rebuildChips() {
         chipsRow.removeAllViews()
-        val names = ThemeManager.keyboardNames.ifEmpty { listOf("default") }
-        for (name in names.sortedBy { keyboardOrder(it) }) {
-            val label = keyboardLabels[name] ?: name
-            chipsRow.addView(chip(label, name == keyboardName) {
-                keyboardName = name
-                ThemeStylePrefs.previewKeyboard = name
-                rebuildChips()
-                refreshPreview()
-            }, chipParams())
-        }
-        chipsRow.addView(dividerChip(), dividerChipParams())
-        for (s in schemes) {
-            chipsRow.addView(chip(s.id, s.id == schemeId) {
-                schemeId = s.id
-                ThemeStylePrefs.previewScheme = s.id
-                rebuildChips()
-                renderTab(tab)
-                refreshPreview()
-            }, chipParams())
-        }
-        chipsRow.addView(dividerChip(), dividerChipParams())
+
+        // ① 键盘：一个带 ▾ 的下拉页签，标题显示「键盘 · 当前」
+        val kbNames = ThemeManager.keyboardNames.ifEmpty { listOf("default") }
+            .sortedBy { keyboardOrder(it) }
+        chipsRow.addView(
+            dropdownChip("键盘", keyboardLabels[keyboardName] ?: keyboardName) {
+                showPickerOverlay(
+                    "选择键盘",
+                    kbNames.map { PickerItem(keyboardLabels[it] ?: it, it == keyboardName) },
+                ) { index ->
+                    val name = kbNames.getOrNull(index) ?: return@showPickerOverlay
+                    keyboardName = name
+                    ThemeStylePrefs.previewKeyboard = name
+                    rebuildChips()
+                    refreshPreview()
+                }
+            },
+            chipParams(),
+        )
+
+        // ② 配色：单独一个带 ▾ 的下拉页签
+        val schemeIds = schemes.map { it.id }
+        chipsRow.addView(
+            dropdownChip("配色", schemeId) {
+                showPickerOverlay(
+                    "选择配色",
+                    schemeIds.map { PickerItem(it, it == schemeId) },
+                ) { index ->
+                    val id = schemeIds.getOrNull(index) ?: return@showPickerOverlay
+                    schemeId = id
+                    ThemeStylePrefs.previewScheme = id
+                    rebuildChips()
+                    renderTab(tab)
+                    refreshPreview()
+                }
+            },
+            chipParams(),
+        )
+
+        // ③ 等比 / 1:1：固定在最右的独立按钮（不在 chipsRow 里，见布局）
         val crop = preview.mode == ThemePreviewView.Mode.CROP
-        chipsRow.addView(chip(if (crop) "1:1" else "等比", crop) {
-            preview.mode = if (crop) ThemePreviewView.Mode.FIT else ThemePreviewView.Mode.CROP
-            ThemeStylePrefs.previewMode = if (crop) 0 else 1
-            rebuildChips()
-        }, chipParams())
-        chipsRow.addView(dividerChip(), dividerChipParams())
-        chipsRow.addView(chip("按下态", pressedDemo) {
-            pressedDemo = !pressedDemo
-            preview.selectedKey = selectedKey
-            rebuildChips()
-        }, chipParams())
+        modeChip?.let { chipView ->
+            chipView.text = if (crop) "1:1" else "等比"
+            chipView.setTextColor(if (crop) 0xFF1B1207.toInt() else textColor)
+            chipView.background = if (crop) {
+                GradientDrawable().apply {
+                    cornerRadius = dp(13).toFloat()
+                    setColor(accentColor)
+                }
+            } else {
+                requireContext().getDrawable(R.drawable.bg_theme_style_chip)
+            }
+            chipView.setOnClickListener {
+                val nowCrop = preview.mode == ThemePreviewView.Mode.CROP
+                preview.mode = if (nowCrop) ThemePreviewView.Mode.FIT else ThemePreviewView.Mode.CROP
+                ThemeStylePrefs.previewMode = if (nowCrop) 0 else 1
+                rebuildChips()
+            }
+        }
+    }
+
+    private data class PickerItem(val label: String, val selected: Boolean)
+
+    /** 带 ▾ 的下拉页签：左边「组名 · 当前值」，右边 ▾，两处都可点。 */
+    private fun dropdownChip(group: String, value: String, onOpen: () -> Unit): LinearLayout =
+        LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = requireContext().getDrawable(R.drawable.bg_theme_style_chip)
+            // 高度与「等比」按钮一致：靠内容 + 上下 5dp 撑起来，而不是写死高度
+            setPadding(dp(11), dp(5), dp(2), dp(5))
+            addView(
+                TextView(requireContext()).apply {
+                    text = "$group · $value"
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                    setTextColor(textColor)
+                    includeFontPadding = false
+                    setOnClickListener { onOpen() }
+                },
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ),
+            )
+            addView(
+                TextView(requireContext()).apply {
+                    text = "▾"
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                    setTextColor(textColor)
+                    gravity = Gravity.CENTER
+                    includeFontPadding = false
+                    setPadding(dp(6), 0, dp(8), 0)
+                    setOnClickListener { onOpen() }
+                },
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ),
+            )
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            )
+        }
+
+    /**
+     * 下拉覆盖层：半透明遮罩 + 居中列表（与符号面板的子分类下拉同一种手感）。
+     * 点遮罩或选中某一项后自动移除。
+     */
+    private fun showPickerOverlay(
+        title: String,
+        items: List<PickerItem>,
+        onPick: (Int) -> Unit,
+    ) {
+        val host = overlayHost ?: return
+        // 只允许一层
+        for (i in host.childCount - 1 downTo 0) {
+            val child = host.getChildAt(i)
+            if (child.tag == OVERLAY_TAG) host.removeViewAt(i)
+        }
+        if (items.isEmpty()) return
+
+        val ctx = requireContext()
+        val scrim = FrameLayout(ctx).apply {
+            tag = OVERLAY_TAG
+            setBackgroundColor(0x99000000.toInt())
+            isClickable = true
+            setOnClickListener { host.removeView(this) }
+        }
+
+        val rowH = dp(42)
+        val headerH = dp(28)
+        // 自适应：宽度用最宽那行文字算（上下限夹紧），高度按条目数、最多占屏高 45%
+        val textPaint = android.text.TextPaint().apply {
+            textSize = TypedValue.applyDimension(
+                TypedValue.COMPLEX_UNIT_SP,
+                14f,
+                resources.displayMetrics,
+            )
+        }
+        val widest = items.maxOf { textPaint.measureText(if (it.selected) "✓ ${it.label}" else "   ${it.label}") }
+        val titlePaint = android.text.TextPaint().apply {
+            textSize = TypedValue.applyDimension(
+                TypedValue.COMPLEX_UNIT_SP,
+                11f,
+                resources.displayMetrics,
+            )
+        }
+        val widestTitle = titlePaint.measureText(title)
+        val panelW = (maxOf(widest, widestTitle) + dp(36)).toInt().coerceIn(dp(132), dp(260))
+        val maxList = (resources.displayMetrics.heightPixels * 0.45f).toInt() - headerH
+        val contentH = (items.size * rowH).coerceAtMost(maxList)
+
+        val panel = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            background = GradientDrawable().apply {
+                cornerRadius = dp(14).toFloat()
+                setColor(0xF0202429.toInt())
+            }
+            setPadding(0, dp(4), 0, dp(4))
+        }
+        panel.addView(
+            TextView(ctx).apply {
+                text = title
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+                setTextColor(subColor)
+                includeFontPadding = false
+                setPadding(dp(16), dp(4), dp(16), dp(6))
+            },
+            LinearLayout.LayoutParams(
+                panelW,
+                headerH,
+            ),
+        )
+
+        val listBox = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(panelW, ViewGroup.LayoutParams.WRAP_CONTENT)
+        }
+        items.forEachIndexed { index, item ->
+            listBox.addView(
+                TextView(ctx).apply {
+                    text = if (item.selected) "✓ ${item.label}" else "   ${item.label}"
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+                    setTextColor(if (item.selected) accentColor else textColor)
+                    setTypeface(null, if (item.selected) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
+                    gravity = Gravity.CENTER_VERTICAL
+                    includeFontPadding = false
+                    setPadding(dp(16), 0, dp(16), 0)
+                    setOnClickListener {
+                        host.removeView(scrim)
+                        onPick(index)
+                    }
+                },
+                LinearLayout.LayoutParams(panelW, rowH),
+            )
+        }
+        val listScroll = ScrollView(ctx).apply {
+            isVerticalScrollBarEnabled = true
+            addView(
+                listBox,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ),
+            )
+        }
+        panel.addView(
+            listScroll,
+            LinearLayout.LayoutParams(panelW, contentH),
+        )
+
+        scrim.addView(
+            panel,
+            FrameLayout.LayoutParams(
+                panelW,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply {
+                gravity = Gravity.CENTER
+            },
+        )
+        host.addView(
+            scrim,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+            ),
+        )
     }
 
     private fun keyboardOrder(name: String): Int =
@@ -298,13 +528,13 @@ class ThemeStyleFragment : Fragment() {
     }
 
     private fun showMoreMenu() {
-        val items = arrayOf("恢复主题出厂样式", "导出当前主题（下一阶段）")
+        val items = arrayOf("恢复主题出厂样式", "导出为完整主题文件")
         android.app.AlertDialog.Builder(requireContext())
             .setTitle("更多")
             .setItems(items) { _, which ->
                 when (which) {
                     0 -> confirmResetFactory()
-                    else -> toast("导出功能在下一阶段做")
+                    else -> exportTheme()
                 }
             }
             .show()
@@ -327,6 +557,28 @@ class ThemeStyleFragment : Fragment() {
             .setNegativeButton("取消", null)
             .show()
     }
+
+    /** 把「基础主题 + 草稿覆盖」合并成 effective theme，导出为自包含 .lua。 */
+    private fun exportTheme() {
+        val active = ThemeManager.activeTheme
+        val effective = active.copy(
+            generalStyle = style,
+            colorSchemes = schemes,
+            presetKeyboards = active.presetKeyboards.mapValues { (name, kb) ->
+                if (name == keyboardName) draft.patchedKeyboard(kb) else kb
+            },
+        )
+        val lua = ThemeLuaExporter.buildLua(effective)
+        val suggested = (effective.name.takeIf { it.isNotBlank() } ?: themeId) + ".lua"
+        exportLuaContent = lua
+        exportLauncher.launch(suggested)
+    }
+
+    private fun writeToUri(uri: Uri, content: String): Boolean = runCatching {
+        val out = requireContext().contentResolver.openOutputStream(uri) ?: return false
+        out.use { it.write(content.toByteArray(Charsets.UTF_8)) }
+        true
+    }.getOrDefault(false)
 
     // ---------------------------------------------------------------- 页签
 

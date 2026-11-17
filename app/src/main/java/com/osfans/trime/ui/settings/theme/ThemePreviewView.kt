@@ -3,7 +3,9 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
  * 主题预览：用真实的 Keyboard（纯数据类，不依赖输入法服务）算几何与文字，
- * 文字层直接复用真机的 [com.osfans.trime.ime.keyboard.KeyRenderer]，保证两边永远一致。
+ * 背景层与文字层都复用真机的 [com.osfans.trime.ime.keyboard.KeyRenderer]，保证两边永远一致。
+ * 颜色/图片/阴影/描边全部来自草稿 [com.osfans.trime.data.theme.ThemeResourceResolver]
+ * （与真机 ColorManager 同一套取色/取图回退链，但绑定草稿主题，不污染全局单例）。
  *
  * 交互与真机同形：按下变色、移出取消、抬起选中该键（供「按键」页签编辑）、长按显示
  * key.popup 的只读气泡。**不接任何输入逻辑**。
@@ -24,11 +26,12 @@ import android.view.View
 import com.mikepenz.iconics.IconicsDrawable
 import com.osfans.trime.data.theme.FontManager
 import com.osfans.trime.data.theme.Theme
-import com.osfans.trime.data.theme.ColorManager
 import com.osfans.trime.data.theme.ThemeManager
+import com.osfans.trime.data.theme.ThemeResourceResolver
 import com.osfans.trime.data.theme.model.ColorScheme
 import com.osfans.trime.data.theme.model.GeneralStyle
 import com.osfans.trime.data.theme.model.TextKeyboard
+import com.osfans.trime.ime.keyboard.Key
 import com.osfans.trime.ime.keyboard.KeyRenderCtx
 import com.osfans.trime.ime.keyboard.KeyRenderer
 import com.osfans.trime.ime.keyboard.Keyboard
@@ -63,6 +66,9 @@ class ThemePreviewView(context: Context, attrs: AttributeSet? = null) : View(con
     /** 与 keyboard.keys 一一对应的 (行, 列) 定位。 */
     private var keyPaths: List<KeyPath> = emptyList()
 
+    /** 草稿主题取色/取图器（与 ColorManager 同源，但绑定草稿 theme+scheme）。 */
+    private var resolver: ThemeResourceResolver? = null
+
     private val density = resources.displayMetrics.density
     private val referenceWidth: Int
         get() {
@@ -89,7 +95,8 @@ class ThemePreviewView(context: Context, attrs: AttributeSet? = null) : View(con
         if (schemeId == id) return
         schemeId = id
         draft?.schemeId = id
-        invalidate()
+        // resolver 缓存了配色，切换配色需重建
+        rebuild()
     }
 
     fun refresh() = invalidate()
@@ -97,9 +104,12 @@ class ThemePreviewView(context: Context, attrs: AttributeSet? = null) : View(con
     /** 自证用：当前解析出的关键颜色，显示在顶栏方便对照真机。 */
     fun colorSummary(): String {
         val s = currentScheme()
-        val back = colorOf(s, "back_color", 0)
-        val text = colorOf(s, "key_text_color", 0)
-        return "scheme=${s?.id ?: "无"} back=${hex(back)} text=${hex(text)}"
+        val r = resolver
+        val back = r?.getColorOr("back_color", 0) ?: 0
+        val text = r?.getColorOr("key_text_color", 0) ?: 0
+        val cols = s?.colors?.size ?: 0
+        val fb = ThemeManager.activeTheme.fallbackColors.size
+        return "scheme=${s?.id ?: "无"} cols=$cols fb=$fb back=${hex(back)} text=${hex(text)}"
     }
 
     fun firstLetterKeyIndex(): Int? {
@@ -132,8 +142,9 @@ class ThemePreviewView(context: Context, attrs: AttributeSet? = null) : View(con
         val theme = draftTheme()
         val raw = rawKeyboard()
         val selfConfig = draft?.patchedKeyboard(raw ?: return) ?: return
-        cacheTextKeys(selfConfig)
-        val kb = Keyboard(context, theme, selfConfig)
+        val scheme = currentScheme() ?: ColorScheme("default", emptyMap())
+        resolver = ThemeResourceResolver(theme, scheme)
+        val kb = Keyboard(context, theme, selfConfig, resolver!!)
         kb.recalculateLayout(referenceWidth)
         keyboard = kb
         keyPaths = buildKeyPaths(selfConfig)
@@ -221,17 +232,11 @@ class ThemePreviewView(context: Context, attrs: AttributeSet? = null) : View(con
         return super.onTouchEvent(event)
     }
 
-    /** 屏幕坐标 → 内容坐标 → 命中的键下标（spacer 已被排除在 keys 之外）。 */
     // ---------------------------------------------------------------- 绘制状态
 
     private var drawScale = 1f
     private var drawTx = 0f
     private var drawTy = 0f
-
-    private val backgroundPaint = Paint().apply {
-        isAntiAlias = true
-        style = Paint.Style.FILL
-    }
 
     private val hintPaint = Paint().apply {
         isAntiAlias = true
@@ -258,20 +263,10 @@ class ThemePreviewView(context: Context, attrs: AttributeSet? = null) : View(con
 
     private val popupBgPaint = Paint().apply { isAntiAlias = true }
 
-    private val backPaint = Paint().apply { isAntiAlias = true }
-
-    private val borderPaint = Paint().apply {
-        isAntiAlias = true
-        style = Paint.Style.STROKE
-    }
-
     private val errorPaint = Paint().apply {
         isAntiAlias = true
         textSize = 11f * density
     }
-
-    private var errorText: String = ""
-
 
     private val iconCache = LruCache<String, IconicsDrawable>(16)
 
@@ -298,7 +293,6 @@ class ThemePreviewView(context: Context, attrs: AttributeSet? = null) : View(con
         super.onDraw(canvas)
         // 任何绘制异常都画到屏幕上，避免「预览一片空白但不知道原因」。
         runCatching { drawPreview(canvas) }.onFailure { e ->
-            errorText = (e::class.java.simpleName + ": " + (e.message ?: ""))
             drawError(canvas, e)
         }
     }
@@ -320,16 +314,22 @@ class ThemePreviewView(context: Context, attrs: AttributeSet? = null) : View(con
     }
 
     private fun drawPreview(canvas: Canvas) {
-        val kb = keyboard
+        val kb = keyboard ?: return
+        val resolver = this.resolver ?: return
         val w = width.toFloat()
         val h = height.toFloat()
         if (w <= 0f || h <= 0f) return
 
-        val scheme = currentScheme()
-        backgroundPaint.color = colorOf(scheme, "back_color", 0xFF1F2023.toInt())
-        canvas.drawRect(0f, 0f, w, h, backgroundPaint)
+        // 键盘整体背景：与真机 InputView.keyboardBackground 同源
+        val kbBg = resolver.getDrawable("keyboard_background")
+        if (kbBg != null) {
+            kbBg.setBounds(0, 0, width, height)
+            kbBg.draw(canvas)
+        } else {
+            canvas.drawColor(resolver.getColor("keyboard_back_color"))
+        }
 
-        if (kb == null || kb.keys.isEmpty() || kb.height <= 0) {
+        if (kb.keys.isEmpty() || kb.height <= 0) {
             canvas.drawText("没有可预览的键盘（$keyboardName）", w / 2f, h / 2f, hintPaint)
             return
         }
@@ -355,38 +355,38 @@ class ThemePreviewView(context: Context, attrs: AttributeSet? = null) : View(con
         canvas.translate(drawTx, drawTy)
         canvas.scale(scale, scale)
 
-        val gapH = style.horizontalGap * kb.horizontalGapScale
-        val gapV = kb.verticalGap
-
         kb.keys.forEachIndexed { index, key ->
-            val pressed = pressedIndex == index
-            val pal = paletteFor(index, scheme, pressed)
+            key.setPressed(pressedIndex == index)
+
+            // 与真机 KeyboardView 完全一致的 padding（含阴影留白）
+            val (sLeft, sTop, sRight, sBottom) = shadowExtents(key, kb)
+            val totalWidth = key.width + key.extraWidthLeft + key.extraWidthRight
+            val viewWidth = totalWidth + sLeft + sRight
+            val viewHeight = key.height + sTop + sBottom
+
+            val padL = (kb.horizontalGap * kb.horizontalGapScale / 2f).toInt() + key.extraWidthLeft + sLeft
+            val padT = if (key.edgeFlags and Keyboard.EDGE_TOP != 0) {
+                maxOf(kb.keyboardPaddingTop, kb.verticalGap / 2) + sTop
+            } else {
+                kb.verticalGap / 2
+            }
+            val padR = (kb.horizontalGap * kb.horizontalGapScale / 2f).toInt() + key.extraWidthRight + sRight
+            val padB = if (key.edgeFlags and Keyboard.EDGE_BOTTOM == 0) kb.verticalGap / 2 else sBottom
 
             canvas.save()
-            canvas.translate((key.x - key.extraWidthLeft).toFloat(), key.y.toFloat())
+            canvas.translate((key.x - key.extraWidthLeft - sLeft).toFloat(), (key.y - sTop).toFloat())
 
-            val kw = key.width + key.extraWidthLeft + key.extraWidthRight
-            val kh = key.height
-            val padL = (gapH / 2f).toInt() + key.extraWidthLeft
-            val padT = if (key.edgeFlags and Keyboard.EDGE_TOP != 0) {
-                maxOf(kb.keyboardPaddingTop, gapV / 2)
-            } else {
-                gapV / 2
-            }
-            val padR = (gapH / 2f).toInt() + key.extraWidthRight
-            val padB = if (key.edgeFlags and Keyboard.EDGE_BOTTOM == 0) gapV / 2 else 0
-
-            val rect = RectF(padL.toFloat(), padT.toFloat(), (kw - padR).toFloat(), (kh - padB).toFloat())
-            val radius = dp(style.roundCorner.toFloat())
-                .coerceIn(0f, minOf(rect.width(), rect.height()) / 2f)
-            backPaint.color = pal.back
-            canvas.drawRoundRect(rect, radius, radius, backPaint)
-            val borderWidth = key.keyBorder ?: kb.keyBorder
-            if (borderWidth > 0f) {
-                borderPaint.strokeWidth = dp(borderWidth.toFloat())
-                borderPaint.color = pal.border
-                canvas.drawRoundRect(rect, radius, radius, borderPaint)
-            }
+            KeyRenderer.renderBackground(
+                canvas,
+                key,
+                kb,
+                viewWidth,
+                viewHeight,
+                padL,
+                padT,
+                padR,
+                padB,
+            ) { dp(it) }
 
             KeyRenderer.renderText(
                 KeyRenderCtx(
@@ -394,8 +394,8 @@ class ThemePreviewView(context: Context, attrs: AttributeSet? = null) : View(con
                     canvas = canvas,
                     key = key,
                     keyboard = kb,
-                    width = kw,
-                    height = kh,
+                    width = viewWidth,
+                    height = viewHeight,
                     paddingLeft = padL,
                     paddingTop = padT,
                     paddingRight = padR,
@@ -406,8 +406,8 @@ class ThemePreviewView(context: Context, attrs: AttributeSet? = null) : View(con
                     symbolPaint = symbolPaint,
                     richTextPaint = richTextPaint,
                     iconCache = iconCache,
-                    textColor = pal.text,
-                    symbolColor = pal.symbol,
+                    textColor = key.getTextColor(),
+                    symbolColor = key.getSymbolColor(),
                     showSymbols = true,
                     showHints = true,
                     enterLabel = "回车",
@@ -416,7 +416,17 @@ class ThemePreviewView(context: Context, attrs: AttributeSet? = null) : View(con
                     keyLongTextSizeSp = fonts.key_long_size.takeIf { it > 0f } ?: fonts.key_size,
                     symbolTextSizeSp = fonts.symbol_size.takeIf { it > 0f } ?: fonts.key_size,
                     hintTextSizeSp = fonts.hint_size.takeIf { it > 0f } ?: fonts.key_size,
-                    colorResolver = { spec, fallback -> resolveColor(spec, scheme) ?: fallback },
+                    colorResolver = { spec, fallback ->
+                        try {
+                            resolver.getColor(spec)
+                        } catch (_: Exception) {
+                            try {
+                                Color.parseColor(if (spec.startsWith("#")) spec else "#$spec")
+                            } catch (_: Exception) {
+                                fallback
+                            }
+                        }
+                    },
                     baseTypeface = typeface,
                     boldTypeface = boldCache ?: typeface,
                 ),
@@ -435,8 +445,8 @@ class ThemePreviewView(context: Context, attrs: AttributeSet? = null) : View(con
                 selectPaint.strokeWidth = dp(2f)
                 canvas.drawRoundRect(
                     RectF(left, top, right, bottom),
-                    dp(style.roundCorner.toFloat()),
-                    dp(style.roundCorner.toFloat()),
+                    dp(style.roundCorner),
+                    dp(style.roundCorner),
                     selectPaint,
                 )
             }
@@ -468,99 +478,38 @@ class ThemePreviewView(context: Context, attrs: AttributeSet? = null) : View(con
         canvas.restore()
     }
 
+    /** 与真机 KeyboardView 一致的阴影留白计算，返回 (sLeft, sTop, sRight, sBottom)。 */
+    private fun shadowExtents(key: Key, kb: Keyboard): IntArray {
+        var sLeft = 0
+        var sTop = 0
+        var sRight = 0
+        var sBottom = 0
+        val shadowRadius = key.keyShadowRadius ?: kb.keyShadowRadius
+        if (shadowRadius > 0f) {
+            val dir = key.keyShadowDirection ?: kb.keyShadowDirection
+            if (!dir.isNullOrEmpty()) {
+                val shadowDp = dp(shadowRadius)
+                val (dx, dy) = Keyboard.shadowDirectionToOffset(dir, shadowDp)
+                if (key.edgeFlags and Keyboard.EDGE_LEFT != 0) {
+                    sLeft = (shadowDp - dx).coerceAtLeast(0f).toInt()
+                }
+                if (key.edgeFlags and Keyboard.EDGE_TOP != 0) {
+                    sTop = (shadowDp - dy).coerceAtLeast(0f).toInt()
+                }
+                if (key.edgeFlags and Keyboard.EDGE_RIGHT != 0) {
+                    sRight = (shadowDp + dx).coerceAtLeast(0f).toInt()
+                }
+                if (key.edgeFlags and Keyboard.EDGE_BOTTOM != 0) {
+                    sBottom = (shadowDp + dy).coerceAtLeast(0f).toInt()
+                }
+            }
+        }
+        return intArrayOf(sLeft, sTop, sRight, sBottom)
+    }
+
     private fun dp(v: Float): Float = v * density
 
     private fun sp(v: Float): Float = v * resources.displayMetrics.scaledDensity
 
     private fun hex(c: Int): String = String.format("#%08X", c)
-
-    /**
-     * 与真机 [com.osfans.trime.data.base.ColorManager] 同构的取色顺序：
-     * 当前配色 → 主题 fallback_colors → 内置兜底。
-     * **不再跨配色搜**（真机没有这条路，跨配色会把别的配色值顶上来）。
-     */
-    private fun colorOf(scheme: ColorScheme?, key: String, fallback: Int): Int {
-        val raw = scheme?.colors?.get(key)
-            ?: ThemeManager.activeTheme.fallbackColors[key]
-            ?: BuiltinFallback.colors[key]
-        if (raw.isNullOrEmpty()) return fallback
-        return runCatching {
-            if (raw.startsWith("#")) Color.parseColor(raw) else Color.parseColor("#$raw")
-        }.getOrDefault(fallback)
-    }
-
-    /** 解析一个颜色值：`#RRGGBB` / `0xRRGGBB` / 配色里的色键名（如 `zmu_q`）。 */
-    private fun resolveColor(raw: String?, scheme: ColorScheme?): Int? {
-        if (raw.isNullOrEmpty()) return null
-        if (raw.startsWith("#") || raw.startsWith("0x", true)) {
-            return runCatching {
-                if (raw.startsWith("#")) Color.parseColor(raw) else Color.parseColor("#" + raw.substring(2))
-            }.getOrNull()
-        }
-        val named = scheme?.colors?.get(raw) ?: ThemeManager.activeTheme.fallbackColors[raw]
-        return named?.let { resolveColor(it, null) }
-    }
-
-    private data class KeyColors(
-        val back: Int,
-        val text: Int,
-        val symbol: Int,
-        val border: Int,
-    )
-
-    private fun paletteFor(index: Int, scheme: ColorScheme?, pressed: Boolean): KeyColors {
-        val tk = textKeys.getOrNull(index)
-        val back = resolveColor(if (pressed) tk?.hlKeyBackColor else null, scheme)
-            ?: resolveColor(tk?.keyBackColor, scheme)
-            ?: colorOf(scheme, if (pressed) "hilited_key_back_color" else "key_back_color", 0xFF33363B.toInt())
-        // 按下时若配色没有 hilited 值，就退回到正常色
-        val backFinal = if (pressed) {
-            resolveColor(tk?.hlKeyBackColor, scheme) ?: colorOf(scheme, "hilited_key_back_color", back)
-        } else {
-            back
-        }
-        val text = resolveColor(if (pressed) tk?.hlKeyTextColor else null, scheme)
-            ?: resolveColor(tk?.keyTextColor, scheme)
-            ?: colorOf(scheme, "key_text_color", 0xFFE8EAED.toInt())
-        val textFinal = if (pressed) {
-            resolveColor(tk?.hlKeyTextColor, scheme) ?: colorOf(scheme, "hilited_key_text_color", text)
-        } else {
-            text
-        }
-        val symbol = resolveColor(if (pressed) tk?.hlKeySymbolColor else null, scheme)
-            ?: resolveColor(tk?.keySymbolColor, scheme)
-            ?: colorOf(scheme, "key_symbol_color", textFinal)
-        val symbolFinal = if (pressed) {
-            resolveColor(tk?.hlKeySymbolColor, scheme) ?: colorOf(scheme, "hilited_key_symbol_color", symbol)
-        } else {
-            symbol
-        }
-        val border = resolveColor(tk?.keyBorderColor, scheme)
-            ?: colorOf(scheme, "key_border_color", backFinal)
-        return KeyColors(backFinal, textFinal, symbolFinal, border)
-    }
-
-    private var textKeys: List<TextKeyboard.TextKey> = emptyList()
-
-    private fun cacheTextKeys(tk: TextKeyboard) {
-        textKeys = tk.rows.flatMap { it.keys }.filter { !it.spacer }
-    }
-
-    init {
-        rawKeyboard()?.let { cacheTextKeys(it) }
-    }
-
-    private object BuiltinFallback {
-        val colors: Map<String, String> = mapOf(
-            "key_back_color" to "33363b",
-            "key_text_color" to "e8eaed",
-            "key_symbol_color" to "9aa0a6",
-            "hilited_key_back_color" to "4a4e55",
-            "hilited_key_text_color" to "ffffff",
-            "hilited_key_symbol_color" to "d0d4d9",
-            "candidate_back_color" to "1f2023",
-            "candidate_text_color" to "e8eaed",
-            "back_color" to "1f2023",
-        )
-    }
 }

@@ -247,6 +247,7 @@ internal object TextKeySerializer : KSerializer<TextKeyboard.TextKey> {
         map["key_border"] = kotlinx.serialization.json.JsonPrimitive(value.keyBorder)
         map["key_border_color"] = kotlinx.serialization.json.JsonPrimitive(value.keyBorderColor)
         map["label"] = labelSegmentsToJson(value.label)
+        value.asciiLabel.takeIf { it.isNotEmpty() }?.let { map["ascii_label"] = labelSegmentsToJson(it) }
         map["label_symbol"] = labelSegmentsToJson(value.labelSymbol)
         map["hint"] = labelSegmentsToJson(value.hint)
         map["click"] = kotlinx.serialization.json.JsonPrimitive(value.click)
@@ -305,6 +306,7 @@ internal object TextKeySerializer : KSerializer<TextKeyboard.TextKey> {
             keyBorder = int(obj, "key_border", -1),
             keyBorderColor = str(obj, "key_border_color"),
             label = labelSegments(obj, "label"),
+            asciiLabel = labelSegments(obj, "ascii_label"),
             labelSymbol = labelSegments(obj, "label_symbol"),
             hint = labelSegments(obj, "hint"),
             click = str(obj, "click"),

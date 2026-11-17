@@ -85,23 +85,47 @@
             android:layout_height="match_parent" />
     </FrameLayout>
 
-    <!-- 键盘/配色选择行：独立一行，不遮预览 -->
-    <HorizontalScrollView
-        android:id="@+id/theme_style_chips_scroll"
+    <!-- 键盘 / 配色 下拉页签行；「等比」固定在最右，不参与滚动 -->
+    <LinearLayout
+        android:id="@+id/theme_style_picker_row"
         android:layout_width="match_parent"
         android:layout_height="38dp"
         android:background="#101216"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
         android:paddingStart="8dp"
-        android:paddingEnd="8dp"
-        android:scrollbars="none">
+        android:paddingEnd="8dp">
 
-        <LinearLayout
-            android:id="@+id/theme_style_chips"
-            android:layout_width="wrap_content"
+        <HorizontalScrollView
+            android:id="@+id/theme_style_chips_scroll"
+            android:layout_width="0dp"
             android:layout_height="match_parent"
-            android:gravity="center_vertical"
-            android:orientation="horizontal" />
-    </HorizontalScrollView>
+            android:layout_weight="1"
+            android:scrollbars="none">
+
+            <LinearLayout
+                android:id="@+id/theme_style_chips"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:gravity="center_vertical"
+                android:orientation="horizontal" />
+        </HorizontalScrollView>
+
+        <TextView
+            android:id="@+id/theme_style_mode"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="6dp"
+            android:background="@drawable/bg_theme_style_chip"
+            android:gravity="center"
+            android:paddingStart="11dp"
+            android:paddingTop="5dp"
+            android:paddingEnd="11dp"
+            android:paddingBottom="5dp"
+            android:text="等比"
+            android:textColor="#E3E6EB"
+            android:textSize="12sp" />
+    </LinearLayout>
 
     <!-- 拖动条 -->
     <FrameLayout

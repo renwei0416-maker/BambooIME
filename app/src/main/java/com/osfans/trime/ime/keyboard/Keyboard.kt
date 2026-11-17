@@ -11,7 +11,9 @@ import android.os.Build
 import android.view.KeyEvent
 import android.view.WindowInsets
 import com.osfans.trime.data.prefs.AppPrefs
+import com.osfans.trime.data.theme.ColorManager
 import com.osfans.trime.data.theme.Theme
+import com.osfans.trime.data.theme.ThemeResolver
 import com.osfans.trime.data.theme.model.TextKeyboard
 import com.osfans.trime.ime.keyboard.KeyboardPrefs.isLandscapeMode
 import com.osfans.trime.ime.sidebar.SidebarLayout
@@ -36,6 +38,7 @@ class Keyboard(
     private val context: Context,
     private val theme: Theme,
     selfConfig: TextKeyboard? = null,
+    val resolver: ThemeResolver = ColorManager,
 ) {
 
     /** 按鍵默認水平間距  */

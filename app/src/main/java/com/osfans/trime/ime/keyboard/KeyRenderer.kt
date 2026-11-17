@@ -1,4 +1,4 @@
-﻿/*
+/*
  * 按键「文字层」共享渲染器。
  *
  * 背景：主题样式编辑器的预览以前是自己抄了一套绘制逻辑（KeyPainter），
@@ -18,7 +18,6 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.drawable.GradientDrawable
-import com.osfans.trime.data.theme.ColorManager
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffColorFilter
 import android.graphics.Rect
@@ -75,7 +74,7 @@ object KeyRenderer {
      * 是同一份实现：真机 KeyView 与设置页预览都调这里。
      *
      * 只负责把 [Key.getBackgroundDrawable] 画到 bounds 上，并处理圆角/描边/阴影；
-     * 颜色全部来自 Key 自己（即 ColorManager 当前指向的主题），调用方无需传色值。
+     * 颜色全部来自 Key 自己（即 Keyboard.resolver 指向的主题），调用方无需传色值。
      */
     fun renderBackground(
         canvas: Canvas,
@@ -137,7 +136,7 @@ object KeyRenderer {
         val dir = key.keyShadowDirection ?: keyboard.keyShadowDirection ?: return
         if (dir.isEmpty()) return
 
-        val color = ColorManager.getColor("key_shadow_color")
+        val color = keyboard.resolver.getColor("key_shadow_color")
         val shadowDp = dp(radius)
         val (dx, dy) = Keyboard.shadowDirectionToOffset(dir, shadowDp)
 

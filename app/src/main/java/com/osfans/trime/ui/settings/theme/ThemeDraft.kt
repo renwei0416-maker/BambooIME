@@ -30,10 +30,19 @@ typealias KeyPatch = LinkedHashMap<String, JsonElement?>
 class ThemeDraft(
     val themeId: String,
     var style: GeneralStyle,
-    val schemes: MutableList<ColorScheme>,
+    schemes: List<ColorScheme>,
     var schemeId: String,
     var keyboardName: String,
 ) {
+    /**
+     * 自己持有一份副本。
+     *
+     * 调用方 [com.osfans.trime.ui.main.settings.ThemeStyleFragment.refreshPreview] 的做法是
+     * `draft.schemes.clear(); draft.schemes.addAll(schemes)`；若这里直接引用调用方的列表，
+     * clear() 会把调用方那份也清空，addAll 再从已被清空的自己复制 → 永远为空，
+     * 预览所有颜色都会解析成 TRANSPARENT（表现为「键盘完全不显示」）。
+     */
+    val schemes: MutableList<ColorScheme> = schemes.toMutableList()
     val patches = linkedMapOf<KeyPath, KeyPatch>()
 
     fun currentScheme(): ColorScheme? = schemes.firstOrNull { it.id == schemeId } ?: schemes.firstOrNull()
