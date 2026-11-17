@@ -474,3 +474,57 @@ $env:LYRAIME_DL_CACHE="C:\Users\Administrator\Downloads\lyraime-build-env"
 4. **不要动全局单例**（`ColorManager` / `FontManager` 的 active 状态）。要隔离就抽接口（§9 阶段 1）。
 5. **改主题几何后必须自查**：每排宽度和 ≤ 1.0、行高和 ≤ 1.0，否则整块键盘空白且无提示。
 6. 本项目所有自建设置页都遵循同一套视觉规范（行高 44dp、标题 14sp、值 12sp、圆角 8dp、强调色走 `SettingsPalette`），新页面请保持一致。
+
+---
+
+## 12. 本轮改动与自证（2026-11-17 ~ 18，接在 §11 之后）
+
+> 这一节是「§0~§11 那次基线」之后发生的事，按时间顺序，遇到问题先看这里。
+
+### 12.1 M6：改用 `ThemeResolver`（架构文档 §2.1 的阶段 1+2，另一个 Agent 产出后我方复核合入）
+
+- 新增 `data/theme/ThemeResolver.kt`：`interface ThemeResolver { fun getColor(key): Int; fun getDrawable(key): Drawable?; fun getColorOr(key, fallback): Int }`。
+- 新增 `data/theme/ThemeResourceResolver.kt`：把原 `ColorManager` 的解析逻辑（`activeColorScheme.colors → theme.fallbackColors → BuiltinFallbackColors`）整体搬出，**自带三份独立缓存**（`bitmapCache` / `gradientDrawableCache(32)` / `colorCache(128)`），绑定 `(theme, activeColorScheme)` 不可变。
+- `object ColorManager : ThemeResolver` 退化成**委托 + `rebuildResolver()`**，在 `init` / `switchTheme` / `setColorScheme` / `onSystemNightModeChange` 末尾调用 → 原来那三处 `evictAll()` 与 `Key` 的 `ResettableLazy` 缓存代际错乱问题被**结构性消除**（§7.3 那个空白事故的根因）。
+- `Keyboard` 构造新增 `resolver: ThemeResolver = ColorManager`（默认值 → 上游调用点零改动）；`Key` 的取色全部改走 `parent.resolver`，并新增 `fun setPressed(pressed: Boolean)`（只动 `isPressed`，不动 sticky）。
+- `ThemePreviewView` 改为：底板 `resolver.getDrawable("keyboard_background")` / `getColor("keyboard_back_color")`；每键 `KeyRenderer.renderBackground` + `shadowExtents()`；文字色 `key.getTextColor()` / `key.getSymbolColor()`。**删掉了自造的 `colorOf` / `paletteFor` / `BuiltinFallback` 第二套实现（约 150 行）**。
+- 顺带修 `TextKeyboard` 的 `TextKeySerializer` 漏 `ascii_label` 的往返 bug（对「整份键盘 JSON 打补丁」是必需的）；新增 `ThemeLuaExporter` 导出独立 `.lua`（本仓库 `ThemeFilesManager` 只扫 `.lua`，`.bbt`/zip 主题在这里装不上，所以导出 `.lua` 才是可安装的完整文件）。
+- 单测：`TextKeyAsciiLabelTest`(4) + `ThemeLuaExporterTest`(3) 全通过。
+
+### 12.2 M7：配色列表「自清空」事故（预览全透明）—— **同类问题再出现先看这条**
+
+- 现象：预览区什么都不画，只有点中的键有一圈金色描边；顶栏自证显示 `scheme=无`。
+- 根因：`ThemeStyleFragment.loadState()` 把 `schemes`（`MutableList`）**按引用**传给 `ThemeDraft`；`refreshPreview()` 里 `draft.schemes.clear(); draft.schemes.addAll(schemes)` → `clear()` 清空了调用方同一份列表，再从已空的自己复制 → **永久空列表** → 所有颜色 `Color.TRANSPARENT`。
+- 为什么只有预览坏：`onViewCreated` 顺序是 `renderTab(0)`（此时列表还满）→ `refreshPreview()`（之后清空）。切页签重绘才能看出「颜色也空了」。
+- 修复三处：
+  1. `ThemeDraft` 自己持副本（构造参数改 `schemes: List<ColorScheme>`，类体 `val schemes: MutableList<ColorScheme> = schemes.toMutableList()`）；
+  2. `ThemeResourceResolver.resolveColor` **失败值不入缓存**（否则一次失败在本 resolver 生命周期内永久透明）；
+  3. `ThemePreviewView.colorSummary()` 增加 `cols=`（配色键数）与 `fb=`（fallback 键数），一眼区分「配色空」还是「resolver 坏」。
+- 教训：**凡是把 `MutableList` 交给外部对象，都要先想「对方会不会 clear 它」**。
+
+### 12.3 M8：预览下方的选择行改造成下拉页签（用户要求 a/b/c/d 全方案 1）
+
+- 布局：`fragment_bamboo_theme_style.xml` 里原 chips 行拆成
+  `theme_style_picker_row`（横排）= `HorizontalScrollView(weight=1)` 包 `theme_style_chips` + 固定右侧的 `theme_style_mode`（等比/1:1 按钮，**不参与横向滚动**）。
+- `rebuildChips()` 只放两个「带 ▾ 的下拉页签」：
+  - `键盘 · <当前>` → 下拉列全部键盘（`keyboardLabels` 顺序，借用键盘 number/editor/calculator/settings 排最后）；
+  - `配色 · <当前>` → 下拉列当前主题全部配色。
+  - 「按下态」按钮删除（预览本身可直接按住看按下态）。
+- 下拉实现 `showPickerOverlay(title, items, onPick)`：**页内覆盖层**（半透明遮罩 + 居中圆角面板 + 可滚列表 + `✓` 当前项）。因为根布局是 `LinearLayout`、直接加遮罩会「挤在下面」，所以在 `onCreateView` 里把整页包了一层 `FrameLayout`（`overlayHost`），遮罩加在这一层。
+- 面板尺寸自适应：用 `TextPaint` 实测最宽文字 → 宽度夹在 `132dp~260dp`；高度按条目数、最多占屏高 45%；行高 42dp。
+- 页签样式与「等比」严格同源：`wrap_content` 高 + 上下 `5dp` padding + 12sp 文字 + `bg_theme_style_chip` 底色 + `textColor` 文字（含 ▾）。
+- 踩坑：Fragment 里只有 `dp()` 扩展、没有 `sp()` → 量宽时必须 `TypedValue.applyDimension(COMPLEX_UNIT_SP, 14f, displayMetrics)`；`ScrollView` 的 child 参数要用 `FrameLayout.LayoutParams`（没有 `ScrollView.LayoutParams`，虽然 IDE 可能补全出来）。
+
+### 12.4 自证装置（排查时先看这三个地方）
+
+| 位置 | 显示什么 | 用来判断 |
+|---|---|---|
+| 顶栏文字 | `scheme=<id> cols=<N> fb=<M> back=#… text=#…` | 配色有没有取到、resolver 解析对不对 |
+| 预览左上角 | 红字「预览绘制失败：…」+ 前 4 行栈 | `onDraw` 里抛异常时直接暴露，不用连 logcat |
+| `adb logcat -s ThemePreview` / `Timber` | `Color key 'x' not resolved` | 某个键名在配色/fallback 里压根没有 |
+
+### 12.5 当前状态（2026-11-18）
+
+- 主题样式页：**六个页签全部可用**（配色 12 项 / 键盘 8 项 / 字号 8 项 / 候选栏 4 项 / 阴影 3 项 / 按键 N 项），预览与真机同源（共用 `KeyRenderer` + `resolver`），可点击选中键、可长按看 popup 气泡、可拖动改预览高度、可切换键盘与配色、可导出独立 `.lua`。
+- 最近交付：`dist/BambooIME-3.3.1-dev-pickerchips2-arm64-v8a-debug.apk`（sha256 `ad5e8dc4…`）。
+- 未做：候选栏/工具栏/键盘下方留白进预览、每项 ↺ 逐项复位、点行首批量改整行、像素 diff 测试、`.bbt` 完整包导出。
