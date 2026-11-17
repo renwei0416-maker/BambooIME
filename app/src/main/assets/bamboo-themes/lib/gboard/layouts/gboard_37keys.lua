@@ -1,7 +1,7 @@
 --[[
 layouts.37keys_zrm.lua  灵韵LyraIME 万象18键（37键）双拼布局脚本
 依赖：
-1. key_style.lua：通过safe_require("key_style")加载按键样式模板S
+1. key_style.lua：通过safe_require("key_style_gboard")加载按键样式模板S
 2. 配色文件latte.lua / mocha.lua：key_style内部使用颜色名字符串查表获取色值
 3. 预设命令来自 preset_keys.lua，例如：SelectAll、Page_Up、WindowClipboard、Deploy、ThemeReload等
 字段说明：
@@ -24,13 +24,12 @@ layouts.37keys_zrm.lua  灵韵LyraIME 万象18键（37键）双拼布局脚本
 ]]
 
 -- 安全加载按键样式模板 key_style.lua，得到S对象，包含S.number/S.base/S.mantle/S.crust/S.shift/S.backspace等全部样式
--- 14 键：由 18 键布局改出，字母键统一 0.175，Shift/退格/底栏与 18 键同尺寸（BambooIME）
-local KS = safe_require("keyboard_switch")
-local S = safe_require("key_style2") -- 按键样式
+local KS = safe_require("gboard.keyboard_switch")
+local S = safe_require("gboard.key_style2_gboard") -- 18 键专用样式（字母 22）
 
 -- 定义键盘布局对象 keyboard{}
 local keyboard = keyboard {
-  name = "14 键布局",       -- 布局对外显示名称
+  name = "Gboard 18 键",       -- 布局对外显示名称
   author = "Carlson24(鹤衔春雪)", -- 作者
   ascii_mode = false,        -- 打开布局默认中文模式；true则默认英文
   reset_ascii_mode = true,            -- 每次进入这个键盘都强制回中文（不回退到上一次的英文状态）
@@ -65,46 +64,68 @@ local keyboard = keyboard {
         key(merge(S.number, key { click = "0", label_symbol = { { text = { " ", ")" }, align = "justify" } }, swipe_up = ")" }))
       }
     },
+
+    -- ==========第二行：q w‑e r‑t y‑u i‑o p 【18键合并双字母行】，继承S.base浅底色字母按键模板 ==========
     row {
       keys = {
-        key { spacer = true, width = 0.02083 }, -- 左侧留白 0.02083（原 0.0625 的三分之一）
-        key(merge(S.mantle, key { label = { { text = "QW" } }, click = "q", swipe_left = "q", swipe_right = "w", label_symbol = { { text = "`" } }, swipe_up = "`", popup = { "Q", "W" }, width = 0.18333 })),
-        key { spacer = true, width = 0.01042 }, -- 字母之间的间隔
-        key(merge(S.mantle, key { label = { { text = "ER" } }, click = "e", swipe_left = "e", swipe_right = "r", label_symbol = { { text = "~" } }, swipe_up = "~", popup = { "E", "R" }, width = 0.18333 })),
-        key { spacer = true, width = 0.01042 }, -- 字母之间的间隔
-        key(merge(S.mantle, key { label = { { text = "TY" } }, click = "t", swipe_left = "t", swipe_right = "y", label_symbol = { { text = "+" } }, swipe_up = "+", popup = { "T", "Y" }, width = 0.18333 })),
-        key { spacer = true, width = 0.01042 }, -- 字母之间的间隔
-        key(merge(S.mantle, key { label = { { text = "UI" } }, click = "u", swipe_left = "u", swipe_right = "i", label_symbol = { { text = "=" } }, swipe_up = "=", popup = { "U", "I" }, width = 0.18333 })),
-        key { spacer = true, width = 0.01042 }, -- 字母之间的间隔
-        key(merge(S.mantle, key { label = { { text = "OP" } }, click = "o", swipe_left = "o", swipe_right = "p", label_symbol = { { text = "{" } }, swipe_up = "{", popup = { "O", "P" }, width = 0.18333 })),
-        key { spacer = true, width = 0.02083 } -- 右侧留白
+        -- Q键：显示文字" Q "；单击q；上滑输出`；长按弹出菜单Q
+        key(merge(S.base, key { label = { { text = " Q " } }, click = "q", label_symbol = { { text = "`" } }, swipe_up = "`", popup = { "Q" } })),
+        -- W‑E合并键：主标签 W E；单击w；上滑~；长按弹出 W / E两个字符
+        key(merge(S.base, key { label = { { text = "W E" } }, click = "w", swipe_left = "w", swipe_right = "e", label_symbol = { { text = "~" } }, swipe_up = "~", popup = { "W", "E" } })),
+        -- R‑T合并键：主标签 R T；单击r；上滑+；长按R/T
+        key(merge(S.base, key { label = { { text = "R T" } }, click = "r", swipe_left = "r", swipe_right = "t", label_symbol = { { text = "+" } }, swipe_up = "+", popup = { "R", "T" } })),
+        -- Y键：主标签 Y；单击y；上滑=；长按Y
+        key(merge(S.base, key { label = { { text = " Y " } }, click = "y", label_symbol = { { text = "=" } }, swipe_up = "=", popup = { "Y" } })),
+        -- U键：主标签 U；单击u；上滑{；长按U
+        key(merge(S.base, key { label = { { text = " U " } }, click = "u", label_symbol = { { text = "{" } }, swipe_up = "{", popup = { "U" } })),
+        -- I‑O合并键：主标签 I O；单击i；上滑}；长按I/O
+        key(merge(S.base, key { label = { { text = "I O" } }, click = "i", swipe_left = "i", swipe_right = "o", label_symbol = { { text = "}" } }, swipe_up = "}", popup = { "I", "O" } })),
+        -- P键：主标签 P；单击p；上滑?；长按弹出 P / ? / ¿
+        key(merge(S.base, key { label = { { text = " P " } }, click = "p", label_symbol = { { text = "?" } }, swipe_up = "?", popup = { "P", "?", "¿" } }))
       }
     },
+
+    -- ==========第三行：A‑S‑D‑F‑G‑H‑J‑K‑L；左右spacer制造缩进，S.mantle中间层底色模板 ==========
     row {
       keys = {
-        key { spacer = true, width = 0.02083 }, -- 左侧留白 0.02083（原 0.0625 的三分之一）
-        key(merge(S.mantle, key { label = { { text = "AS" } }, click = "a", swipe_left = "a", swipe_right = "s", label_symbol = { { text = { " ", ":", "ic@select-all", " " }, align = "justify" } }, swipe_up = ":", popup = { "A", "S", "SelectAll" }, width = 0.18333 })),
-        key { spacer = true, width = 0.01042 }, -- 字母之间的间隔
-        key(merge(S.mantle, key { label = { { text = "DF" } }, click = "d", swipe_left = "d", swipe_right = "f", label_symbol = { { text = "-" } }, swipe_up = "-", popup = { "D", "F" }, width = 0.18333 })),
-        key { spacer = true, width = 0.01042 }, -- 字母之间的间隔
-        key(merge(S.mantle, key { label = { { text = "GH" } }, click = "g", swipe_left = "g", swipe_right = "h", label_symbol = { { text = { " ", "_", "ic@page-last", " " }, align = "justify" } }, swipe_up = "_", popup = { "G", "H", "Page_Down" }, width = 0.18333 })),
-        key { spacer = true, width = 0.01042 }, -- 字母之间的间隔
-        key(merge(S.mantle, key { label = { { text = "JK" } }, click = "j", swipe_left = "j", swipe_right = "k", label_symbol = { { text = "|" } }, swipe_up = "|", popup = { "J", "K" }, width = 0.18333 })),
-        key { spacer = true, width = 0.01042 }, -- 字母之间的间隔
-        key(merge(S.mantle, key { label = { { text = " L " } }, click = "l", label_symbol = { { text = ";" } }, swipe_up = ";", popup = { "L", "·", "§" }, width = 0.18333 })),
-        key { spacer = true, width = 0.02083 } -- 右侧留白
+        key { spacer = true, width = 0.05 }, -- 左侧空白占位，占总宽度5%，制造左边缩进
+        -- A键：主标签 A；单击a；右上角图标ic@select‑all全选；长按 A / SelectAll全选命令
+        key(merge(S.mantle, key { label = { { text = " A " } }, click = "a", label_symbol = { { text = "ic@select-all" } }, popup = { "A", "SelectAll" } })),
+        -- S‑D合并键：S D；单击s；上滑:；长按S D
+        key(merge(S.mantle, key { label = { { text = "S D" } }, click = "s", swipe_left = "s", swipe_right = "d", label_symbol = { { text = ":" } }, swipe_up = ":", popup = { "S", "D" } })),
+        -- F‑G合并键：F G；单击f；justify布局右上角：减号 + 上翻页图标；上滑输出‑；长按 F G Page_Up上翻页
+        key(merge(S.mantle, key { label = { { text = "F G" } }, click = "f", swipe_left = "f", swipe_right = "g", label_symbol = { { text = { " ", "ic@page-first", "-", " " }, align = "justify" } }, swipe_up = "-", popup = { "F", "G", "Page_Up" } })),
+        -- H键：H；单击h；justify布局下划线_ + 下翻页图标；上滑_；长按 H / Page_Down下翻页
+        key(merge(S.mantle, key { label = { { text = " H " } }, click = "h", label_symbol = { { text = { " ", "_", "ic@page-last", " " }, align = "justify" } }, swipe_up = "_", popup = { "H", "Page_Down" } })),
+        -- J‑K合并键：J K；单击j；上滑|；长按 J K
+        key(merge(S.mantle, key { label = { { text = "J K" } }, click = "j", swipe_left = "j", swipe_right = "k", label_symbol = { { text = "|" } }, swipe_up = "|", popup = { "J", "K" } })),
+        -- L键：L；单击l；上滑;；长按 L · §
+        key(merge(S.mantle, key { label = { { text = " L " } }, click = "l", label_symbol = { { text = ";" } }, swipe_up = ";", popup = { "L", "·", "§" } })),
+        key { spacer = true, width = 0.05 } -- 右侧空白占位，制造右边缩进
       }
     },
+
+    -- ==========第四行 Z‑X‑C‑V‑B‑N‑M + Shift + Backspace，S.crust最深底色字母模板 ==========
     row {
       keys = {
+        -- Shift大小写键：宽度0.15；单击Shift；双击CapsLock大写锁定；显示caps图标；继承S.shift彩色功能键模板
         key(merge(S.shift, key { click = "Shift", double_click = "CapsLock", label_symbol = { { text = "ic@keyboard-caps" } }, width = 0.15 })),
-        key(merge(S.crust, key { label = { { text = "ZX" } }, click = "z", swipe_left = "z", swipe_right = "x", label_symbol = { { text = "\\" } }, swipe_up = "\\", popup = { "Z", "X" }, width = 0.175 })),
-        key(merge(S.crust, key { label = { { text = "CV" } }, click = "c", swipe_left = "c", swipe_right = "v", label_symbol = { { text = { " ", "\"", "ic@content-paste", " " }, align = "justify" } }, swipe_up = "\"", popup = { "C", "V", "Copy", "Paste" }, swipe_down = "WindowClipboard", width = 0.175 })),
-        key(merge(S.crust, key { label = { { text = "BN" } }, click = "b", swipe_left = "b", swipe_right = "n", label_symbol = { { text = "<" } }, swipe_up = "<", popup = { "B", "N", "ZiTools", "BaiduSearch" }, width = 0.175 })),
-        key(merge(S.crust, key { label = { { text = " M " } }, click = "m", label_symbol = { { text = ">" } }, swipe_up = ">", popup = { "M" }, width = 0.175 })),
+        -- Z键：Z；单击z；上滑反斜杠\；长按Z
+        key(merge(S.crust, key { label = { { text = " Z " } }, click = "z", label_symbol = { { text = "\\" } }, swipe_up = "\\", popup = { "Z" } })),
+        -- X‑C合并键：X C；单击x；右上角复制图标ic@content‑copy；长按 X / Copy复制命令
+        key(merge(S.crust, key { label = { { text = "X C" } }, click = "x", swipe_left = "x", swipe_right = "c", label_symbol = { { text = "ic@content-copy" } }, popup = { "X", "Copy" } })),
+        -- V键：V；单击v；justify布局引号"+粘贴图标；上滑"；长按V/Paste粘贴；**下滑打开剪贴板窗口 WindowClipboard**
+        key(merge(S.crust, key { label = { { text = " V " } }, click = "v", label_symbol = { { text = { " ", "\"", "ic@content-paste", " " }, align = "justify" } }, swipe_up = "\"", popup = { "V", "Paste" }, swipe_down = "WindowClipboard" })),
+        -- B‑N合并键：B N；单击b；上滑<；长按B / ZiTools查字工具
+        key(merge(S.crust, key { label = { { text = "B N" } }, click = "b", swipe_left = "b", swipe_right = "n", label_symbol = { { text = "<" } }, swipe_up = "<", popup = { "B", "ZiTools", "BaiduSearch" } })),
+        -- M键：M；单击m；上滑>；长按M
+        key(merge(S.crust, key { label = { { text = " M " } }, click = "m", label_symbol = { { text = ">" } }, swipe_up = ">", popup = { "M" } })),
+        -- BackSpace退格键，宽度0.15，继承S.backspace彩色功能键模板
         key(merge(S.backspace, key { click = "BackSpace", swipe_left = "DeleteLine", swipe_right = "BambooRevert", swipe_up = "WordDelete", swipe_down = "Escape", width = 0.15 }))
       }
     },
+
+    -- ==========第五行底栏：数字切换 / 标点 / 空格 /斜杠 /布局切换 /回车 ==========
     row {
       keys = {
         -- 数字键盘切换键：S.symbol模板；单击KeyboardNumber切数字布局；长按菜单：计算器、重载主题、部署配置；has_menu=Tab；宽度0.15
@@ -118,7 +139,7 @@ local keyboard = keyboard {
         -- /斜杠按键 S.slash模板；单击/；上滑单引号'；hint灯泡图标；下滑HideSymbols关符号/顶部图标，左滑HintSwitch开关助记提示
         key(merge(S.slash, key { click = "/", label_symbol = { { text = "'" } }, swipe_up = "BambooQuoteSingle", hint = { { text = "ic@lightbulb-outline" } }, swipe_down = "HideSymbols", swipe_left = "HintSwitch" })),
         -- 模式切换 S.switch模板；单击ModeSwitch；设置图标；长按弹出：英文、45键、9键布局；hint网页图标；下滑IMESwitch切换Rime输入方案
-        key(merge(S.switch, key { click = "ModeSwitch", label_symbol = { { text = "ic@keyboard-settings-outline" } }, popup = KS.popup_for("Keyboard14key"), hint = { { text = "ic@web" } }, swipe_down = "IMESwitch" })),
+        key(merge(S.switch, key { click = "ModeSwitch", label_symbol = { { text = "ic@keyboard-settings-outline" } }, popup = KS.popup_for("Keyboard18key"), hint = { { text = "ic@web" } }, swipe_down = "IMESwitch" })),
         -- 回车键 S.enter模板；使用enter_labels动态图标；单击Enter；宽度0.15
         key(merge(S.enter, key { swipe_up = "AI", swipe_right = "ClipboardAI", label = { { text = "enter_labels" } }, click = "Enter", width = 0.15 }))
       }

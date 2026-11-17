@@ -31,7 +31,7 @@ local font_combo = {
 }
 
 -- 配色模块：light / dark 两张表
-local C = safe_require("colors.gboard")
+local C = safe_require("gboard.colors.gboard")
 
 local theme = theme {
   name = "Gboard",
@@ -228,34 +228,34 @@ local theme = theme {
   -- ======================================================================
   -- 预设按键：与 Catppuccin 主题共用同一份命令表
   -- ======================================================================
-  preset_keys = safe_require("preset_keys"),
+  preset_keys = safe_require("gboard.preset_keys"),
 
   -- ======================================================================
   -- 键盘列表：default 是 Gboard 版 45 键，其余沿用现有布局
   -- ======================================================================
   preset_keyboards = {
-    default = safe_require("layouts.gboard_45keys"),                     -- Gboard 45 键
-    number = safe_require("layouts.number"),                             -- 数字键盘
-    editor = safe_require("layouts.editor"),                             -- 编辑键盘（方向键等）
-    calculator = safe_require("layouts.calculator"),                     -- 计算器
-    settings = safe_require("layouts.settings"),                         -- 设置与导航
-    qijian = safe_require("layouts.gboard_45keys_4pai"),                  -- Gboard 45 键四排
-    wanxiang_pro = safe_require("layouts.gboard_45keys"),   -- 万象拼音PRO 主键盘（普通 45 键，无韵母提示）
-    xiaohe = safe_require("layouts.gboard_45keys_flypy"),   -- 小鹤辅助码提示版（用切换键弹窗里的「鹤」进入）
-    wanxiang_18key = safe_require("layouts.gboard_37keys_zrm"),    -- Gboard 18 键
-    wanxiang_14key = safe_require("layouts.14keys"),
-    wanxiang_t9 = safe_require("layouts.gboard_17keys"),       -- Gboard T9 九宫
-    wanxiang_english = safe_require("layouts.gboard_english"),
+    default = safe_require("gboard.layouts.gboard_45keys"),                     -- Gboard 45 键
+    number = safe_require("gboard.layouts.number"),                             -- 数字键盘
+    editor = safe_require("gboard.layouts.editor"),                             -- 编辑键盘（方向键等）
+    calculator = safe_require("gboard.layouts.calculator"),                     -- 计算器
+    settings = safe_require("gboard.layouts.settings"),                         -- 设置与导航
+    qijian = safe_require("gboard.layouts.gboard_45keys_4pai"),                  -- Gboard 45 键四排
+    wanxiang_pro = safe_require("gboard.layouts.gboard_45keys"),   -- 万象拼音PRO 主键盘（普通 45 键，无韵母提示）
+    xiaohe = safe_require("gboard.layouts.gboard_45keys_flypy"),   -- 小鹤辅助码提示版（用切换键弹窗里的「鹤」进入）
+    wanxiang_18key = safe_require("gboard.layouts.gboard_37keys_zrm"),    -- Gboard 18 键
+    wanxiang_14key = safe_require("gboard.layouts.14keys"),
+    wanxiang_t9 = safe_require("gboard.layouts.gboard_17keys"),       -- Gboard T9 九宫
+    wanxiang_english = safe_require("gboard.layouts.gboard_english"),
   },
 
   -- ======================================================================
   -- 液态键盘（符号 / emoji / 历史 / 剪贴板等面板）
   -- ======================================================================
-  liquid_keyboard = safe_require("liquid_keyboard"),
+  liquid_keyboard = safe_require("gboard.liquid_keyboard"),
 }
 
 -- 对比度守卫：把「文字/图标 vs 背景」太接近的组合自动拉开（图片与半透明背景跳过）
-local guard = safe_require("colors.contrast_guard")
+local guard = safe_require("gboard.colors.contrast_guard")
 for _, s in ipairs(theme.preset_color_schemes or {}) do guard.apply(s) end
 
 return theme

@@ -1,4 +1,4 @@
-local S = safe_require("key_style") -- 按键样式
+local S = safe_require("gboard.key_style") -- 按键样式
 
 local keyboard = keyboard(merge(S.settings, keyboard {
   name = "设置与导航",

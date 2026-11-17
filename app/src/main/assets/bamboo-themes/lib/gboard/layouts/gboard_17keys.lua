@@ -1,5 +1,5 @@
-local KS = safe_require("keyboard_switch")
-local S = safe_require("key_style_gboard") -- 按键样式
+local KS = safe_require("gboard.keyboard_switch")
+local S = safe_require("gboard.key_style_gboard") -- 按键样式
 
 local keyboard = keyboard {
   name = "Gboard T9",

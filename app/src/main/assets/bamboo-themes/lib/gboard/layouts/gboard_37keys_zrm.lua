@@ -16,7 +16,7 @@ layouts.45keys_zrm.lua 万象自然码18键布局补丁扩展脚本
 
 -- merge(基础布局对象, 要覆盖修改的配置)
 -- safe_require("layouts.gboard_37keys") 读取18键基础布局，在此基础上打补丁，只修改hint助记提示
-local keyboard = keyboard(merge(safe_require("layouts.gboard_37keys"), keyboard {
+local keyboard = keyboard(merge(safe_require("gboard.layouts.gboard_37keys"), keyboard {
   name = "Gboard 18 键·自然码", -- 布局对外显示名称（替换原来基础布局的名字）
   reset_ascii_mode = true,            -- 每次进入这个键盘都强制回中文（不回退到上一次的英文状态）
 

@@ -35,8 +35,8 @@ ic@xxx：灵韵内置矢量图标，依赖CarlsonFont.ttf字体，缺失会显�
 ]]
 
 -- 安全加载按键样式模板 key_style.lua，得到S对象，包含所有预定义按键样式
-local KS = safe_require("keyboard_switch")
-local S = safe_require("key_style_4pai_gboard") -- 按键样式
+local KS = safe_require("gboard.keyboard_switch")
+local S = safe_require("gboard.key_style_4pai_gboard") -- 按键样式
 
 -- 定义45键键盘布局对象
 local keyboard = keyboard {

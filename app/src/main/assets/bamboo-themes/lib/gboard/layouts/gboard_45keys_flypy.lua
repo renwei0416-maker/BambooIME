@@ -1,8 +1,8 @@
 -- 加载按键样式模板，使用S.S.hint_offset（hint文字偏移配置）
-local S = safe_require("key_style3_gboard")
+local S = safe_require("gboard.key_style3_gboard")
 
 -- merge：继承 layouts.45keys（45键基础布局），只覆盖修改本脚本写出的配置，其余全部保留
-local keyboard = keyboard(merge(safe_require("layouts.gboard_45keys_hint"), keyboard {
+local keyboard = keyboard(merge(safe_require("gboard.layouts.gboard_45keys_hint"), keyboard {
   name = "Gboard 小鹤",                          -- 布局对外显示名称
   reset_ascii_mode = true,            -- 每次进入这个键盘都强制回中文（不回退到上一次的英文状态）
   label_transform = "UPPERCASE",              -- 中文模式按键字母强制转为大写显示
@@ -155,5 +155,5 @@ local keyboard = keyboard(merge(safe_require("layouts.gboard_45keys_hint"), keyb
 }))
 
 
-safe_require("keyboard_switch").apply(keyboard, "KeyboardXiaohe")  -- 切换弹窗排除自身（鹤）
+safe_require("gboard.keyboard_switch").apply(keyboard, "KeyboardXiaohe")  -- 切换弹窗排除自身（鹤）
 return keyboard -- 输出补丁完成后的布局对象，在NekoCatppuccin.lua的preset_keyboards注册即可切换

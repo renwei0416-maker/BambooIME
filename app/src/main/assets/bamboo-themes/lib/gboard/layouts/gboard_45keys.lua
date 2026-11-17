@@ -1,4 +1,13 @@
 --[[
+gboard_45keys.lua —— Gboard 风格的 45 键布局
+
+由 lib/layouts/45keys.lua 派生，键位、弹窗、滑动手势完全一致，只是：
+  · 样式表换成 lib/key_style_gboard.lua（字母 22 号、蓝色回车白图标）
+  · 空格键去掉 ␣ 标签（Gboard 的空格是空白的）
+  · 清掉 click = "ModeSwitch" or "KeyboardEnglish" 的死代码
+]]
+
+--[[
 layouts.45keys.lua  LyraIME灵韵输入法 万象45键基础布局脚本
 依赖文件：
 1. key_style.lua：safe_require加载，S包含全套按键样式模板（number/base/mantle/crust/shift/backspace等）
@@ -25,12 +34,12 @@ ic@xxx：灵韵内置矢量图标，依赖CarlsonFont.ttf字体，缺失会显�
 ]]
 
 -- 安全加载按键样式模板 key_style.lua，得到S对象，包含所有预定义按键样式
-local KS = safe_require("keyboard_switch")
-local S = safe_require("key_style3_gboard") -- 小鹤/提示专用样式（字母 18、提示 8）
+local KS = safe_require("gboard.keyboard_switch")
+local S = safe_require("gboard.key_style_gboard") -- 按键样式
 
 -- 定义45键键盘布局对象
 local keyboard = keyboard {
-  name = "Gboard 45 键·提示",                     -- 布局对外显示名称
+  name = "Gboard 45 键",                     -- 布局对外显示名称
   author = "Carlson24(鹤衔春雪)",         -- 布局作者
   ascii_mode = false,                      -- 打开布局默认中文输入模式；true=默认英文
   reset_ascii_mode = true,            -- 每次进入这个键盘都强制回中文（不回退到上一次的英文状态）
@@ -152,8 +161,8 @@ local keyboard = keyboard {
         -- 句号键 S.punct模板；主标签"。"；上滑输出]；hint调色板图标；下滑 ThemeList：打开主题列表
         key(merge(S.punct, key { label = { { text = "。" } }, click = ".", label_symbol = { { text = "]" } }, swipe_up = "]", hint = { { text = "ic@palette-swatch-outline" } }, swipe_down = "ThemeList", key_text_offset_y = -5 })),
         -- 空格键：宽度0.3；主标签"指尖文流"；单击空格Space；长按VoiceAssist语音输入；hint提示--；下滑LiquidEmoji打开表情面板；文字纵向偏移+1
-        key(merge(S.space, key { label = { { text = "␣" } }, click = "Space", long_click = "VoiceAi", swipe_down = "LiquidEmoji", width = 0.3 })),
-        -- key { label = { { text = "␣" } }, click = "Space", long_click = "VoiceAi", swipe_down = "LiquidEmoji", width = 0.3, key_text_offset_y = 1 },
+        key(merge(S.space, key { label = { { text = "" } }, click = "Space", long_click = "VoiceAi", swipe_down = "LiquidEmoji", width = 0.3 })),
+        -- key { label = { { text = "" } }, click = "Space", long_click = "VoiceAi", swipe_down = "LiquidEmoji", width = 0.4 },
         -- /斜杠按键 S.slash模板；上滑输出单引号'；hint灯泡图标；下滑HideSymbols：关掉按键右上角符号与顶部小图标；左滑HintSwitch：开关按键底部hint助记提示；单引号放大1.5倍加粗
         key(merge(S.slash, key { click = "/", label_symbol = { { text = "'", bold = true, scale = 1.5 } }, swipe_up = "BambooQuoteSingle", hint = { { text = "ic@lightbulb-outline" } }, swipe_down = "HideSymbols", swipe_left = "HintSwitch" })),
         -- 模式切换 S.switch模板；单击ModeSwitch；长按弹出切换键盘布局：英文/18键/9键；hint网页图标；下滑IMESwitch切换Rime输入方案

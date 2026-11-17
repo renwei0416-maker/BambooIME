@@ -288,7 +288,7 @@
 ==============================================================================
 --]]
 
-local S = safe_require("key_style") -- 按键样式
+local S = safe_require("gboard.key_style") -- 按键样式
 
 local keyboard = keyboard {
   name = "计算器",
