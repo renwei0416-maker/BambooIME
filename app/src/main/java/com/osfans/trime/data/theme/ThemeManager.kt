@@ -107,7 +107,8 @@ object ThemeManager {
             return null
         }
 
-        val lastModified = sourceFile.lastModified()
+        // 覆盖层（主题样式编辑器）也是主题的一部分，改它必须让缓存失效
+        val lastModified = sourceFile.lastModified() xor BambooThemeOverrides.stampOf(id)
         themeCache[id]?.let { (cachedTime, cachedTheme) ->
             if (cachedTime == lastModified) {
                 keyboardJsonStore[id]?.let { store ->
@@ -154,7 +155,9 @@ object ThemeManager {
         }
 
         return try {
-            val sorted = sortJsonKeys(Theme.json.parseToJsonElement(jsonStr))
+            val baseObj = Theme.json.parseToJsonElement(jsonStr).jsonObject
+            val mergedObj = BambooThemeOverrides.merged(id, baseObj)
+            val sorted = sortJsonKeys(mergedObj)
             val sortedObj = sorted.jsonObject
 
             keyboardJsons.clear()
@@ -183,7 +186,7 @@ object ThemeManager {
             }
 
             Theme.json.decodeFromJsonElement<Theme>(strippedObj).also {
-                themeCache[id] = file.lastModified() to it
+                themeCache[id] = (file.lastModified() xor BambooThemeOverrides.stampOf(id)) to it
             }
         } catch (e: Exception) {
             Timber.e(e, "Failed to parse theme JSON for '$id'")

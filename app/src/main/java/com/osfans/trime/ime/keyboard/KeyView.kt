@@ -1,4 +1,4 @@
-/*
+﻿/*
  * SPDX-FileCopyrightText: 2015 - 2026 Rime community
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
@@ -354,149 +354,54 @@ class KeyView(
 
         drawBackground(canvas, key)
 
-        val labelSegments = key.getLabelSegments()
-            .let { segs ->
-                if (segs.firstOrNull()?.text == "enter_labels") {
-                    listOf(TextKeyboard.LabelSegment(text = keyboardView.labelEnter))
-                } else {
-                    segs
-                }
-            }
-            .map { seg -> if (seg.text == SCHEMA_NAME) seg.copy(text = schemaDisplayName) else seg }
-
-        if (labelSegments.isNotEmpty()) {
-            drawLabelSegments(canvas, labelSegments)
-        }
-
-        if (key.symbolLabel.isNotEmpty()) {
-            drawSymbolSegments(canvas, key.symbolLabel, TextKeyboard.VerticalAlign.TOP)
-        }
-
-        if (key.hint.isNotEmpty()) {
-            drawSymbolSegments(canvas, key.hint, TextKeyboard.VerticalAlign.BOTTOM)
-        }
-    }
-
-    private fun drawSymbolSegments(canvas: Canvas, segments: List<TextKeyboard.LabelSegment>, defaultVerticalAlign: TextKeyboard.VerticalAlign) {
-        if (defaultVerticalAlign == TextKeyboard.VerticalAlign.TOP && !keyboardView.showKeySymbols) return
-        if (defaultVerticalAlign == TextKeyboard.VerticalAlign.BOTTOM && !keyboardView.showKeyHints) return
-
-        val isTop = defaultVerticalAlign == TextKeyboard.VerticalAlign.TOP
-        val textColor = key.getSymbolColor()
-        val textSize = sp(
-            if (isTop) {
-                key.symbolTextSize.takeIf { it > 0f } ?: keyboardView.symbolTextSize
-            } else {
-                key.hintTextSize.takeIf { it > 0f } ?: keyboardView.hintTextSize
-            },
-        )
-        val iconSize = textSize.toInt()
-        val offsetX = if (isTop) key.keySymbolOffsetX else key.keyHintOffsetX
-        val offsetY = if (isTop) key.keySymbolOffsetY else key.keyHintOffsetY
-
-        drawSegmentsImpl(canvas, segments, textSize, iconSize, textColor, offsetX, offsetY, defaultVerticalAlign, symbolPaint)
-    }
-
-    private fun drawLabelSegments(canvas: Canvas, segments: List<TextKeyboard.LabelSegment>) {
-        val textColor = key.getTextColor()
-        val plainText = segments.joinToString("") { it.text }
-        val textSize = sp(
-            key.keyTextSize.takeIf { it > 0 }
-                ?: if (plainText.length > 1) keyboardView.keyLongTextSize else keyboardView.keyTextSize,
-        )
-        val iconSize = textSize.toInt()
-
-        drawSegmentsImpl(
-            canvas, segments, textSize, iconSize, textColor,
-            key.keyTextOffsetX, key.keyTextOffsetY, TextKeyboard.VerticalAlign.CENTER, textPaint,
+        // 文字层与设置页预览共用同一份实现，保证两边永远一致。
+        KeyRenderer.renderText(
+            KeyRenderCtx(
+                context = context,
+                canvas = canvas,
+                key = key,
+                keyboard = keyboard,
+                width = width,
+                height = height,
+                paddingLeft = paddingLeft,
+                paddingTop = paddingTop,
+                paddingRight = paddingRight,
+                paddingBottom = paddingBottom,
+                dp = { dp(it) },
+                sp = { sp(it) },
+                textPaint = textPaint,
+                symbolPaint = symbolPaint,
+                richTextPaint = richTextPaint,
+                iconCache = iconCache,
+                textColor = key.getTextColor(),
+                symbolColor = key.getSymbolColor(),
+                showSymbols = keyboardView.showKeySymbols,
+                showHints = keyboardView.showKeyHints,
+                enterLabel = keyboardView.labelEnter,
+                schemaName = schemaDisplayName,
+                keyTextSizeSp = keyboardView.keyTextSize,
+                keyLongTextSizeSp = keyboardView.keyLongTextSize,
+                symbolTextSizeSp = keyboardView.symbolTextSize,
+                hintTextSizeSp = keyboardView.hintTextSize,
+                colorResolver = { spec, fallback -> resolveColor(spec, fallback) },
+                baseTypeface = FontManager.getTypeface(),
+                boldTypeface = boldTypefaceFor(textPaint),
+            ),
         )
     }
 
-    private fun drawSegmentsImpl(
-        canvas: Canvas,
-        segments: List<TextKeyboard.LabelSegment>,
-        textSize: Float,
-        iconSize: Int,
-        textColor: Int,
-        offsetX: Float,
-        offsetY: Float,
-        defaultVerticalAlign: TextKeyboard.VerticalAlign,
-        paint: Paint,
-    ) {
-        if (segments.isEmpty()) return
+    private var boldBase: Typeface? = null
+    private var boldCached: Typeface? = null
 
-        val richTextLines = segmentsToRichTextLines(segments)
-
-        paint.apply {
-            color = textColor
-            this.textSize = textSize
-            typeface = FontManager.getTypeface()
-            clearShadowLayer()
+    private fun boldTypefaceFor(paint: Paint): Typeface {
+        val base = paint.typeface ?: FontManager.getTypeface()
+        if (boldBase !== base || boldCached == null) {
+            boldBase = base
+            boldCached = Typeface.create(base, Typeface.BOLD)
         }
-
-        val positionMode = when (defaultVerticalAlign) {
-            TextKeyboard.VerticalAlign.TOP -> PositionMode.TOP
-            TextKeyboard.VerticalAlign.BOTTOM -> PositionMode.BOTTOM
-            TextKeyboard.VerticalAlign.JUSTIFY -> PositionMode.CENTER
-            else -> PositionMode.CENTER
-        }
-
-        val vRoundCornerInset = (
-            (key.roundCorner ?: keyboard.roundCorner)
-                .takeIf { it > 0f }?.let { dp(it) } ?: 0f
-            ) * 1 / 2f
-
-        val (centerX, linePositions) = calculateTextPosition(
-            richTextLines,
-            offsetX,
-            offsetY,
-            positionMode,
-            paint.fontMetrics,
-            vRoundCornerInset,
-            isDynamic = true,
-        )
-
-        drawRichText(canvas, richTextLines, centerX, linePositions, paint, offsetX, offsetY, defaultVerticalAlign, vRoundCornerInset, textSize, iconSize, textColor)
+        return boldCached ?: Typeface.create(base, Typeface.BOLD)
     }
 
-    private fun segmentsToRichTextLines(segments: List<TextKeyboard.LabelSegment>): List<RichTextLine> {
-        val lines = mutableListOf<RichTextLine>()
-        var currentSegs = mutableListOf<StyledSegment>()
-
-        fun buildLine(): RichTextLine {
-            val maxScale = currentSegs.maxOfOrNull { it.scale ?: 1.0f } ?: 1.0f
-            val text = currentSegs.joinToString("") { it.text }
-            return RichTextLine(text, currentSegs.toList(), maxScale)
-        }
-
-        for (seg in segments) {
-            val parts = seg.text.split("\n")
-            for (i in parts.indices) {
-                if (i > 0) {
-                    lines.add(buildLine())
-                    currentSegs = mutableListOf()
-                }
-                if (parts[i].isEmpty()) continue
-                currentSegs.add(
-                    StyledSegment(
-                        text = parts[i],
-                        colorKey = seg.color,
-                        scale = seg.scale,
-                        bold = seg.bold,
-                        horizontalAlign = seg.align ?: TextKeyboard.Align.CENTER,
-                        verticalAlign = seg.valign,
-                    ),
-                )
-            }
-        }
-        lines.add(buildLine())
-        return lines.ifEmpty { listOf(RichTextLine("", emptyList())) }
-    }
-
-    /**
-     * 在绘制时解析颜色标识符，支持深色/浅色模式动态切换。
-     * 优先作为主题色键通过 ColorManager 查找，回退为直接解析颜色值。
-     */
     private fun resolveColor(
         spec: String,
         fallback: Int,
@@ -511,438 +416,19 @@ class KeyView(
     }
 
     private fun drawBackground(canvas: Canvas, k: Key) {
-        val bg = k.getBackgroundDrawable() ?: return
-
-        val uniform = k.roundCorner ?: keyboard.roundCorner
-        fun r(value: Float?): Float = (value ?: uniform).takeIf { it > 0f } ?: 0f
-        val tl = r(k.roundedCornerTopLeft)
-        val tr = r(k.roundedCornerTopRight)
-        val bl = r(k.roundedCornerBottomLeft)
-        val br = r(k.roundedCornerBottomRight)
-
-        val bounds = Rect(
-            paddingLeft,
-            paddingTop,
-            width - paddingRight,
-            height - paddingBottom,
+        // 背景层与设置页预览共用 KeyRenderer.renderBackground（同一份实现）。
+        KeyRenderer.renderBackground(
+            canvas = canvas,
+            key = k,
+            keyboard = keyboard,
+            width = width,
+            height = height,
+            paddingLeft = paddingLeft,
+            paddingTop = paddingTop,
+            paddingRight = paddingRight,
+            paddingBottom = paddingBottom,
+            dp = { dp(it) },
         )
-
-        drawKeyShadow(canvas, k, bounds, tl, tr, bl, br, uniform)
-
-        if (bg is GradientDrawable) {
-            if (tl == tr && tl == bl && tl == br && tl == uniform) {
-                uniform.takeIf { it > 0f }?.let { bg.cornerRadius = dp(it) }
-            } else {
-                bg.cornerRadii = floatArrayOf(
-                    dp(tl),
-                    dp(tl),
-                    dp(tr),
-                    dp(tr),
-                    dp(br),
-                    dp(br),
-                    dp(bl),
-                    dp(bl),
-                )
-            }
-            (k.keyBorder ?: keyboard.keyBorder).takeIf { it > 0 }?.let { bg.setStroke(dp(it), k.keyBorderColorValue) }
-        }
-
-        bg.bounds = bounds
-        bg.draw(canvas)
     }
 
-    private fun drawKeyShadow(
-        canvas: Canvas,
-        k: Key,
-        bounds: Rect,
-        tl: Float,
-        tr: Float,
-        bl: Float,
-        br: Float,
-        uniform: Float,
-    ) {
-        val radius = k.keyShadowRadius ?: keyboard.keyShadowRadius
-        if (radius <= 0f) return
-        val dir = k.keyShadowDirection ?: keyboard.keyShadowDirection ?: return
-        if (dir.isEmpty()) return
-
-        val color = ColorManager.getColor("key_shadow_color")
-        val shadowDp = dp(radius)
-        val (dx, dy) = Keyboard.shadowDirectionToOffset(dir, shadowDp)
-
-        val shadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).also {
-            it.setShadowLayer(shadowDp, dx, dy, color)
-            it.color = Color.argb(1, 0, 0, 0)
-        }
-
-        val shadowRect = RectF(bounds)
-
-        if (tl == tr && tl == bl && tl == br && tl == uniform && uniform > 0f) {
-            canvas.drawRoundRect(shadowRect, dp(uniform), dp(uniform), shadowPaint)
-        } else {
-            val radii = floatArrayOf(dp(tl), dp(tl), dp(tr), dp(tr), dp(br), dp(br), dp(bl), dp(bl))
-            val path = Path().apply { addRoundRect(shadowRect, radii, Path.Direction.CW) }
-            canvas.drawPath(path, shadowPaint)
-        }
-    }
-
-    private fun calculateTextPosition(
-        lines: List<RichTextLine>,
-        offsetX: Float,
-        offsetY: Float,
-        mode: PositionMode,
-        fontMetrics: Paint.FontMetrics,
-        vRoundCornerInset: Float = 0f,
-        isDynamic: Boolean = false,
-    ): Pair<Float, List<Pair<Float, Float>>> {
-        val baseLineHeight = fontMetrics.descent - fontMetrics.ascent
-
-        val linePositions = mutableListOf<Pair<Float, Float>>()
-
-        when (mode) {
-            PositionMode.TOP -> {
-                var currentY = paddingTop - fontMetrics.top + sp(offsetY)
-                lines.forEach { line ->
-                    val height = baseLineHeight * line.maxScale
-                    linePositions.add(Pair(currentY, height))
-                    currentY += height
-                }
-            }
-
-            PositionMode.BOTTOM -> {
-                var currentY = height - paddingBottom - fontMetrics.bottom + sp(offsetY)
-                for (i in lines.indices.reversed()) {
-                    val line = lines[i]
-                    val lineHeight = baseLineHeight * line.maxScale
-                    linePositions.add(Pair(currentY, lineHeight))
-                    currentY -= lineHeight
-                }
-                linePositions.reverse()
-            }
-
-            PositionMode.CENTER -> {
-                lines.map { baseLineHeight * it.maxScale }.sum().let { totalHeight ->
-                    val centerY = (height - paddingTop - paddingBottom) / 2f + paddingTop
-                    val adjustmentY = -(fontMetrics.ascent + fontMetrics.descent) / 2f
-                    var currentY = centerY + adjustmentY + sp(offsetY)
-                    currentY -= (totalHeight - baseLineHeight) / 2
-
-                    lines.forEach { line ->
-                        val scale = line.maxScale
-                        val height = baseLineHeight * scale
-                        val lineY = currentY + (height - baseLineHeight) / 2
-                        linePositions.add(Pair(lineY, height))
-                        currentY += height
-                    }
-                }
-            }
-        }
-
-        val centerX = (width - paddingLeft - paddingRight) / 2f + paddingLeft + sp(offsetX)
-
-        return Pair(centerX, linePositions)
-    }
-
-    private fun drawRichText(
-        canvas: Canvas,
-        lines: List<RichTextLine>,
-        x: Float,
-        linePositions: List<Pair<Float, Float>>,
-        paint: Paint,
-        offsetX: Float,
-        offsetY: Float,
-        defaultVerticalAlign: TextKeyboard.VerticalAlign,
-        vRoundCornerInset: Float,
-        baseTextSize: Float,
-        iconSize: Int,
-        textColor: Int,
-    ) {
-        paint.textAlign = Paint.Align.CENTER
-
-        lines.forEachIndexed { index, line ->
-            val (lineY, _) = linePositions[index]
-            drawRichTextLine(canvas, line, x, lineY, paint, offsetX, offsetY, defaultVerticalAlign, vRoundCornerInset, baseTextSize, iconSize, textColor)
-        }
-    }
-
-    private fun String.isCjkPunctuation(): Boolean {
-        if (length != 1) return false
-        val c = this[0]
-        return c in '\u3000'..'\u303F' ||
-            c in '\uFF00'..'\uFF0F' ||
-            c in '\uFF1A'..'\uFF1F' ||
-            c == '\u00B7'
-    }
-
-    private fun visualCenterCorrect(paint: Paint, text: String): Float {
-        val bounds = Rect()
-        paint.getTextBounds(text, 0, text.length, bounds)
-        val glyphCenter = paint.measureText(text) / 2f
-        val visualCenter = bounds.width() / 2f + bounds.left.toFloat()
-        return glyphCenter - visualCenter
-    }
-
-    private fun drawRichTextLine(
-        canvas: Canvas,
-        line: RichTextLine,
-        x: Float,
-        y: Float,
-        basePaint: Paint,
-        offsetX: Float,
-        offsetY: Float,
-        defaultVerticalAlign: TextKeyboard.VerticalAlign,
-        vRoundCornerInset: Float,
-        baseTextSize: Float,
-        iconSize: Int,
-        textColor: Int,
-    ) {
-        if (line.segments.isEmpty()) {
-            basePaint.textAlign = Paint.Align.CENTER
-            val displayText = line.text
-            val cx = if (displayText.isCjkPunctuation()) {
-                x + visualCenterCorrect(basePaint, displayText)
-            } else {
-                x
-            }
-            canvas.drawText(displayText, cx, y, basePaint)
-            return
-        }
-
-        val fontMetrics = basePaint.fontMetrics
-        val baseAscent = fontMetrics.ascent
-        val baseDescent = fontMetrics.descent
-        val baseTypeface = basePaint.typeface ?: Typeface.DEFAULT
-        val boldTypeface = when (basePaint) {
-            textPaint -> {
-                if (cachedTextBoldBase !== baseTypeface) {
-                    cachedTextBoldTypeface = Typeface.create(baseTypeface, Typeface.BOLD)
-                    cachedTextBoldBase = baseTypeface
-                }
-                cachedTextBoldTypeface ?: Typeface.create(baseTypeface, Typeface.BOLD)
-            }
-
-            symbolPaint -> {
-                if (cachedSymbolBoldBase !== baseTypeface) {
-                    cachedSymbolBoldTypeface = Typeface.create(baseTypeface, Typeface.BOLD)
-                    cachedSymbolBoldBase = baseTypeface
-                }
-                cachedSymbolBoldTypeface ?: Typeface.create(baseTypeface, Typeface.BOLD)
-            }
-
-            else -> Typeface.create(baseTypeface, Typeface.BOLD)
-        }
-
-        val leftGroup = mutableListOf<StyledSegment>()
-        val centerGroup = mutableListOf<StyledSegment>()
-        val rightGroup = mutableListOf<StyledSegment>()
-        val justifyGroup = mutableListOf<StyledSegment>()
-        for (seg in line.segments) {
-            when (seg.horizontalAlign) {
-                TextKeyboard.Align.LEFT -> leftGroup.add(seg)
-                TextKeyboard.Align.RIGHT -> rightGroup.add(seg)
-                TextKeyboard.Align.JUSTIFY -> justifyGroup.add(seg)
-                else -> centerGroup.add(seg)
-            }
-        }
-
-        fun isIcon(seg: StyledSegment): Boolean = seg.text.startsWith("ic@")
-
-        fun measureSegments(group: List<StyledSegment>): Float = group.sumOf { seg ->
-            if (isIcon(seg)) {
-                iconSize.toDouble()
-            } else {
-                val sz = seg.scale?.let { baseTextSize * it } ?: baseTextSize
-                richTextPaint.textSize = sz
-                richTextPaint.typeface = if (seg.bold) boldTypeface else baseTypeface
-                richTextPaint.measureText(seg.text).toDouble()
-            }
-        }.toFloat()
-
-        val leftWidth = measureSegments(leftGroup)
-        val centerWidth = measureSegments(centerGroup)
-        val rightWidth = measureSegments(rightGroup)
-
-        val paddedLeft = paddingLeft.toFloat() + sp(offsetX) + vRoundCornerInset
-        val paddedRight = (width - paddingRight).toFloat() + sp(offsetX) - vRoundCornerInset
-
-        val leftStart = paddedLeft
-        val rightStart = paddedRight - rightWidth
-        val centerCjkCorrect = if (centerGroup.size == 1) {
-            val displayText = centerGroup[0].text
-            if (displayText.isCjkPunctuation()) visualCenterCorrect(basePaint, displayText) else 0f
-        } else {
-            0f
-        }
-        val centerStart = paddedLeft + (paddedRight - paddedLeft - centerWidth) / 2f + centerCjkCorrect
-
-        fun drawGroup(group: List<StyledSegment>, startX: Float, gap: Float = 0f) {
-            var currentX = startX
-            val justifyCount = group.count {
-                (it.verticalAlign ?: defaultVerticalAlign) == TextKeyboard.VerticalAlign.JUSTIFY
-            }
-            var justifyIndex = 0
-            group.forEach { seg ->
-                val effectiveValign = seg.verticalAlign ?: defaultVerticalAlign
-
-                if (isIcon(seg)) {
-                    val cmdName = seg.text.replace("ic@", "cmd_")
-                    val halfIcon = iconSize / 2f
-                    val centerY = when (effectiveValign) {
-                        TextKeyboard.VerticalAlign.TOP -> paddingTop + vRoundCornerInset + iconSize / 2f + sp(offsetY)
-
-                        TextKeyboard.VerticalAlign.BOTTOM -> height - paddingBottom - vRoundCornerInset - iconSize / 2f + sp(offsetY)
-
-                        TextKeyboard.VerticalAlign.JUSTIFY -> {
-                            val top = paddingTop + vRoundCornerInset
-                            val bottom = height - paddingBottom - vRoundCornerInset
-                            val available = (bottom - top).coerceAtLeast(0f)
-                            val portion = available / justifyCount
-                            top + portion * justifyIndex + portion / 2f + sp(offsetY)
-                        }
-
-                        TextKeyboard.VerticalAlign.CENTER ->
-                            (height - paddingTop - paddingBottom) / 2f + paddingTop + sp(offsetY)
-                    }
-                    if (effectiveValign == TextKeyboard.VerticalAlign.JUSTIFY) justifyIndex++
-                    drawIconAt(canvas, cmdName, iconSize, textColor, currentX + halfIcon, centerY)
-                    currentX += iconSize + gap
-                } else {
-                    richTextPaint.color = basePaint.color
-                    richTextPaint.textSize = baseTextSize
-                    richTextPaint.typeface = basePaint.typeface
-                    richTextPaint.textAlign = Paint.Align.LEFT
-
-                    seg.colorKey?.let { richTextPaint.color = resolveColor(it, basePaint.color) }
-
-                    val scale = seg.scale ?: 1f
-                    richTextPaint.textSize = baseTextSize * scale
-                    val sa = baseAscent * scale
-                    val sd = baseDescent * scale
-
-                    val adjustedY = when (seg.verticalAlign) {
-                        null -> when (defaultVerticalAlign) {
-                            TextKeyboard.VerticalAlign.TOP -> y + vRoundCornerInset + fontMetrics.top - sa
-
-                            TextKeyboard.VerticalAlign.BOTTOM -> y - vRoundCornerInset + fontMetrics.bottom - sd
-
-                            TextKeyboard.VerticalAlign.JUSTIFY -> {
-                                val top = paddingTop + vRoundCornerInset
-                                val bottom = height - paddingBottom - vRoundCornerInset
-                                val available = (bottom - top).coerceAtLeast(0f)
-                                val portion = available / justifyCount
-                                val segHeight = sd - sa
-                                val centerY = top + portion * justifyIndex + (portion - segHeight) / 2f
-                                centerY - (sa + sd) / 2f + sp(offsetY)
-                            }
-
-                            else -> y + (baseAscent + baseDescent - sa - sd) / 2
-                        }
-
-                        TextKeyboard.VerticalAlign.TOP -> paddingTop + vRoundCornerInset - sa + sp(offsetY)
-
-                        TextKeyboard.VerticalAlign.BOTTOM -> height - paddingBottom - vRoundCornerInset - sd + sp(offsetY)
-
-                        TextKeyboard.VerticalAlign.JUSTIFY -> {
-                            val top = paddingTop + vRoundCornerInset
-                            val bottom = height - paddingBottom - vRoundCornerInset
-                            val available = (bottom - top).coerceAtLeast(0f)
-                            val portion = available / justifyCount
-                            val segHeight = sd - sa
-                            val centerY = top + portion * justifyIndex + (portion - segHeight) / 2f
-                            centerY - (sa + sd) / 2f + sp(offsetY)
-                        }
-
-                        TextKeyboard.VerticalAlign.CENTER ->
-                            (height - paddingTop - paddingBottom) / 2f + paddingTop - (sa + sd) / 2f + sp(offsetY)
-                    }
-
-                    if (seg.verticalAlign == TextKeyboard.VerticalAlign.JUSTIFY ||
-                        (seg.verticalAlign == null && defaultVerticalAlign == TextKeyboard.VerticalAlign.JUSTIFY)
-                    ) {
-                        justifyIndex++
-                    }
-
-                    if (seg.bold) {
-                        richTextPaint.typeface = boldTypeface
-                    }
-
-                    canvas.drawText(seg.text, currentX, adjustedY, richTextPaint)
-                    currentX += richTextPaint.measureText(seg.text) + gap
-                }
-            }
-        }
-
-        val spareStart = paddedLeft + leftWidth
-        val spareEnd = paddedRight - rightWidth
-        if (justifyGroup.isNotEmpty()) {
-            val available = spareEnd - spareStart
-            val portion = available / justifyGroup.size
-            justifyGroup.forEachIndexed { i, seg ->
-                val segWidth = if (isIcon(seg)) {
-                    iconSize.toFloat()
-                } else {
-                    val sz = seg.scale?.let { baseTextSize * it } ?: baseTextSize
-                    richTextPaint.textSize = sz
-                    richTextPaint.typeface = if (seg.bold) boldTypeface else baseTypeface
-                    richTextPaint.measureText(seg.text)
-                }
-                val segStartX = spareStart + portion * i + (portion - segWidth) / 2f
-                drawGroup(listOf(seg), segStartX)
-            }
-        }
-
-        drawGroup(leftGroup, leftStart)
-        drawGroup(centerGroup, centerStart)
-        drawGroup(rightGroup, rightStart)
-    }
-
-    private fun drawIconAt(
-        canvas: Canvas,
-        cmdName: String,
-        size: Int,
-        color: Int,
-        centerX: Float,
-        centerY: Float,
-    ) {
-        val halfSize = size / 2
-
-        val icon = iconCache[cmdName] ?: IconicsDrawable(context, cmdName).apply {
-            respectFontBounds = false
-            sizePx = size
-            iconOffsetYPx = 2
-        }.also { iconCache.put(cmdName, it) }
-
-        icon.colorFilter = PorterDuffColorFilter(color, PorterDuff.Mode.SRC_IN)
-
-        icon.setBounds(
-            (centerX - halfSize).toInt(),
-            (centerY - halfSize).toInt(),
-            (centerX + halfSize).toInt(),
-            (centerY + halfSize).toInt(),
-        )
-        icon.draw(canvas)
-    }
 }
-
-private const val SCHEMA_NAME = "schema_name"
-
-/**
- * 样式分段：存储一段文本及其样式。
- * colorKey 存储原始颜色标识符（主题键名或十六进制值），在绘制时解析以支持深色/浅色模式切换。
- */
-private data class StyledSegment(
-    val text: String,
-    val colorKey: String?,
-    val scale: Float?,
-    val bold: Boolean,
-    val horizontalAlign: com.osfans.trime.data.theme.model.TextKeyboard.Align = com.osfans.trime.data.theme.model.TextKeyboard.Align.CENTER,
-    val verticalAlign: com.osfans.trime.data.theme.model.TextKeyboard.VerticalAlign? = null,
-)
-
-private data class RichTextLine(
-    val text: String,
-    val segments: List<StyledSegment>,
-    val maxScale: Float = 1.0f,
-)
-
-private enum class PositionMode { TOP, CENTER, BOTTOM }

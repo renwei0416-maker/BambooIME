@@ -23,6 +23,7 @@ import com.osfans.trime.ui.main.settings.GeneralSettingsFragment
 import com.osfans.trime.ui.main.settings.HandwritingSettingsFragment
 import com.osfans.trime.ui.main.settings.GlossaryFragment
 import com.osfans.trime.ui.main.settings.InputEnhanceFragment
+import com.osfans.trime.ui.main.settings.ThemeStyleFragment
 import com.osfans.trime.ui.main.settings.InputStatsFragment
 import com.osfans.trime.ui.main.settings.KeyboardSettingsFragment
 import com.osfans.trime.ui.main.settings.OcrSettingsFragment
@@ -84,6 +85,9 @@ sealed class NavigationRoute : Parcelable {
 
     @Serializable
     data object InputEnhance : NavigationRoute()
+
+    @Serializable
+    data object ThemeStyle : NavigationRoute()
 
     @Serializable
     data object Glossary : NavigationRoute()
@@ -203,6 +207,9 @@ sealed class NavigationRoute : Parcelable {
             }
             fragment<InputEnhanceFragment, InputEnhance> {
                 label = "输入增强"
+            }
+            fragment<ThemeStyleFragment, ThemeStyle> {
+                label = "主题样式"
             }
             fragment<GlossaryFragment, Glossary> {
                 label = "外语学习"

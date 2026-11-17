@@ -1,0 +1,161 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  SPDX-FileCopyrightText: 2026 BambooIME
+  SPDX-License-Identifier: GPL-3.0-or-later
+
+  主题样式编辑器：
+  顶栏（标题 + 撤销/应用/⋯）→ 固定预览 → 键盘选择行 → 拖动条 → 横向分类页签 → 独立滚动内容区。
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/theme_style_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#15171C"
+    android:orientation="vertical">
+
+    <!-- 顶栏：动作不压在预览上 -->
+    <LinearLayout
+        android:id="@+id/theme_style_header"
+        android:layout_width="match_parent"
+        android:layout_height="40dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="12dp"
+        android:paddingEnd="8dp">
+
+        <TextView
+            android:id="@+id/theme_style_title"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textColor="#9AA0A6"
+            android:textSize="12sp" />
+
+        <TextView
+            android:id="@+id/theme_style_undo"
+            android:layout_width="wrap_content"
+            android:layout_height="28dp"
+            android:background="@drawable/bg_theme_style_action"
+            android:gravity="center"
+            android:minWidth="48dp"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp"
+            android:text="撤销"
+            android:textColor="#E3E6EB"
+            android:textSize="12sp" />
+
+        <TextView
+            android:id="@+id/theme_style_apply"
+            android:layout_width="wrap_content"
+            android:layout_height="28dp"
+            android:layout_marginStart="6dp"
+            android:background="@drawable/bg_theme_style_action_primary"
+            android:gravity="center"
+            android:minWidth="48dp"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp"
+            android:text="应用"
+            android:textColor="#FFFFFF"
+            android:textSize="12sp" />
+
+        <TextView
+            android:id="@+id/theme_style_more"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:layout_marginStart="6dp"
+            android:background="@drawable/bg_theme_style_action"
+            android:gravity="center"
+            android:text="⋯"
+            android:textColor="#E3E6EB"
+            android:textSize="14sp" />
+    </LinearLayout>
+
+    <!-- 预览区（高度由代码设置，拖动条可调） -->
+    <FrameLayout
+        android:id="@+id/theme_style_preview_box"
+        android:layout_width="match_parent"
+        android:layout_height="200dp"
+        android:background="#101216">
+
+        <com.osfans.trime.ui.settings.theme.ThemePreviewView
+            android:id="@+id/theme_style_preview"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+    </FrameLayout>
+
+    <!-- 键盘/配色选择行：独立一行，不遮预览 -->
+    <HorizontalScrollView
+        android:id="@+id/theme_style_chips_scroll"
+        android:layout_width="match_parent"
+        android:layout_height="38dp"
+        android:background="#101216"
+        android:paddingStart="8dp"
+        android:paddingEnd="8dp"
+        android:scrollbars="none">
+
+        <LinearLayout
+            android:id="@+id/theme_style_chips"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:gravity="center_vertical"
+            android:orientation="horizontal" />
+    </HorizontalScrollView>
+
+    <!-- 拖动条 -->
+    <FrameLayout
+        android:id="@+id/theme_style_handle"
+        android:layout_width="match_parent"
+        android:layout_height="18dp"
+        android:background="#101216">
+
+        <View
+            android:layout_width="44dp"
+            android:layout_height="4dp"
+            android:layout_gravity="center"
+            android:background="@drawable/bg_theme_style_grip" />
+    </FrameLayout>
+
+    <!-- 横向分类页签 -->
+    <HorizontalScrollView
+        android:id="@+id/theme_style_tabs_scroll"
+        android:layout_width="match_parent"
+        android:layout_height="42dp"
+        android:background="#101216"
+        android:scrollbars="none">
+
+        <LinearLayout
+            android:id="@+id/theme_style_tabs"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp" />
+    </HorizontalScrollView>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#1FFFFFFF" />
+
+    <!-- 内容区（自己滚动） -->
+    <ScrollView
+        android:id="@+id/theme_style_scroll"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:background="#15171C"
+        android:fillViewport="true"
+        android:scrollbars="vertical">
+
+        <LinearLayout
+            android:id="@+id/theme_style_content"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingTop="4dp"
+            android:paddingBottom="20dp" />
+    </ScrollView>
+</LinearLayout>

@@ -1,0 +1,17 @@
+﻿# 子模块清单（clone 后必须执行）
+#   git submodule update --init --recursive
+# 说明：这些子模块的内容不在本仓库里，只记录指针；不带它们无法编译。
+# SHA	PATH	URL
+025f371dc76b598d77384fbdab90c937471844d8	app/src/main/jni/OpenCC	https://github.com/BYVoid/OpenCC.git
+4dcfb5f3dccf0f4a1b64d74b622d0085bb71199a	app/src/main/jni/librime	https://github.com/Carlson24/librime-custom.git
+7ee830d02b623e8ffe0b95d59a74db1e58da04c5	app/src/main/jni/librime-plugins/leveldb	https://github.com/google/leveldb.git
+d36a4ec0741fc871869e66b2792966990887d674	app/src/main/jni/librime-plugins/librime-calculator	https://github.com/Carlson24/librime-calculator.git
+9d7a67e204cba051b2440c9e1dcd9fe179d3c707	app/src/main/jni/librime-plugins/librime-ids-reverse	https://github.com/Carlson24/librime-ids-reverse.git
+5b129747f33bdef06c867cc2d06e6b7dd2a1411d	app/src/main/jni/librime-plugins/librime-lua	https://github.com/hchunhui/librime-lua.git
+9e5bb71db1544913f8005dadc3df8439c00d08b7	app/src/main/jni/librime-plugins/librime-lua-deps	https://github.com/hchunhui/librime-lua.git
+57d18b9f58e5284bd891d559f6bdd16cf60341e9	app/src/main/jni/librime-plugins/librime-octagram	https://github.com/lotem/librime-octagram.git
+a7ea744fa14e42bab1c940a08221762d3235e5d7	app/src/main/jni/librime-plugins/librime-user-predict	https://github.com/Carlson24/librime-user-predict.git
+08b0fc930f5a52eff36348ed1ea39aadfc697fa6	app/src/main/jni/librime-plugins/lua-utf8	https://github.com/starwing/luautf8.git
+6af9287fbdb913f0794d0148c6aa43b58e63c8e3	app/src/main/jni/librime-plugins/snappy	https://github.com/google/snappy.git
+af2d8d81dbfa61c4cea4c568da78f3982edca005	app/src/main/jni/sherpa-onnx	https://github.com/k2-fsa/sherpa-onnx.git
+56e3bb550c91fd7005566f19c079cb7a503223cf	app/src/main/jni/yaml-cpp	https://github.com/jbeder/yaml-cpp.git
