@@ -36,6 +36,7 @@ import com.osfans.trime.ime.keyboard.Key
 import com.osfans.trime.ime.keyboard.KeyRenderCtx
 import com.osfans.trime.ime.keyboard.KeyRenderer
 import com.osfans.trime.ime.keyboard.Keyboard
+import kotlin.math.pow
 
 class ThemePreviewView(context: Context, attrs: AttributeSet? = null) : View(context, attrs) {
 
@@ -291,6 +292,40 @@ class ThemePreviewView(context: Context, attrs: AttributeSet? = null) : View(con
     /** 按键区在预览画布里的 y 偏移（theme px）= 候选栏高 + 编码行高。 */
     private var contentTop = 0f
 
+    /** 方框外留给「预览底板」的缝（dp）：方框要能看出来，这条缝必须存在。 */
+    private val OUTER_PAD_DP = 6f
+
+    private val boxBgPaint = Paint().apply { isAntiAlias = true }
+    private val boxBorderPaint = Paint().apply {
+        style = Paint.Style.STROKE
+        isAntiAlias = true
+    }
+
+    /** 相对亮度（WCAG 口径，0=黑 1=白）。 */
+    private fun relativeLuminance(color: Int): Float {
+        fun ch(c: Int): Float {
+            val s = c / 255f
+            return if (s <= 0.03928f) s / 12.92f else ((s + 0.055f) / 1.055f).pow(2.4f)
+        }
+        return 0.2126f * ch(Color.red(color)) + 0.7152f * ch(Color.green(color)) + 0.0722f * ch(Color.blue(color))
+    }
+
+    /**
+     * 预览底板色（用户 m35056 拍板）：取键盘底色 [backColor] 的明度反相，
+     * 色相沿用、饱和度压到 25%，保证任何主题下底板与键盘区都一眼可分。
+     */
+    private fun plateColorFor(backColor: Int): Int {
+        val hsv = FloatArray(3)
+        Color.colorToHSV(backColor, hsv)
+        hsv[1] = (hsv[1] * 0.25f).coerceIn(0f, 1f)
+        hsv[2] = (0.14f + (1f - relativeLuminance(backColor)) * 0.66f).coerceIn(0.12f, 0.92f)
+        return Color.HSVToColor(hsv)
+    }
+
+    /** 方框边线色：底板亮度反相、40% 不透明（深底板用白线、浅底板用黑线）。 */
+    private fun boxBorderColor(plateColor: Int): Int =
+        if (relativeLuminance(plateColor) < 0.5f) 0x40FFFFFF else 0x40000000
+
     /** 取色：解析失败就用兜底，绝不让预览因缺键而中断。 */
     private fun colorOr(key: String, fallback: Int): Int =
         runCatching { resolver?.getColor(key) ?: fallback }.getOrDefault(fallback)
@@ -360,14 +395,10 @@ class ThemePreviewView(context: Context, attrs: AttributeSet? = null) : View(con
         val h = height.toFloat()
         if (w <= 0f || h <= 0f) return
 
-        // 键盘整体背景：与真机 InputView.keyboardBackground 同源
-        val kbBg = resolver.getDrawable("keyboard_background")
-        if (kbBg != null) {
-            kbBg.setBounds(0, 0, width, height)
-            kbBg.draw(canvas)
-        } else {
-            canvas.drawColor(resolver.getColor("keyboard_back_color"))
-        }
+        // 框外底板：颜色与键盘底色明显不同，方框才认得出来（用户 m35040）
+        val kbBackColor = colorOr("back_color", 0xFF1F2023.toInt())
+        val plateColor = plateColorFor(kbBackColor)
+        canvas.drawColor(plateColor)
 
         if (kb.keys.isEmpty() || kb.height <= 0) {
             canvas.drawText("没有可预览的键盘（$keyboardName）", w / 2f, h / 2f, hintPaint)
@@ -376,6 +407,10 @@ class ThemePreviewView(context: Context, attrs: AttributeSet? = null) : View(con
 
         val kbWidth = kb.minWidth.coerceAtLeast(1).toFloat()
         val kbHeight = kb.height.coerceAtLeast(1).toFloat()
+        val outerPad = dp(OUTER_PAD_DP)
+        // 方框可用区域：框外这几 dp 就是露出底板的地方
+        val boxW = (w - outerPad * 2f).coerceAtLeast(1f)
+        val boxAvailH = (h - outerPad * 2f).coerceAtLeast(1f)
 
         // 预览画布 = 候选栏 + 编码行 + 键盘 + 键盘下留白，四段高度全部来自 Theme
         val candH = candidateBarHeight()
@@ -388,17 +423,42 @@ class ThemePreviewView(context: Context, attrs: AttributeSet? = null) : View(con
         //   装得下（预览框够高）→ 预览宽/键盘宽 更小 → 铺满宽度、只变高；
         //   装不下（内容比框高）→ 预览高/内容高 更小 → 整体等比缩小，宁可缩也不裁。
         // neededHeightPx 必须按「宽度铺满」来算，否则会和外层「框跟着长高」互相追。
-        val widthScale = w / kbWidth
-        neededHeightPx = fullHeight * widthScale
+        // 只跟「方框」比：方框宽 = 预览宽 - 两侧留缝；因此调键盘高度不会横向收缩，
+        // 只有方框高度装不下时才整体等比缩小（用户 m34976/m35040 口径）。
+        val widthScale = boxW / kbWidth
+        neededHeightPx = fullHeight * widthScale + outerPad * 2f
         val scale = when (mode) {
-            Mode.CROP -> maxOf(widthScale, h / fullHeight)
-            Mode.FIT -> minOf(widthScale, h / fullHeight)
+            Mode.CROP -> maxOf(widthScale, boxAvailH / fullHeight)
+            Mode.FIT -> minOf(widthScale, boxAvailH / fullHeight)
         }
-        val scaledHeight = fullHeight * scale
+        val boxH = fullHeight * scale
         drawScale = scale
         drawTx = (w - kbWidth * scale) / 2f
-        // 内容比框矮则垂直居中；比框高则顶对齐，超出部分由外层裁剪
-        drawTy = if (scaledHeight < h) (h - scaledHeight) / 2f else 0f
+        // 方框比可用区矮则垂直居中；更高则贴顶，超出部分由外层裁剪
+        drawTy = if (boxH < h) (h - boxH) / 2f else outerPad
+
+        // 方框（键盘显示区）：框内铺键盘底色，与真机 InputView.keyboardBackground 同源
+        val boxRect = RectF(drawTx, drawTy, drawTx + kbWidth * scale, drawTy + boxH)
+        val kbBg = runCatching { resolver.getDrawable("keyboard_background") }.getOrNull()
+        canvas.save()
+        canvas.clipRect(boxRect)
+        if (kbBg != null) {
+            kbBg.setBounds(
+                boxRect.left.toInt(),
+                boxRect.top.toInt(),
+                boxRect.right.toInt(),
+                boxRect.bottom.toInt(),
+            )
+            kbBg.draw(canvas)
+        } else {
+            boxBgPaint.color = colorOr("keyboard_back_color", kbBackColor)
+            canvas.drawRect(boxRect, boxBgPaint)
+        }
+        canvas.restore()
+        // 方框边线：1dp，底板亮度反相 40%（用户 m35056 确认）
+        boxBorderPaint.color = boxBorderColor(plateColor)
+        boxBorderPaint.strokeWidth = dp(1f)
+        canvas.drawRect(boxRect, boxBorderPaint)
 
         val fonts = style.fonts
         // 与真机同源：enter_labels 由 EnterKeyDisplayDelegate 选，预览按 default 取（可能是 ic@xxx 图标）
