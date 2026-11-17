@@ -36,7 +36,7 @@ object BambooThemeSeed {
     private const val LIB_DIR = "lib"
 
     /** 内置主题/字体内容变化时 +1，用来触发一次重新铺设。 */
-    private const val STAMP = "1"
+    private const val STAMP = "2"
 
     private const val MARKER = ".bamboo-themes"
     private const val ADOPTED = ".bamboo-theme-default"
