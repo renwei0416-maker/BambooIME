@@ -89,6 +89,9 @@ class ThemeStyleFragment : Fragment() {
     private var selectedKey: KeyPath? = null
     private var dirty = false
     private var lastY = 0f
+
+    /** true = 预览框高度跟随内容自动调整；用户拖过手柄或双击后就进入手动/恢复自动。 */
+    private var previewAutoHeight = true
     private val undoStack = ArrayDeque<Snapshot>()
 
     private var exportLuaContent: String = ""
@@ -204,7 +207,7 @@ class ThemeStyleFragment : Fragment() {
     @SuppressLint("ClickableViewAccessibility")
     private fun setupPreviewBox(root: View) {
         val saved = ThemeStylePrefs.previewHeight
-        setPreviewHeight(saved)
+        applyPreviewHeight(saved)
         preview.mode = if (ThemeStylePrefs.previewMode == 1) {
             ThemePreviewView.Mode.CROP
         } else {
@@ -221,7 +224,9 @@ class ThemeStyleFragment : Fragment() {
             requireContext(),
             object : GestureDetector.SimpleOnGestureListener() {
                 override fun onDoubleTap(e: MotionEvent): Boolean {
-                    setPreviewHeight(if (currentPreviewDp() > 120) 96 else 200)
+                    // 双击 = 回到「自动跟随内容」
+                    previewAutoHeight = true
+                    syncPreviewHeightToContent()
                     return true
                 }
             },
@@ -247,11 +252,27 @@ class ThemeStyleFragment : Fragment() {
     private fun currentPreviewDp(): Int =
         (previewBox.layoutParams.height / resources.displayMetrics.density).toInt()
 
+    /** 手动拖动/双击：记下高度并进入「手动」模式，之后不再自动跟随内容。 */
     private fun setPreviewHeight(dpValue: Int) {
+        previewAutoHeight = false
+        applyPreviewHeight(dpValue)
+    }
+
+    private fun applyPreviewHeight(dpValue: Int) {
         val v = dpValue.coerceIn(96, 420)
+        if (previewBox.layoutParams.height == dp(v)) return
         previewBox.layoutParams = previewBox.layoutParams.apply { height = dp(v) }
         previewBox.requestLayout()
         ThemeStylePrefs.previewHeight = v
+    }
+
+    /** 按预览内容的真实高度撑开预览框（方案 A：最高 420dp，超出裁剪）。 */
+    private fun syncPreviewHeightToContent() {
+        if (!previewAutoHeight) return
+        preview.post {
+            val need = preview.neededHeightDp()
+            if (need > 0) applyPreviewHeight(need)
+        }
     }
 
     private fun rebuildChips() {
@@ -1577,6 +1598,7 @@ class ThemeStyleFragment : Fragment() {
         draft.keyboardName = keyboardName
         if (pressedDemo) preview.selectedKey = preview.selectedKey else preview.selectedKey = selectedKey
         preview.setDraft(draft)
+        syncPreviewHeightToContent()
         titleView?.text = themeId + " · " + schemeId
         preview.post { titleView?.text = themeId + " · " + preview.colorSummary() }
     }

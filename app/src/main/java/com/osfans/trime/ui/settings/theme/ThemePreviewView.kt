@@ -17,6 +17,7 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.Typeface
 import android.util.AttributeSet
@@ -239,6 +240,14 @@ class ThemePreviewView(context: Context, attrs: AttributeSet? = null) : View(con
     private var drawTx = 0f
     private var drawTy = 0f
 
+    /** 宽度定标下整块内容（编码行+候选行+键盘+底部留白）的真实像素高度，供外层撑高预览框。 */
+    var neededHeightPx = 0f
+        private set
+
+    /** 供外层把预览框撑到内容真实高度（dp）；尚未绘制时返回 0。 */
+    fun neededHeightDp(): Int =
+        if (neededHeightPx <= 0f) 0 else (neededHeightPx / resources.displayMetrics.density).toInt()
+
     private val hintPaint = Paint().apply {
         isAntiAlias = true
         color = 0xFFFF7B72.toInt()
@@ -375,13 +384,17 @@ class ThemePreviewView(context: Context, attrs: AttributeSet? = null) : View(con
         contentTop = candH + preeditH
         val fullHeight = contentTop + kbHeight + bottomPad
 
+        // 与真机一致：宽度恒定＝预览宽，高度只随内容变，绝不反向压缩宽度/字号。
         val scale = when (mode) {
-            Mode.FIT -> minOf(w / kbWidth, h / fullHeight)
-            Mode.CROP -> maxOf(w / kbWidth, h / fullHeight)
+            Mode.FIT -> w / kbWidth
+            Mode.CROP -> 1f
         }
+        val scaledHeight = fullHeight * scale
+        neededHeightPx = scaledHeight
         drawScale = scale
         drawTx = (w - kbWidth * scale) / 2f
-        drawTy = (h - fullHeight * scale) / 2f
+        // 内容比框矮则垂直居中；比框高则顶对齐，超出部分由外层裁剪
+        drawTy = if (scaledHeight < h) (h - scaledHeight) / 2f else 0f
 
         val fonts = style.fonts
         // 与真机同源：enter_labels 由 EnterKeyDisplayDelegate 选，预览按 default 取（可能是 ic@xxx 图标）
@@ -396,9 +409,9 @@ class ThemePreviewView(context: Context, attrs: AttributeSet? = null) : View(con
         canvas.translate(drawTx, drawTy)
         canvas.scale(scale, scale)
 
-        // 候选栏（上）与编码行（下）：几何/配色全部取自 Theme
-        drawCandidateBar(canvas, kbWidth, candH)
-        drawPreeditRow(canvas, kbWidth, candH, preeditH)
+        // 与真机同序：编码行在上、候选行在下（PreeditUi 在候选栏之上）
+        drawPreeditRow(canvas, kbWidth, 0f, preeditH)
+        drawCandidateBar(canvas, kbWidth, preeditH, candH)
 
         canvas.save()
         canvas.translate(0f, contentTop)
@@ -531,11 +544,22 @@ class ThemePreviewView(context: Context, attrs: AttributeSet? = null) : View(con
      * 候选栏：高度 = candidate_view_height + comment_height；配色全部走配色方案，
      * 结构照真机（序号 + 候选词 + 注释，首项高亮）。示意文本固定，其余不写死。
      */
-    private fun drawCandidateBar(canvas: Canvas, widthPx: Float, heightPx: Float) {
+    private fun drawCandidateBar(canvas: Canvas, widthPx: Float, topPx: Float, heightPx: Float) {
         if (heightPx <= 0f) return
         val fonts = style.fonts
-        candBgPaint.color = colorOr("candidate_back_color", colorOr("back_color", 0xFF1F2023.toInt()))
-        canvas.drawRect(0f, 0f, widthPx, heightPx, candBgPaint)
+        val res = resolver
+        // 真机候选栏背景：先看 candidate_background 是否解析成图片，否则用颜色
+        val bgDrawable = res?.let { runCatching { it.getDrawable("candidate_background") }.getOrNull() }
+        if (bgDrawable != null) {
+            bgDrawable.setBounds(0, topPx.toInt(), widthPx.toInt(), (topPx + heightPx).toInt())
+            bgDrawable.draw(canvas)
+        } else {
+            candBgPaint.color = colorOr(
+                "candidate_background",
+                colorOr("candidate_back_color", colorOr("back_color", 0xFF1F2023.toInt())),
+            )
+            canvas.drawRect(0f, topPx, widthPx, topPx + heightPx, candBgPaint)
+        }
 
         val items = CANDIDATE_SAMPLES
         val padH = dp(style.candidatePadding.toFloat())
@@ -554,9 +578,20 @@ class ThemePreviewView(context: Context, attrs: AttributeSet? = null) : View(con
         val hiBack = colorOr("hilited_candidate_back_color", colorOr("back_color", 0xFF2D4A77.toInt()))
         val hiText = colorOr("hilited_candidate_text_color", colorOr("hilited_text_color", textColor))
 
+        // 候选之间的竖线：candidate_separator_color_unrolled → candidate_separator_color → border_color
+        val sepColor = colorOr(
+            "candidate_separator_color_unrolled",
+            colorOr("candidate_separator_color", colorOr("border_color", 0x00000000)),
+        )
+        val sepPaint = Paint().apply {
+            color = sepColor
+            strokeWidth = dp(1f).coerceAtLeast(1f)
+            isAntiAlias = false
+        }
+        var drawn = 0
         var x = padH
         val fm = candTextPaint.fontMetrics
-        val baseline = (heightPx - (fm.bottom - fm.top)) / 2f - fm.top
+        val baseline = topPx + (heightPx - (fm.bottom - fm.top)) / 2f - fm.top
         items.forEachIndexed { i, (word, comment) ->
             val wordW = candTextPaint.measureText(word)
             val commentW = candCommentPaint.measureText(comment)
@@ -566,10 +601,21 @@ class ThemePreviewView(context: Context, attrs: AttributeSet? = null) : View(con
             val right = (x + itemW + padH).coerceAtMost(widthPx)
             if (right - x <= 0f) return@forEachIndexed
 
+            // 除第一项外，每项左侧画一条竖线（与真机候选分隔线同源）
+            if (drawn > 0) {
+                val sx = x - gap / 2f
+                canvas.drawLine(sx, topPx + dp(4f), sx, topPx + heightPx - dp(4f), sepPaint)
+            }
             if (i == 0) {
                 candBgPaint.color = hiBack
-                canvas.drawRoundRect(RectF(x, dp(2f), right, heightPx - dp(2f)), radius, radius, candBgPaint)
+                canvas.drawRoundRect(
+                    RectF(x, topPx + dp(2f), right, topPx + heightPx - dp(2f)),
+                    radius,
+                    radius,
+                    candBgPaint,
+                )
             }
+            drawn++
             var tx = x + (if (i == 0) 0f else padH * 0.2f)
             if (labelW > 0f) {
                 candLabelPaint.color = if (i == 0) hiText else labelColor
@@ -598,7 +644,20 @@ class ThemePreviewView(context: Context, attrs: AttributeSet? = null) : View(con
         val alpha = (t.preedit.alpha * 255).toInt().coerceIn(0, 255)
         // 不用 ColorUtils：直接按 alpha 重算 ARGB，避免多一个依赖
         candBgPaint.color = (back and 0x00FFFFFF) or (alpha shl 24)
-        canvas.drawRect(0f, topPx, widthPx, topPx + heightPx, candBgPaint)
+        // 真机 PreeditDelegate：cornerRadii 只圆右上角（LTR），半径 preedit.top_end_radius
+        val topEnd = dp(t.preedit.topEndRadius)
+        if (topEnd > 0f) {
+            val path = Path()
+            val r = minOf(topEnd, heightPx, widthPx)
+            path.addRoundRect(
+                RectF(0f, topPx, widthPx, topPx + heightPx),
+                floatArrayOf(0f, 0f, r, r, 0f, 0f, 0f, 0f),
+                Path.Direction.CW,
+            )
+            canvas.drawPath(path, candBgPaint)
+        } else {
+            canvas.drawRect(0f, topPx, widthPx, topPx + heightPx, candBgPaint)
+        }
 
         preeditPaint.textSize = sp(t.preedit.foreground.fontSize)
         preeditPaint.color = colorOr("text_color", 0xFF000000.toInt())
