@@ -1329,6 +1329,11 @@ class ThemeStyleFragment : Fragment() {
         content.addView(keyNumberRow("按键圆角", path, "round_corner", 0f, 24f, 1f, allowInherit = true), rowParams())
         content.addView(keyNumberRow("描边宽度", path, "key_border", 0f, 6f, 1f, allowInherit = true), rowParams())
 
+        content.addView(sectionTitle("阴影"))
+        content.addView(hint("半径要 > 0 且方向不为空才会画阴影；留空 = 继承键盘设置。"))
+        content.addView(keyNumberRow("阴影半径", path, "key_shadow_radius", 0f, 16f, 1f), rowParams())
+        content.addView(keyRawRow("阴影方向", path, "key_shadow_direction", "如 right,down 或 up"), rowParams())
+
         content.addView(sectionTitle("按范围批量改色"))
         content.addView(
             hint(
@@ -1462,30 +1467,65 @@ class ThemeStyleFragment : Fragment() {
             runCatching { el.toString().trim('"') }.getOrNull()
         }
 
+    /**
+     * 该键在键盘 JSON 里**本来就写着**的颜色值（通常是 zmu_q 这类色键名）。
+     * 用户 m35470：调色板主题的键自己指定了底色，这里必须能读出来，
+     * 否则按键页会把「用专属变量」误显示成「继承」。
+     */
+    private fun ownColorValue(path: KeyPath, field: String): String? {
+        val tk = ThemeManager.getKeyboard(path.keyboard)
+            ?.rows?.getOrNull(path.row)?.keys?.getOrNull(path.column) ?: return null
+        val v = when (field) {
+            "key_back_color" -> tk.keyBackColor
+            "key_text_color" -> tk.keyTextColor
+            "key_symbol_color" -> tk.keySymbolColor
+            "key_border_color" -> tk.keyBorderColor
+            "hilited_key_back_color" -> tk.hlKeyBackColor
+            "hilited_key_text_color" -> tk.hlKeyTextColor
+            "hilited_key_symbol_color" -> tk.hlKeySymbolColor
+            else -> ""
+        }
+        return v.takeIf { it.isNotEmpty() }
+    }
+
+    private fun hexColor(c: Int?): String = c?.let { String.format("#%08X", it) } ?: ""
+
     private fun keyColorRow(title: String, path: KeyPath, field: String): View {
         val raw = rawText(path, field)
-        val inherited = raw.isNullOrEmpty()
-        val custom = if (inherited) null else runCatching { parseColor(raw) }.getOrNull()
-        // 继承时真正取值的配色键：这 7 个字段与 Key.kt 里的 getter 同名
+        val patched = draft.hasField(path, field)
+        val own = ownColorValue(path, field)
+        // 三层：自定义 > 键自带变量 > 跟随配色（用户 m35461 第 2 条）
+        val custom = if (patched && !raw.isNullOrEmpty()) {
+            runCatching { parseColor(raw) }.getOrNull()
+        } else {
+            null
+        }
+        val inherited = !patched && own == null
         val sourceKey = field
-        val effective = custom ?: runCatching { draftResolver()?.getColor(sourceKey) }.getOrNull()
+        val resolverNow = runCatching { draftResolver() }.getOrNull()
+        val effective = custom
+            ?: own?.let { runCatching { resolverNow?.getColor(it) }.getOrNull() }
+            ?: runCatching { resolverNow?.getColor(sourceKey) }.getOrNull()
         val valueText = when {
-            inherited -> "继承 · $sourceKey" + (effective?.let { " " + String.format("#%08X", it) } ?: "")
-            custom != null -> String.format("#%08X", custom) + "（自定义）"
-            else -> raw ?: ""
+            custom != null -> hexColor(custom) + "（自定义）"
+            patched -> "跟随配色 · $sourceKey " + hexColor(effective)
+            own != null -> "自带 $own " + hexColor(effective) + "（来自键盘）"
+            else -> "跟随配色 · $sourceKey " + hexColor(effective)
         }
         return fieldRow(
             title = title,
             value = valueText,
             swatch = effective,
             swatchDashed = inherited,
+            // ↺ = 撤销我在这一行做的改动，回到键盘原本的值（可能是 zmu_q 这类色键）
             onRestore = {
                 pushUndo()
-                draft.clearField(path, field)
+                draft.removeField(path, field)
                 onChange()
                 renderTab(Tabs.KEY)
             },
             onValueClick = if (inherited) ({ jumpToColorKey(sourceKey) }) else null,
+            // 下面 onClick 的菜单第一项始终是「跟随配色」，用来把自带变量或自定义值清掉
             onClick = {
                 // 已经是自定义颜色 → 点整行直接开取色器，不再多一层弹窗
                 if (custom != null) {
@@ -1496,14 +1536,19 @@ class ThemeStyleFragment : Fragment() {
                         renderTab(Tabs.KEY)
                     }
                 } else {
-                    val items = arrayOf("继承（跟随整套配色）", "指定配色里的色键…", "自定义颜色…")
+                    val items = arrayOf(
+                        if (own != null) "跟随配色（不用这个键自带的 $own）" else "继承（跟随整套配色）",
+                        "指定配色里的色键…",
+                        "自定义颜色…",
+                    )
                     androidx.appcompat.app.AlertDialog.Builder(requireContext())
                         .setTitle(title)
                         .setItems(items) { _, which ->
                             when (which) {
                                 0 -> {
                                     pushUndo()
-                                    draft.clearField(path, field)
+                                    // null = 从键盘 JSON 里删掉这个字段 → 真正回落到配色
+                                    draft.setField(path, field, null)
                                     onChange()
                                     renderTab(Tabs.KEY)
                                 }
@@ -1544,6 +1589,44 @@ class ThemeStyleFragment : Fragment() {
                 }
             },
         )
+    }
+
+    /** 字符串字段的行编辑器（留空 = 继承）。 */
+    private fun keyRawRow(title: String, path: KeyPath, field: String, placeholder: String): View {
+        val raw = rawText(path, field)
+        return fieldRow(
+            title = title,
+            value = raw ?: "继承",
+            swatch = null,
+            onRestore = {
+                pushUndo()
+                draft.removeField(path, field)
+                onChange()
+                renderTab(Tabs.KEY)
+            },
+        ) {
+            val input = android.widget.EditText(requireContext()).apply {
+                setText(raw ?: "")
+                hint = "留空 = 继承（$placeholder）"
+                setPadding(dp(20), dp(12), dp(20), dp(12))
+            }
+            androidx.appcompat.app.AlertDialog.Builder(requireContext())
+                .setTitle(title)
+                .setView(input)
+                .setPositiveButton("确定") { _, _ ->
+                    val text = input.text.toString().trim()
+                    pushUndo()
+                    if (text.isEmpty()) {
+                        draft.removeField(path, field)
+                    } else {
+                        draft.setField(path, field, JsonPrimitive(text))
+                    }
+                    onChange()
+                    renderTab(Tabs.KEY)
+                }
+                .setNegativeButton("取消", null)
+                .show()
+        }
     }
 
     private fun keyNumberRow(

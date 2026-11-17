@@ -63,6 +63,13 @@ class ThemeDraft(
         patches[path]?.let { it[field] = null }
     }
 
+    /** 去掉这个字段的补丁记录（回到键盘原本的值，可能是一个色键名）。 */
+    fun removeField(path: KeyPath, field: String) {
+        val m = patches[path] ?: return
+        m.remove(field)
+        if (m.isEmpty()) patches.remove(path)
+    }
+
     fun clearAll(path: KeyPath) {
         patches.remove(path)
     }
