@@ -255,8 +255,6 @@ class ThemeStyleFragment : Fragment() {
     /** 手动拖动/双击：记下高度并进入「手动」模式，之后不再自动跟随内容。 */
     private fun setPreviewHeight(dpValue: Int) {
         previewAutoHeight = false
-        // 手动调高度 → 键盘等比缩放到框里（恢复拖动即缩放的行为）
-        preview.fitToBox = true
         applyPreviewHeight(dpValue)
     }
 
@@ -271,8 +269,6 @@ class ThemeStyleFragment : Fragment() {
     /** 按预览内容的真实高度撑开预览框（方案 A：最高 420dp，超出裁剪）。 */
     private fun syncPreviewHeightToContent() {
         if (!previewAutoHeight) return
-        // 自动模式 → 宽度定标（调参只变高不变窄）
-        preview.fitToBox = false
         preview.post {
             val need = preview.neededHeightDp()
             if (need > 0) applyPreviewHeight(need)
