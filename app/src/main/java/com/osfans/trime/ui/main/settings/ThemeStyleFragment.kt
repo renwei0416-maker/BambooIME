@@ -87,6 +87,9 @@ class ThemeStyleFragment : Fragment() {
     private var tab: Int = 0
     private lateinit var draft: ThemeDraft
     private var selectedKey: KeyPath? = null
+
+    /** 从「按键」页跳到「配色」页时要高亮的色键；渲染一次后清空。 */
+    private var highlightColorKey: String? = null
     private var dirty = false
     private var lastY = 0f
 
@@ -725,19 +728,24 @@ class ThemeStyleFragment : Fragment() {
                 val label = item.second
                 val fallback = item.third
                 val title = if (fallback.isEmpty()) label else "$label（←$fallback）"
-                content.addView(
-                    colorRow(title, parseColor(scheme.colors[key])) { picked ->
-                        val colors = LinkedHashMap(scheme.colors)
-                        colors[key] = "0x" + String.format("%08x", picked)
-                        replaceScheme(scheme.copy(colors = colors))
-                        renderTab(6)
-                        refreshPreview()
-                    },
-                    rowParams(),
-                )
+                val colorRowView = colorRow(title, parseColor(scheme.colors[key])) { picked ->
+                    val colors = LinkedHashMap(scheme.colors)
+                    colors[key] = "0x" + String.format("%08x", picked)
+                    replaceScheme(scheme.copy(colors = colors))
+                    renderTab(6)
+                    refreshPreview()
+                }
+                content.addView(colorRowView, rowParams())
+                if (key == highlightColorKey) {
+                    colorRowView.setBackgroundColor(0x33E8C87A)
+                    colorRowView.post {
+                        scroll.smoothScrollTo(0, (colorRowView.top - dp(120)).coerceAtLeast(0))
+                    }
+                }
             }
         }
 
+        highlightColorKey = null
         content.addView(sectionTitle("删除自定义颜色"))
         content.addView(
             plainRow("清除本套配色里的所有「非标准」颜色键") {
@@ -1377,60 +1385,86 @@ class ThemeStyleFragment : Fragment() {
 
     private fun keyColorRow(title: String, path: KeyPath, field: String): View {
         val raw = rawText(path, field)
-        val shown = when {
-            raw == null -> "继承"
-            raw.isEmpty() -> "继承"
-            else -> raw
+        val inherited = raw.isNullOrEmpty()
+        val custom = if (inherited) null else runCatching { parseColor(raw) }.getOrNull()
+        // 继承时真正取值的配色键：这 7 个字段与 Key.kt 里的 getter 同名
+        val sourceKey = field
+        val effective = custom ?: runCatching { draftResolver()?.getColor(sourceKey) }.getOrNull()
+        val valueText = when {
+            inherited -> "继承 · $sourceKey" + (effective?.let { " " + String.format("#%08X", it) } ?: "")
+            custom != null -> String.format("#%08X", custom) + "（自定义）"
+            else -> raw ?: ""
         }
-        val color = runCatching { parseColor(raw) }.getOrNull()
-        return fieldRow(title, shown, color, onRestore = {
-            pushUndo()
-            draft.clearField(path, field)
-            onChange()
-            renderTab(7)
-        }) {
-            val items = arrayOf("继承（跟随整套配色）", "指定配色里的色键…", "自定义颜色…")
-            androidx.appcompat.app.AlertDialog.Builder(requireContext())
-                .setTitle(title)
-                .setItems(items) { _, which ->
-                    when (which) {
-                        0 -> {
-                            pushUndo()
-                            draft.clearField(path, field)
-                            onChange()
-                            renderTab(7)
-                        }
-
-                        1 -> {
-                            val scheme = schemeNow()
-                            val keys = scheme?.colors?.keys?.sorted() ?: emptyList()
-                            if (keys.isEmpty()) {
-                                toast("当前配色没有可引用的色键")
-                                return@setItems
-                            }
-                            androidx.appcompat.app.AlertDialog.Builder(requireContext())
-                                .setTitle("选一个色键")
-                                .setItems(keys.toTypedArray()) { _, i ->
+        return fieldRow(
+            title = title,
+            value = valueText,
+            swatch = effective,
+            swatchDashed = inherited,
+            onRestore = {
+                pushUndo()
+                draft.clearField(path, field)
+                onChange()
+                renderTab(7)
+            },
+            onValueClick = if (inherited) ({ jumpToColorKey(sourceKey) }) else null,
+            onClick = {
+                // 已经是自定义颜色 → 点整行直接开取色器，不再多一层弹窗
+                if (custom != null) {
+                    ColorPickerDialog.show(requireContext(), title, custom) { picked ->
+                        pushUndo()
+                        draft.setField(path, field, JsonPrimitive("0x" + String.format("%08x", picked)))
+                        onChange()
+                        renderTab(7)
+                    }
+                } else {
+                    val items = arrayOf("继承（跟随整套配色）", "指定配色里的色键…", "自定义颜色…")
+                    androidx.appcompat.app.AlertDialog.Builder(requireContext())
+                        .setTitle(title)
+                        .setItems(items) { _, which ->
+                            when (which) {
+                                0 -> {
                                     pushUndo()
-                                    draft.setField(path, field, JsonPrimitive(keys[i]))
+                                    draft.clearField(path, field)
                                     onChange()
                                     renderTab(7)
                                 }
-                                .show()
-                        }
 
-                        else -> {
-                            ColorPickerDialog.show(requireContext(), title, color ?: 0xFF000000.toInt()) { picked ->
-                                pushUndo()
-                                draft.setField(path, field, JsonPrimitive("0x" + String.format("%08x", picked)))
-                                onChange()
-                                renderTab(7)
+                                1 -> {
+                                    val scheme = schemeNow()
+                                    val keys = scheme?.colors?.keys?.sorted() ?: emptyList()
+                                    if (keys.isEmpty()) {
+                                        toast("当前配色没有可引用的色键")
+                                        return@setItems
+                                    }
+                                    androidx.appcompat.app.AlertDialog.Builder(requireContext())
+                                        .setTitle("选一个色键")
+                                        .setItems(keys.toTypedArray()) { _, i ->
+                                            pushUndo()
+                                            draft.setField(path, field, JsonPrimitive(keys[i]))
+                                            onChange()
+                                            renderTab(7)
+                                        }
+                                        .show()
+                                }
+
+                                else -> {
+                                    ColorPickerDialog.show(
+                                        requireContext(),
+                                        title,
+                                        effective ?: 0xFF000000.toInt(),
+                                    ) { picked ->
+                                        pushUndo()
+                                        draft.setField(path, field, JsonPrimitive("0x" + String.format("%08x", picked)))
+                                        onChange()
+                                        renderTab(7)
+                                    }
+                                }
                             }
                         }
-                    }
+                        .show()
                 }
-                .show()
-        }
+            },
+        )
     }
 
     private fun keyNumberRow(
@@ -1497,6 +1531,8 @@ class ThemeStyleFragment : Fragment() {
         value: String,
         swatch: Int?,
         onRestore: (() -> Unit)?,
+        swatchDashed: Boolean = false,
+        onValueClick: (() -> Unit)? = null,
         onClick: () -> Unit,
     ): View {
         val line = LinearLayout(requireContext()).apply {
@@ -1517,9 +1553,12 @@ class ThemeStyleFragment : Fragment() {
             TextView(requireContext()).apply {
                 text = value
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
-                setTextColor(subColor)
+                setTextColor(if (onValueClick != null) 0xFF8AB4F8.toInt() else subColor)
                 gravity = Gravity.END
                 setPadding(0, 0, dp(10), 0)
+                if (onValueClick != null) {
+                    setOnClickListener { onValueClick() }
+                }
             },
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT),
         )
@@ -1529,7 +1568,12 @@ class ThemeStyleFragment : Fragment() {
                     background = GradientDrawable().apply {
                         cornerRadius = dp(7).toFloat()
                         setColor(swatch)
-                        setStroke(dp(1), 0x44FFFFFF)
+                        // 继承来的颜色用虚线框：一眼能看出「它不是这个键自己的」
+                        if (swatchDashed) {
+                            setStroke(dp(1), 0xCCFFFFFF.toInt(), dp(3).toFloat(), dp(2).toFloat())
+                        } else {
+                            setStroke(dp(1), 0x44FFFFFF)
+                        }
                     }
                 },
                 LinearLayout.LayoutParams(dp(28), dp(28)),
@@ -1581,6 +1625,27 @@ class ThemeStyleFragment : Fragment() {
 
     private fun schemeNow(): com.osfans.trime.data.theme.model.ColorScheme? =
         schemes.firstOrNull { it.id == schemeId } ?: schemes.firstOrNull()
+
+    /** 用草稿主题+当前配色建一个取色器，拿「这个键实际会显示成什么颜色」。 */
+    private fun draftResolver(): com.osfans.trime.data.theme.ThemeResourceResolver? = runCatching {
+        val base = ThemeManager.activeTheme
+        val theme = base.copy(generalStyle = style, colorSchemes = schemes.toList())
+        val scheme = schemeNow() ?: com.osfans.trime.data.theme.model.ColorScheme("default", emptyMap())
+        com.osfans.trime.data.theme.ThemeResourceResolver(theme, scheme)
+    }.getOrNull()
+
+    /** 跳到「配色」页并高亮某个色键（按键页「继承」的来源）。 */
+    private fun jumpToColorKey(colorKey: String) {
+        val group = colorGroups().firstOrNull { g -> g.second.any { it.first == colorKey } }
+        if (group == null) {
+            toast("配色里没有 $colorKey 这一项")
+            return
+        }
+        expandedColorGroups.add(group.first)
+        highlightColorKey = colorKey
+        renderTab(6)
+        toast("改 $colorKey 会同时影响所有继承它的按键")
+    }
 
     // ---------------------------------------------------------------- 数据流
 
