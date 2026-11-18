@@ -96,7 +96,7 @@ object WanxiangMirror {
             Timber.d("wanxiang: try $host $url")
             if (WanxiangInstaller.download(url, dest, onProgress)) return true
             runCatching { dest.delete() }
-            Timber.w("wanxiang: $host failed, next source")
+            Timber.d("wanxiang: $host failed, next source")
         }
         return false
     }
