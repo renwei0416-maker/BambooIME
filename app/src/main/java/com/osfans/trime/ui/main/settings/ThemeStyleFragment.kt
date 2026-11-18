@@ -1132,6 +1132,36 @@ class ThemeStyleFragment : Fragment() {
             style = style.copy(fonts = style.fonts.copy(popup_size = it))
             onChange()
         })
+        val tiers = sizeGroups("key_text_size")
+        if (tiers.isNotEmpty()) {
+            content.addView(sectionTitle("本主题字号档位"))
+            content.addView(
+                hint(
+                    "这套主题把字号写在每个键上，上面的全局字号对它们无效。" +
+                        "这里按当前键盘里实际存在的值分组，拖动一档即该组所有键一起改。",
+                ),
+            )
+            for ((tierValue, paths) in tiers) {
+                content.addView(
+                    batchNumberRow(
+                        "字号 ${tierValue.toInt()}（${paths.size} 个键）",
+                        tierValue,
+                        8f,
+                        56f,
+                        1f,
+                    ) { nv ->
+                        pushUndo()
+                        for (p in paths) draft.setField(p, "key_text_size", JsonPrimitive(nv))
+                        onChange()
+                        renderTab(tab)
+                    },
+                    rowParams(),
+                )
+            }
+            content.addView(
+                hint("「长标签字号」只作用于长度 > 1 的纯文本标签；主题里的 key_long_text_size 当前不被读取。"),
+            )
+        }
     }
 
     // ---------------------------------------------------------------- 候选栏
@@ -1499,6 +1529,84 @@ class ThemeStyleFragment : Fragment() {
     }
 
     /** 批量解除按键自带颜色；底色额外提供「保留字母键」一档。 */
+    /** 可批量解除的按键级字号字段：field -> 中文名。 */
+    private val KEY_SIZE_FIELDS = listOf(
+        "key_text_size" to "按键文字字号",
+        "symbol_text_size" to "符号字号",
+        "hint_text_size" to "提示字号",
+    )
+
+    /** 该键自己写的字号；没写则返回 null。 */
+    private fun ownKeySizeOf(k: TextKeyboard.TextKey, field: String): Float? {
+        val v = when (field) {
+            "key_text_size" -> k.keyTextSize
+            "symbol_text_size" -> k.symbolTextSize
+            "hint_text_size" -> k.hintTextSize
+            else -> 0f
+        }
+        return v.takeIf { it > 0f }
+    }
+
+    /** 本键盘里写了该字号字段的键有几个；[keepLetters] 为真时跳过字母键。 */
+    private fun countKeySizeOverrides(field: String, keepLetters: Boolean = false): Int {
+        val raw = ThemeManager.getKeyboard(keyboardName) ?: return 0
+        return raw.rows.sumOf { row ->
+            row.keys.count { k -> ownKeySizeOf(k, field) != null && !(keepLetters && isLetterKey(k)) }
+        }
+    }
+
+    /** 删掉这些键的该字号字段，让它们回到全局字号。 */
+    private fun clearKeySizeOverrides(field: String, keepLetters: Boolean = false): Int {
+        val raw = ThemeManager.getKeyboard(keyboardName) ?: return 0
+        pushUndo()
+        var cleared = 0
+        raw.rows.forEachIndexed { r, row ->
+            row.keys.forEachIndexed { c, key ->
+                if (ownKeySizeOf(key, field) != null && !(keepLetters && isLetterKey(key))) {
+                    draft.setField(KeyPath(keyboardName, r, c), field, null)
+                    cleared++
+                }
+            }
+        }
+        if (cleared > 0) onChange()
+        return cleared
+    }
+
+    /** 弹出“解除哪些字号”选单；每项可选直接解除或保留字母键。 */
+    private fun showDecoupleSizeDialog() {
+        val groups = KEY_SIZE_FIELDS.map { it.first to countKeySizeOverrides(it.first) }.filter { it.second > 0 }
+        if (groups.isEmpty()) {
+            toast("本键盘没有按键自带字号")
+            return
+        }
+        val labels = groups
+            .map { (f, n) -> KEY_SIZE_FIELDS.first { it.first == f }.second + " · $n 处" }
+            .toTypedArray()
+        AlertDialog.Builder(requireContext())
+            .setTitle("解除哪些字号？（解除后跟随全局字号）")
+            .setItems(labels) { _, which ->
+                val field = groups[which].first
+                val n = clearKeySizeOverrides(field)
+                renderTab(tab)
+                toast("已解除 $n 处")
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    /** 当前键盘里按键自带字号的档位：字号值 -> 该值的所有键路径。 */
+    private fun sizeGroups(field: String): List<Pair<Float, List<KeyPath>>> {
+        val raw = ThemeManager.getKeyboard(keyboardName) ?: return emptyList()
+        val map = LinkedHashMap<Float, MutableList<KeyPath>>()
+        raw.rows.forEachIndexed { r, row ->
+            row.keys.forEachIndexed { c, key ->
+                val v = ownKeySizeOf(key, field)
+                if (v != null) map.getOrPut(v) { mutableListOf() }.add(KeyPath(keyboardName, r, c))
+            }
+        }
+        return map.entries.map { it.key to it.value.toList() }.sortedBy { it.first }
+    }
+
     private fun showDecoupleDialog() {
         val items = ArrayList<Triple<String, Boolean, Int>>()
         KEY_COLOR_FIELDS.forEach { (field, _) ->
@@ -1565,6 +1673,18 @@ class ThemeStyleFragment : Fragment() {
             content.addView(
                 plainRow("批量解除按键自带颜色 · 共 ${fieldOverrides.sumOf { it.second }} 处") {
                     showDecoupleDialog()
+                },
+                rowParams(),
+            )
+        }
+        val sizeOverrides =
+            KEY_SIZE_FIELDS
+                .map { it.first to countKeySizeOverrides(it.first) }
+                .filter { it.second > 0 }
+        if (sizeOverrides.isNotEmpty()) {
+            content.addView(
+                plainRow("批量解除按键自带字号 · 共 ${sizeOverrides.sumOf { it.second }} 处") {
+                    showDecoupleSizeDialog()
                 },
                 rowParams(),
             )
@@ -1915,6 +2035,53 @@ class ThemeStyleFragment : Fragment() {
                 .setNegativeButton("取消", null)
                 .show()
         }
+    }
+
+    /** 按键自带字号的档位滑块：拖动后把该档所有键一起写成新值。 */
+    private fun batchNumberRow(
+        title: String,
+        value: Float,
+        min: Float,
+        max: Float,
+        step: Float,
+        onApply: (Float) -> Unit,
+    ): View {
+        val ctx = requireContext()
+        val box = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
+        val head = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
+        val label = TextView(ctx).apply {
+            text = title
+            setTextColor(textColor)
+            textSize = 15f
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        val shown = TextView(ctx).apply {
+            text = value.toInt().toString()
+            setTextColor(subColor)
+            textSize = 13f
+        }
+        head.addView(label)
+        head.addView(shown)
+        var pending = value
+        val bar = SeekBar(ctx).apply {
+            this.max = (((max - min) / step).toInt()).coerceAtLeast(1)
+            progress = (((value - min) / step).toInt()).coerceIn(0, this.max)
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(bar: SeekBar?, progress: Int, fromUser: Boolean) {
+                    pending = min + progress * step
+                    shown.text = pending.toInt().toString()
+                }
+
+                override fun onStartTrackingTouch(bar: SeekBar?) = Unit
+
+                override fun onStopTrackingTouch(bar: SeekBar?) {
+                    if (pending != value) onApply(pending)
+                }
+            })
+        }
+        box.addView(head)
+        box.addView(bar)
+        return box
     }
 
     private fun keyNumberRow(
