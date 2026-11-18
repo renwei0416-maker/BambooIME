@@ -433,6 +433,60 @@ class ThemePreviewView(context: Context, attrs: AttributeSet? = null) : View(con
         }
     }
 
+    /**
+     * 长按气泡，按真机参数画（`ime/popup/PopupEntryUi.kt` + `PopupDelegate.kt`）：
+     * 底 `popup_back_color`、字 `popup_text_color`、字号 `fonts.popup_size`、
+     * 每格高 `popupKeyHeight`、格宽 `popupWidth`、总高 `popupHeight`、圆角 `roundCorner`、
+     * 间距 `horizontalGap`、选中格 `hilited_popup_back_color` / `hilited_popup_text_color`。
+     * 位置：键中心正上方；越界时贴到内容顶端（预览固定往上弹，不做翻下）。
+     */
+    private fun drawPopupStrip(canvas: Canvas, key: Key, labels: List<String>) {
+        val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = colorOr("popup_back_color", colorOr("key_back_color", 0xFF33363B.toInt()))
+            setShadowLayer(dp(2f), 0f, 0f, colorOr("shadow_color", 0x66000000))
+        }
+        val selPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = colorOr("hilited_popup_back_color", colorOr("hilited_key_back_color", 0xFF2D4A77.toInt()))
+        }
+        val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            textSize = sp(this@ThemePreviewView.style.fonts.popup_size)
+            color = colorOr("popup_text_color", colorOr("key_text_color", 0xFFE8EAED.toInt()))
+            typeface = FontManager.getTypeface()
+            textAlign = Paint.Align.CENTER
+        }
+        val selTextPaint = Paint(textPaint).apply {
+            color = colorOr("hilited_popup_text_color", colorOr("hilited_key_text_color", 0xFFFFFFFF.toInt()))
+        }
+
+        val cellW = dp(style.popupWidth.toFloat()).coerceAtLeast(dp(24f))
+        val cellH = dp(style.popupKeyHeight.toFloat()).coerceAtLeast(dp(20f))
+        val gap = dp(style.horizontalGap.toFloat())
+        val radius = dp(style.roundCorner.toFloat())
+        val totalW = cellW * labels.size + gap * (labels.size - 1)
+        val cx = key.x + key.width / 2f
+        // 固定往上：气泡下沿贴着键顶；越界则贴内容顶端
+        var top = key.y - cellH
+        if (top < 0f) top = 0f
+        val left = cx - totalW / 2f
+        labels.forEachIndexed { i, raw ->
+            val label = raw.replace("ic@", "")
+            val cell = RectF(
+                left + i * (cellW + gap),
+                top,
+                left + i * (cellW + gap) + cellW,
+                top + cellH,
+            )
+            canvas.drawRoundRect(cell, radius, radius, if (i == 0) selPaint else bgPaint)
+            canvas.drawText(
+                label,
+                cell.centerX(),
+                cell.centerY() - (textPaint.ascent() + textPaint.descent()) / 2f,
+                if (i == 0) selTextPaint else textPaint,
+            )
+        }
+        // 总高不足时，真机会把气泡区撑到 popupHeight；预览只保证不越界，不做额外填充
+    }
+
     private fun drawPreview(canvas: Canvas) {
         val kb = keyboard ?: return
         val resolver = this.resolver ?: return
@@ -440,9 +494,8 @@ class ThemePreviewView(context: Context, attrs: AttributeSet? = null) : View(con
         val h = height.toFloat()
         if (w <= 0f || h <= 0f) return
 
-        // 框外底板：颜色与键盘底色明显不同，方框才认得出来（用户 m35040）
-        val kbBackColor = colorOr("back_color", 0xFF1F2023.toInt())
-        val plateColor = plateColorFor(kbBackColor)
+        // 框外底板：固定画布色，不取任何主题色（用户 m35543：框外与主题无关）
+        val plateColor = PLATE_COLOR
         canvas.drawColor(plateColor)
 
         if (kb.keys.isEmpty() || kb.height <= 0) {
@@ -501,7 +554,7 @@ class ThemePreviewView(context: Context, attrs: AttributeSet? = null) : View(con
             )
             kbBg.draw(canvas)
         } else {
-            boxBgPaint.color = colorOr("keyboard_back_color", kbBackColor)
+            boxBgPaint.color = colorOr("keyboard_back_color", 0xFF1F2023.toInt())
             canvas.drawRect(boxRect, boxBgPaint)
         }
         canvas.restore()
@@ -630,25 +683,14 @@ class ThemePreviewView(context: Context, attrs: AttributeSet? = null) : View(con
             }
         }
 
+        // 长按气泡：参数与真机 PopupEntryUi / PopupDelegate 一一对应
         popupIndex?.let { index ->
             val key = kb.keys.getOrNull(index)
             if (key != null) {
-                val labels = runCatching { key.popup }.getOrNull()?.takeIf { it.isNotEmpty() }
-                val text = labels?.joinToString("  ")?.replace("ic@", "")
-                if (!text.isNullOrBlank()) {
-                    val cx = key.x + key.width / 2f
-                    val boxTop = (key.y - dp(34f)).coerceAtLeast(0f)
-                    val boxW = popupTextPaint.measureText(text) + dp(20f)
-                    val boxH = dp(28f)
-                    val box = RectF(cx - boxW / 2f, boxTop, cx + boxW / 2f, boxTop + boxH)
-                    popupBgPaint.color = 0xFF3C4043.toInt()
-                    canvas.drawRoundRect(box, dp(8f), dp(8f), popupBgPaint)
-                    canvas.drawText(
-                        text,
-                        box.left + dp(10f),
-                        box.centerY() - (popupTextPaint.ascent() + popupTextPaint.descent()) / 2f,
-                        popupTextPaint,
-                    )
+                val labels = runCatching { key.popup }.getOrNull()
+                    ?.filter { !it.isNullOrBlank() }.orEmpty()
+                if (labels.isNotEmpty()) {
+                    drawPopupStrip(canvas, key, labels)
                 }
             }
         }
@@ -829,6 +871,9 @@ class ThemePreviewView(context: Context, attrs: AttributeSet? = null) : View(con
     private fun dp(v: Float): Float = v * density
 
     private fun sp(v: Float): Float = v * resources.displayMetrics.scaledDensity
+
+    /** 预览框外底板固定色：与任何主题色无关，只用于辨认键盘区方框。 */
+    private val PLATE_COLOR = 0xFF22262B.toInt()
 
     private fun hex(c: Int): String = String.format("#%08X", c)
 }

@@ -787,14 +787,27 @@ class ThemeStyleFragment : Fragment() {
 
     /** 配色分组：组名 → [(键, 显示名, 回退目标)]。回退目标来自 `theme-dsl.lua` 的 SchemeColors 注释。 */
     private fun colorGroups(): List<Pair<String, List<Triple<String, String, String>>>> = listOf(
-        "基础" to listOf(
-            Triple("back_color", "键盘底色", ""),
+        "基础（键盘本体）" to listOf(
+            Triple("keyboard_back_color", "按键底板色", "border_color"),
+            Triple("keyboard_background", "按键底板图", "keyboard_back_color"),
+            Triple("key_back_color", "按键底色", "back_color"),
+            Triple("key_text_color", "按键文字", "candidate_text_color"),
+            Triple("key_symbol_color", "按键符号", "comment_text_color"),
+            Triple("key_border_color", "按键描边", "border_color"),
+            Triple("key_shadow_color", "按键阴影", "shadow_color"),
+            Triple("hilited_key_back_color", "按下底色", "hilited_candidate_back_color"),
+            Triple("hilited_key_text_color", "按下文字", "hilited_candidate_text_color"),
+            Triple("hilited_key_symbol_color", "按下符号", "hilited_comment_text_color"),
+            Triple("long_text_back_color", "长文本背景", "back_color"),
+            Triple("long_text_color", "长文本文字", "text_color"),
             Triple("text_color", "正文文字", ""),
             Triple("border_color", "描边色", "back_color"),
             Triple("shadow_color", "阴影色", "border_color"),
-            Triple("key_shadow_color", "按键阴影", "shadow_color"),
+        ),
+        "窗口" to listOf(
+            Triple("back_color", "窗口根底色", ""),
+            Triple("root_background", "根背景图", "back_color"),
             Triple("text_back_color", "编码区背景", "back_color"),
-            Triple("root_background", "根背景", "back_color"),
         ),
         "候选栏" to listOf(
             Triple("candidate_text_color", "候选文字", "text_color"),
@@ -811,17 +824,6 @@ class ThemeStyleFragment : Fragment() {
             Triple("hilited_candidate_button_color", "候选按钮高亮", "hilited_candidate_back_color"),
             Triple("hilited_label_color", "首选词序号", "hilited_candidate_text_color"),
             Triple("hilited_comment_text_color", "首选词注释", "comment_text_color"),
-        ),
-        "按键" to listOf(
-            Triple("key_back_color", "按键底色", "back_color"),
-            Triple("key_text_color", "按键文字", "candidate_text_color"),
-            Triple("key_symbol_color", "按键符号", "comment_text_color"),
-            Triple("key_border_color", "按键描边", "border_color"),
-            Triple("hilited_key_back_color", "按下底色", "hilited_candidate_back_color"),
-            Triple("hilited_key_text_color", "按下文字", "hilited_candidate_text_color"),
-            Triple("hilited_key_symbol_color", "按下符号", "hilited_comment_text_color"),
-            Triple("keyboard_back_color", "键盘底板", "border_color"),
-            Triple("keyboard_background", "键盘背景图", "keyboard_back_color"),
         ),
         "开关按键" to listOf(
             Triple("on_key_back_color", "开启-底色", "back_color"),
@@ -846,10 +848,6 @@ class ThemeStyleFragment : Fragment() {
             Triple("preview_text_color", "长按预览文字", "key_text_color"),
             Triple("hilited_preview_back_color", "预览选中底色", "hilited_key_back_color"),
             Triple("hilited_preview_text_color", "预览选中文字", "hilited_key_text_color"),
-        ),
-        "长文本" to listOf(
-            Triple("long_text_color", "长文本文字", "text_color"),
-            Triple("long_text_back_color", "长文本背景", "back_color"),
         ),
         "液态键盘" to listOf(
             Triple("liquid_keyboard_background", "面板背景", "back_color"),
@@ -1306,6 +1304,12 @@ class ThemeStyleFragment : Fragment() {
             if (tk.spacer) info.append("\n这是占位键（spacer），只占宽度不显示")
             val pop = runCatching { tk.popup }.getOrNull()
             if (!pop.isNullOrEmpty()) info.append("\n长按弹出 = ").append(pop.joinToString(" / "))
+            info.append("\n气泡尺寸 = ")
+                .append(style.popupKeyHeight).append(" × ")
+                .append(style.popupWidth).append("（气泡区 ")
+                .append(style.popupHeight).append("，圆角 ")
+                .append(style.roundCorner).append("，间距 ")
+                .append(style.horizontalGap).append("）")
             content.addView(hint(info.toString()))
         }
 
