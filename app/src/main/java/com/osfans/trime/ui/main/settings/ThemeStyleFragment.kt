@@ -1132,36 +1132,6 @@ class ThemeStyleFragment : Fragment() {
             style = style.copy(fonts = style.fonts.copy(popup_size = it))
             onChange()
         })
-        val tiers = sizeGroups("key_text_size")
-        if (tiers.isNotEmpty()) {
-            content.addView(sectionTitle("本主题字号档位"))
-            content.addView(
-                hint(
-                    "这套主题把字号写在每个键上，上面的全局字号对它们无效。" +
-                        "这里按当前键盘里实际存在的值分组，拖动一档即该组所有键一起改。",
-                ),
-            )
-            for ((tierValue, paths) in tiers) {
-                content.addView(
-                    batchNumberRow(
-                        "字号 ${tierValue.toInt()}（${paths.size} 个键）",
-                        tierValue,
-                        8f,
-                        56f,
-                        1f,
-                    ) { nv ->
-                        pushUndo()
-                        for (p in paths) draft.setField(p, "key_text_size", JsonPrimitive(nv))
-                        onChange()
-                        renderTab(tab)
-                    },
-                    rowParams(),
-                )
-            }
-            content.addView(
-                hint("「长标签字号」只作用于长度 > 1 的纯文本标签；主题里的 key_long_text_size 当前不被读取。"),
-            )
-        }
     }
 
     // ---------------------------------------------------------------- 候选栏
@@ -2409,6 +2379,41 @@ class ThemeStyleFragment : Fragment() {
                 onChange()
             },
         )
+
+        val sizeTiers = sizeGroups("key_text_size")
+        content.addView(sectionTitle("本主题字号档位"))
+        if (sizeTiers.isEmpty()) {
+            content.addView(
+                hint("这套主题没有给按键单独写字号，上面的全局字号就是全部按键的字号。"),
+            )
+        } else {
+            content.addView(
+                hint(
+                    "这套主题把字号写在每个键上，上面的全局字号对它们无效。" +
+                        "这里按当前键盘里实际存在的值分组，拖动一档即该组所有键一起改。",
+                ),
+            )
+            for ((tierValue, paths) in sizeTiers) {
+                content.addView(
+                    batchNumberRow(
+                        "字号 ${tierValue.toInt()}（${paths.size} 个键）",
+                        tierValue,
+                        8f,
+                        56f,
+                        1f,
+                    ) { nv ->
+                        pushUndo()
+                        for (p in paths) draft.setField(p, "key_text_size", JsonPrimitive(nv))
+                        onChange()
+                        renderTab(tab)
+                    },
+                    rowParams(),
+                )
+            }
+            content.addView(
+                hint("「长标签字号」只作用于长度 > 1 的纯文本标签；主题里的 key_long_text_size 当前不被读取。"),
+            )
+        }
 
         content.addView(sectionTitle("文字与图标位置微调"))
         content.addView(hint("正数向右/向下；一般只在主题本身没对齐时才需要动。"))
