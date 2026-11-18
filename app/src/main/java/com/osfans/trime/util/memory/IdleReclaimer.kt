@@ -118,6 +118,9 @@ object IdleReclaimer {
     }
 
     /** 当前持有（已加载）的模块中文名，供设置页显示。 */
+    /** 模型是否仍驻留在内存（已加载且未被释放）。 */
+    fun isHeld(name: String): Boolean = lastUsed.containsKey(name) && !released.containsKey(name)
+
     fun heldLabels(): List<String> = entries.values.filter { lastUsed.containsKey(it.name) && !released.containsKey(it.name) }.map { it.label }
 
     private fun sweep() {

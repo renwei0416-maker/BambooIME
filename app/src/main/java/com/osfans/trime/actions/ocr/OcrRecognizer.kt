@@ -6,6 +6,8 @@ package com.osfans.trime.actions.ocr
 
 import android.content.Context
 import android.graphics.Bitmap
+import com.osfans.trime.data.prefs.MemoryPrefs
+import com.osfans.trime.util.memory.MemoryProbe
 import timber.log.Timber
 
 /**
@@ -74,8 +76,15 @@ object OcrRecognizer {
             }
             val ok =
                 runCatching {
-                    OcrNative.nativeInit(entry.det.absolutePath, entry.rec.absolutePath) &&
-                        OcrNative.nativeSetAlphabet(alphabet)
+                    var loaded = false
+                    val delta =
+                        MemoryProbe.measureDeltaMb(context.applicationContext) {
+                            loaded =
+                                OcrNative.nativeInit(entry.det.absolutePath, entry.rec.absolutePath) &&
+                                    OcrNative.nativeSetAlphabet(alphabet)
+                        }
+                    if (loaded) MemoryPrefs.setMeasuredMb("ocr", delta)
+                    loaded
                 }.getOrElse { error ->
                     Timber.w(error, "ocr: native init failed")
                     false

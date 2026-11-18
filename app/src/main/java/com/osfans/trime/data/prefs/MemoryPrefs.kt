@@ -32,6 +32,14 @@ object MemoryPrefs {
 
     private lateinit var sp: SharedPreferences
 
+    /** 记录模型上次加载时实测到的内存增量（MB）；0 表示尚未测量。 */
+    fun measuredMb(name: String): Int = if (::sp.isInitialized) sp.getInt("measured_$name", 0) else 0
+
+    fun setMeasuredMb(name: String, mb: Int) {
+        if (!::sp.isInitialized || mb <= 0) return
+        sp.edit().putInt("measured_$name", mb).apply()
+    }
+
     fun init(context: Context) {
         if (::sp.isInitialized) return
         sp = context.applicationContext.getSharedPreferences(STORE, Context.MODE_PRIVATE)

@@ -36,6 +36,8 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.osfans.trime.util.memory.IdleReclaimer
+import com.osfans.trime.util.memory.MemoryProbe
+import com.osfans.trime.data.prefs.MemoryPrefs
 import timber.log.Timber
 import java.lang.ref.WeakReference
 import java.nio.ByteBuffer
@@ -147,9 +149,22 @@ object SherpaSpeechClient {
             }
 
             return try {
-                when (modelFiles.backend) {
-                    VoiceBackend.QNN -> initQnnEngine(modelFiles, sensitivity)
-                    VoiceBackend.CPU -> initCpuEngine(modelFiles, sensitivity)
+                var voiceMb = 0
+                val app = serviceRef?.get()?.applicationContext
+                if (app == null) {
+                    when (modelFiles.backend) {
+                        VoiceBackend.QNN -> initQnnEngine(modelFiles, sensitivity)
+                        VoiceBackend.CPU -> initCpuEngine(modelFiles, sensitivity)
+                    }
+                } else {
+                    voiceMb =
+                        MemoryProbe.measureDeltaMb(app) {
+                            when (modelFiles.backend) {
+                                VoiceBackend.QNN -> initQnnEngine(modelFiles, sensitivity)
+                                VoiceBackend.CPU -> initCpuEngine(modelFiles, sensitivity)
+                            }
+                        }
+                    MemoryPrefs.setMeasuredMb("voice", voiceMb)
                 }
                 lastEngineConfig = desiredConfig
                 Timber.i("Sherpa-onnx online ASR engine initialized (variant=${modelFiles.backend})")

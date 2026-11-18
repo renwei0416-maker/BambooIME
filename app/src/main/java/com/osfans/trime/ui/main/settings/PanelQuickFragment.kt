@@ -224,12 +224,82 @@ class PanelQuickFragment : PaddingPreferenceFragment() {
         screen.addPreference(
             BambooClick(context).apply {
                 key = "memory_status"
-                title = "模型占用（估算）"
-                summary = "语音 ≈ 180 MB · 识图 ≈ 95 MB · 手写 ≈ 40 MB（仅加载后占用）"
+                title = "进程内存占用"
+                summary = processMemorySummary()
                 isIconSpaceReserved = false
                 isSelectable = false
             },
         )
+
+        screen.addPreference(modelRow(context, "memory_model_voice", "voice", "语音模型"))
+        screen.addPreference(modelRow(context, "memory_model_handwriting", "handwriting", "手写模型"))
+        screen.addPreference(modelRow(context, "memory_model_ocr", "ocr", "识图模型"))
+    }
+
+    private fun modelRow(
+        context: android.content.Context,
+        key: String,
+        name: String,
+        label: String,
+    ): BambooClick =
+        BambooClick(context).apply {
+            this.key = key
+            title = label
+            summary = modelSummary(name)
+            isIconSpaceReserved = false
+            isSelectable = false
+        }
+
+    /**
+     * 模型占用只能实测：取上次加载前后的进程 PSS 差值，并标注是否仍在内存。
+     */
+    private fun modelSummary(name: String): String {
+        val mb = MemoryPrefs.measuredMb(name)
+        val measured = if (mb > 0) "上次加载实测 +$mb MB" else "尚未测量（还没加载过）"
+        val held = com.osfans.trime.util.memory.IdleReclaimer.isHeld(name)
+        return "$measured · " + if (held) "当前在内存" else "已释放或未加载"
+    }
+
+    private fun processMemorySummary(): String {
+        val snapshot =
+            com.osfans.trime.util.memory.MemoryProbe.snapshot(requireContext().applicationContext)
+        if (snapshot.totalMb <= 0) return heldSummary()
+        return "${snapshot.totalMb} MB（native ${snapshot.nativeMb} · java ${snapshot.javaMb}）\n" +
+            heldSummary()
+    }
+
+    private fun updateMemoryStatus() {
+        runCatching {
+            preferenceScreen?.findPreference<androidx.preference.Preference>("memory_status")?.summary =
+                processMemorySummary()
+            preferenceScreen?.findPreference<androidx.preference.Preference>("memory_model_voice")?.summary =
+                modelSummary("voice")
+            preferenceScreen?.findPreference<androidx.preference.Preference>("memory_model_handwriting")?.summary =
+                modelSummary("handwriting")
+            preferenceScreen?.findPreference<androidx.preference.Preference>("memory_model_ocr")?.summary =
+                modelSummary("ocr")
+        }
+    }
+
+    private val memoryTicker =
+        object : Runnable {
+            override fun run() {
+                updateMemoryStatus()
+                memoryHandler.postDelayed(this, MEMORY_REFRESH_MS)
+            }
+        }
+
+    private var memoryTicking = false
+
+    private fun startMemoryTicker() {
+        if (memoryTicking) return
+        memoryTicking = true
+        memoryHandler.postDelayed(memoryTicker, MEMORY_REFRESH_MS)
+    }
+
+    private fun stopMemoryTicker() {
+        memoryTicking = false
+        memoryHandler.removeCallbacks(memoryTicker)
     }
 
     /** 当前被持有的模型，给「立即释放」那行做说明。 */
@@ -238,8 +308,24 @@ class PanelQuickFragment : PaddingPreferenceFragment() {
         return if (held.isEmpty()) "当前没有加载任何模型" else "当前持有：" + held.joinToString("、")
     }
 
+    override fun onResume() {
+        super.onResume()
+        startMemoryTicker()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        stopMemoryTicker()
+    }
+
     private fun toast(msg: String) {
         Toast.makeText(requireContext(), msg, Toast.LENGTH_SHORT).show()
+    }
+
+    private val memoryHandler = android.os.Handler(android.os.Looper.getMainLooper())
+
+    private companion object {
+        const val MEMORY_REFRESH_MS = 2_000L
     }
 
     private fun refreshScreen() {

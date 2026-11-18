@@ -50,6 +50,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.osfans.trime.util.memory.IdleReclaimer
+import com.osfans.trime.data.prefs.MemoryPrefs
+import com.osfans.trime.util.memory.MemoryProbe
 import timber.log.Timber
 
 /**
@@ -1379,7 +1381,18 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
         }
         val version = HandwritingPrefs.activeVersion
         service.lifecycleScope.launch {
-            val ok = withContext(Dispatchers.IO) { HandwritingRecognizer.load(service, version) }
+            var loadMb = 0
+            val ok =
+                withContext(Dispatchers.IO) {
+                    var loaded = false
+                    val delta =
+                        MemoryProbe.measureDeltaMb(service.applicationContext) {
+                            loaded = HandwritingRecognizer.load(service, version)
+                        }
+                    loadMb = delta
+                    loaded
+                }
+            if (ok) MemoryPrefs.setMeasuredMb("handwriting", loadMb)
             modelLoaded = ok
             setMessage(
                 if (ok) {
