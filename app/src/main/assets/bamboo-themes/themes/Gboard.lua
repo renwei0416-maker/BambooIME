@@ -215,7 +215,7 @@ local theme = theme {
     buttons = {
       { action = "HideKeyboard",   foreground = { font_size = 18, padding = 2, normal = "text_color", style = "ic@keyboard-close" } },
       { action = "VoiceSwitch",    foreground = { font_size = 18, padding = 2, normal = "text_color", option_styles = { "ic@microphone", "ic@stop-circle" } } },
-      { action = "LiquidHistory",  foreground = { font_size = 18, padding = 2, normal = "text_color", style = "ic@sticker-emoji" } },
+      { action = "BambooSymbol",  foreground = { font_size = 18, padding = 2, normal = "text_color", style = "ic@symbol" } },
       { action = "WindowClipboard", foreground = { font_size = 18, padding = 2, normal = "text_color", style = "ic@clipboard-list-outline" } },
       { action = "KeyboardEditor", foreground = { font_size = 18, padding = 2, normal = "text_color", style = "ic@cursor-move" } },
       { action = "Redo",           foreground = { font_size = 18, padding = 2, normal = "text_color", style = "ic@rotate-right" } },
