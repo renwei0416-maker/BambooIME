@@ -31,6 +31,7 @@ import com.osfans.trime.data.prefs.ThemeStylePrefs
 import com.osfans.trime.data.theme.BambooThemeOverrides
 import com.osfans.trime.data.theme.Theme
 import com.osfans.trime.data.theme.ThemeManager
+import com.osfans.trime.data.theme.ThemeResourceResolver
 import com.osfans.trime.data.theme.model.ColorScheme
 import com.osfans.trime.data.theme.model.GeneralStyle
 import com.osfans.trime.ui.settings.theme.ColorPickerDialog
@@ -90,6 +91,9 @@ class ThemeStyleFragment : Fragment() {
 
     /** 从「按键」页跳到「配色」页时要高亮的色键；渲染一次后清空。 */
     private var highlightColorKey: String? = null
+
+    /** 配色页「详细」模式：每行多显示生效值 / 来源 / 引用键数（用户 m35620）。 */
+    private var showColorSource = false
     private var dirty = false
     private var lastY = 0f
 
@@ -737,6 +741,13 @@ class ThemeStyleFragment : Fragment() {
             },
             chipParams(),
         )
+        actions.addView(
+            chip(if (showColorSource) "简略" else "详细", showColorSource) {
+                showColorSource = !showColorSource
+                renderTab(Tabs.COLORS)
+            },
+            chipParams(),
+        )
         content.addView(actions, rowParams())
 
         for ((group, items) in colorGroups()) {
@@ -752,7 +763,24 @@ class ThemeStyleFragment : Fragment() {
                 val label = item.second
                 val fallback = item.third
                 val title = if (fallback.isEmpty()) label else "$label（←$fallback）"
-                val colorRowView = colorRow(title, parseColor(scheme.colors[key])) { picked ->
+                val subtitle =
+                    if (!showColorSource) {
+                        null
+                    } else {
+                        val refs = keyRefCount(key)
+                        buildString {
+                            append("生效 ")
+                            append(hexColor(draftResolver()?.getColor(key) ?: 0))
+                            append(" · ")
+                            append(colorSource(key))
+                            if (refs > 0) {
+                                append(" · ")
+                                append(refs)
+                                append(" 个键引用它")
+                            }
+                        }
+                    }
+                val colorRowView = colorRow(title, parseColor(scheme.colors[key]), subtitle) { picked ->
                     val colors = LinkedHashMap(scheme.colors)
                     colors[key] = "0x" + String.format("%08x", picked)
                     replaceScheme(scheme.copy(colors = colors))
@@ -785,11 +813,39 @@ class ThemeStyleFragment : Fragment() {
         )
     }
 
+    /** 这个颜色键「没设置时的来源」：本主题自定义 / 默认取 X / 内置默认。 */
+    private fun colorSource(key: String): String {
+        val scheme = schemes.firstOrNull { it.id == schemeId } ?: return "内置默认"
+        if (scheme.colors.containsKey(key)) return "本主题自定义"
+        var cur = key
+        repeat(8) {
+            val next = ThemeResourceResolver.BuiltinFallbackColors[cur] ?: return "内置默认"
+            if (scheme.colors.containsKey(next)) return "默认取 $next"
+            cur = next
+        }
+        return "内置默认"
+    }
+
+    /** 当前键盘里有多少个键把该颜色键写死引用（`key_back_color = "xxx"` 这类）。 */
+    private fun keyRefCount(colorKey: String): Int =
+        runCatching {
+            val kb = ThemeManager.getKeyboard(keyboardName) ?: return 0
+            kb.rows.sumOf { row ->
+                row.keys.count { k ->
+                    k.keyBackColor == colorKey ||
+                        k.keyTextColor == colorKey ||
+                        k.keySymbolColor == colorKey ||
+                        k.keyBorderColor == colorKey ||
+                        k.hlKeyBackColor == colorKey
+                }
+            }
+        }.getOrDefault(0)
+
     /** 配色分组：组名 → [(键, 显示名, 回退目标)]。回退目标来自 `theme-dsl.lua` 的 SchemeColors 注释。 */
     private fun colorGroups(): List<Pair<String, List<Triple<String, String, String>>>> = listOf(
         "基础（键盘本体）" to listOf(
-            Triple("keyboard_back_color", "按键底板色", "border_color"),
-            Triple("keyboard_background", "按键底板图", "keyboard_back_color"),
+            Triple("keyboard_back_color", "按键键身色", "border_color"),
+            Triple("keyboard_background", "键盘底板色", "keyboard_back_color"),
             Triple("key_back_color", "按键底色", "back_color"),
             Triple("key_text_color", "按键文字", "candidate_text_color"),
             Triple("key_symbol_color", "按键符号", "comment_text_color"),
@@ -1036,17 +1092,33 @@ class ThemeStyleFragment : Fragment() {
         setPadding(dp(16), 0, dp(16), dp(6))
     }
 
-    private fun colorRow(title: String, color: Int?, onPick: (Int) -> Unit): View {
+    private fun colorRow(title: String, color: Int?, subtitle: String? = null, onPick: (Int) -> Unit): View {
         val line = LinearLayout(requireContext()).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(16), 0, dp(16), 0)
             minimumHeight = dp(44)
         }
+        val nameBox =
+            LinearLayout(requireContext()).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams =
+                    LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
         val name = TextView(requireContext()).apply {
             text = title
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
             setTextColor(textColor)
+        }
+        nameBox.addView(name)
+        if (!subtitle.isNullOrEmpty()) {
+            nameBox.addView(
+                TextView(requireContext()).apply {
+                    text = subtitle
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
+                    setTextColor(subColor)
+                },
+            )
         }
         val value = TextView(requireContext()).apply {
             text = color?.let { String.format("#%08X", it) } ?: "未设置"
@@ -1062,7 +1134,7 @@ class ThemeStyleFragment : Fragment() {
                 setStroke(dp(1), 0x44FFFFFF)
             }
         }
-        line.addView(name, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        line.addView(nameBox)
         line.addView(
             value,
             LinearLayout.LayoutParams(
