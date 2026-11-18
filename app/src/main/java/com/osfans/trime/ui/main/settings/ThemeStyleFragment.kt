@@ -30,6 +30,7 @@ import com.osfans.trime.R
 import com.osfans.trime.BuildConfig
 import com.osfans.trime.data.prefs.ThemeStylePrefs
 import com.osfans.trime.data.theme.BambooThemeOverrides
+import com.osfans.trime.ime.keyboard.KeyboardWindow
 import com.osfans.trime.data.theme.Theme
 import com.osfans.trime.data.theme.ThemeManager
 import com.osfans.trime.data.theme.ThemeResourceResolver
@@ -2327,6 +2328,9 @@ class ThemeStyleFragment : Fragment() {
             return
         }
         ThemeManager.selectTheme(themeId, forceReload = true)
+        // 元素尺寸（字号/朆角等）是编译进 Keyboard 对象的，
+        // 主题重载不会重建它；这里主动重建一次，否则要切键盘才生效。
+        runCatching { KeyboardWindow.instance?.refreshKeyboards(isAll = true) }
         dirty = false
         undoStack.clear()
         updateActionState()
