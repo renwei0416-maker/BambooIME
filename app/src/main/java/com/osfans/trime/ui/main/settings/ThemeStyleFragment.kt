@@ -30,6 +30,10 @@ import com.osfans.trime.R
 import com.osfans.trime.BuildConfig
 import com.osfans.trime.data.prefs.ThemeStylePrefs
 import com.osfans.trime.data.theme.BambooThemeOverrides
+import android.view.WindowManager
+import android.view.inputmethod.InputMethodManager
+import android.widget.EditText
+import android.content.Context
 import com.osfans.trime.ime.keyboard.KeyboardWindow
 import com.osfans.trime.data.theme.Theme
 import com.osfans.trime.data.theme.ThemeManager
@@ -202,6 +206,9 @@ class ThemeStyleFragment : Fragment() {
         applyBtn = view.findViewById(R.id.theme_style_apply)
         undoBtn = view.findViewById(R.id.theme_style_undo)
         modeChip = view.findViewById(R.id.theme_style_mode)
+        view.findViewById<TextView>(R.id.theme_style_test)?.setOnClickListener {
+            showInputTestDialog()
+        }
 
         loadState()
         setupPreviewBox(view)
@@ -305,6 +312,33 @@ class ThemeStyleFragment : Fragment() {
             val need = preview.neededHeightDp()
             if (need > 0) applyPreviewHeight(need)
         }
+    }
+
+    /** 弹一个输入框，点进去即可唤起真实输入法键盘，用于不退出设置页检查应用后的实际效果。 */
+    private fun showInputTestDialog() {
+        val ctx = requireContext()
+        val input = EditText(ctx).apply {
+            hint = "点这里让真实键盘升起来"
+            setSingleLine(false)
+            minLines = 2
+            gravity = Gravity.TOP or Gravity.START
+            setPadding(dp(16), dp(12), dp(16), dp(12))
+        }
+        val dialog = AlertDialog.Builder(ctx)
+            .setTitle("真实键盘预览")
+            .setView(input)
+            .setPositiveButton("关闭", null)
+            .create()
+        dialog.setOnShowListener {
+            input.requestFocus()
+            dialog.window?.setSoftInputMode(
+                WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE or
+                    WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE,
+            )
+            val imm = ctx.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+            imm?.showSoftInput(input, InputMethodManager.SHOW_IMPLICIT)
+        }
+        dialog.show()
     }
 
     private fun rebuildChips() {
