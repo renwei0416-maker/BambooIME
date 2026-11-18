@@ -885,8 +885,8 @@ class ThemeStyleFragment : Fragment() {
             content.addView(sectionTitle("主题自定义色（${customKeys.size}）"))
             content.addView(
                 hint(
-                    "这套主题的键模板直接引用的颜色，例如 biankuang（普通键描边）、gnbiankuang（功能键描边）、" +
-                        "gaoliang（按下高亮）、dipai（三排底色）。语义键改了没反应，多半是键自带这些值。",
+                    "这套主题自己的颜色键：键模板会直接引用它们，所以改语义键常常看不到变化。" +
+                        "打开右上角「详细」可看到真实键名与被多少个键引用。",
                 ),
             )
             customKeys.forEach { key ->
