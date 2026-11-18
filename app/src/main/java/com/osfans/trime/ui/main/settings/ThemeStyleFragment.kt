@@ -875,6 +875,48 @@ class ThemeStyleFragment : Fragment() {
             }
         }
 
+        // 主题自定义色：本主题 colors 里不在语义清单内的键（如 biankuang / gnbiankuang / gaoliang）。
+        val standardKeys = colorGroups().flatMap { g -> g.second.map { it.first } }.toSet()
+        val customKeys =
+            scheme.colors.keys
+                .filterNot { it in standardKeys }
+                .sortedByDescending { keyRefCount(it) }
+        if (customKeys.isNotEmpty()) {
+            content.addView(sectionTitle("主题自定义色（${customKeys.size}）"))
+            content.addView(
+                hint(
+                    "这套主题的键模板直接引用的颜色，例如 biankuang（普通键描边）、gnbiankuang（功能键描边）、" +
+                        "gaoliang（按下高亮）、dipai（三排底色）。语义键改了没反应，多半是键自带这些值。",
+                ),
+            )
+            customKeys.forEach { key ->
+                val refs = if (showColorSource) keyRefCount(key) else 0
+                val subtitle =
+                    if (showColorSource) {
+                        buildString {
+                            append(key)
+                            if (refs > 0) {
+                                append(" · ")
+                                append(refs)
+                                append(" 个键引用")
+                            }
+                        }
+                    } else {
+                        null
+                    }
+                content.addView(
+                    colorRow(customColorLabel(key), parseColor(scheme.colors[key]), subtitle) { picked ->
+                        val colors = LinkedHashMap(scheme.colors)
+                        colors[key] = "0x" + String.format("%08x", picked)
+                        replaceScheme(scheme.copy(colors = colors))
+                        renderTab(Tabs.COLORS)
+                        refreshPreview()
+                    },
+                    rowParams(),
+                )
+            }
+        }
+
         highlightColorKey = null
         content.addView(sectionTitle("删除自定义颜色"))
         content.addView(
@@ -1168,6 +1210,23 @@ class ThemeStyleFragment : Fragment() {
         setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
         setTextColor(subColor)
         setPadding(dp(16), 0, dp(16), dp(6))
+    }
+
+    /** 主题自定义色键的显示名；没有约定名的回退成键本身。 */
+    private fun customColorLabel(key: String): String = when (key) {
+        "biankuang" -> "边框色"
+        "gnbiankuang" -> "功能键边框色"
+        "gaoliang" -> "按下高亮色"
+        "dipai" -> "三排背景色"
+        "gongneng" -> "功能键颜色"
+        "shuzi" -> "数字行颜色"
+        "yipai" -> "第一排颜色"
+        "erpai" -> "第二排颜色"
+        "sanpai" -> "第三排颜色"
+        "sipai" -> "第四排颜色"
+        "enter" -> "回车键颜色"
+        "space" -> "空格键颜色"
+        else -> if (key.startsWith("zmu_")) "字母 ${key.removePrefix("zmu_").uppercase()} 底色" else key
     }
 
     private fun colorRow(title: String, color: Int?, subtitle: String? = null, onPick: (Int) -> Unit): View {
