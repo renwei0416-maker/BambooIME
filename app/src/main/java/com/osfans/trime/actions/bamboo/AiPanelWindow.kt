@@ -44,7 +44,7 @@ import timber.log.Timber
  *    `exitArmedMode`），保证「面板点进去的」和「打码进去的」是完全同一个状态；
  *  * 点当前已激活的那一项 = 退出（与「同码退出」一致）；
  *  * 选完就收起回键盘——进模式是为了接着打字，不是停在面板上；
- *  * 按钮 = 图标 + 名字 + 触发码小字；用户自建模式统一用一个默认图标；
+ *  * 按钮 = 图标 + 名字 + 触发码小字；认不出名字的模式统一用一个默认图标；
  *  * 文曲星没启用时那个按钮不显示，不留点了没反应的死按钮。
  */
 class AiPanelWindow : BoardWindow.NoBarBoardWindow() {
@@ -239,7 +239,7 @@ class AiPanelWindow : BoardWindow.NoBarBoardWindow() {
         val box = gridBox ?: return
         val armedName = BambooActions.armedDisplayName
         val armedCode = BambooActions.armedCode
-        // 顶部状态不写触发码（用户要求）：只写名字
+        // 顶部状态只写模式名，不写触发码
         statusView?.text =
             if (armedName != null) "当前：$armedName" else "当前：未进入模式"
         exitButton?.applyState(armedName != null)

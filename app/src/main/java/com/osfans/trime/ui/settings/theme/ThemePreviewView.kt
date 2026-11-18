@@ -117,7 +117,7 @@ class ThemePreviewView(context: Context, attrs: AttributeSet? = null) : View(con
     fun refresh() = invalidate()
 
     /**
-     * 强制下次绘制重建键盘（用户 m35281：改配色后预览不重算）。
+     * 强制下次绘制时重建键盘。
      * 只 invalidate 不够——Key 的颜色是 ResettableLazy，必须换一批 Key 实例。
      */
     fun invalidateKeyboard() {
@@ -356,7 +356,7 @@ class ThemePreviewView(context: Context, attrs: AttributeSet? = null) : View(con
     }
 
     /**
-     * 预览底板色（用户 m35056 拍板）：取键盘底色 [backColor] 的明度反相，
+     * 预览底板色：取键盘底色 [backColor] 的明度反相，
      * 色相沿用、饱和度压到 25%，保证任何主题下底板与键盘区都一眼可分。
      */
     private fun plateColorFor(backColor: Int): Int {
@@ -494,7 +494,7 @@ class ThemePreviewView(context: Context, attrs: AttributeSet? = null) : View(con
         val h = height.toFloat()
         if (w <= 0f || h <= 0f) return
 
-        // 框外底板：固定画布色，不取任何主题色（用户 m35543：框外与主题无关）
+        // 框外底板：固定画布色，与主题色无关
         val plateColor = PLATE_COLOR
         canvas.drawColor(plateColor)
 
@@ -521,12 +521,12 @@ class ThemePreviewView(context: Context, attrs: AttributeSet? = null) : View(con
         contentTop = candH + preeditH + topPad
         val fullHeight = contentTop + kbHeight + bottomPad
 
-        // 单一公式（用户 m34976 口径）：
+        // 缩放公式：
         //   装得下（预览框够高）→ 预览宽/键盘宽 更小 → 铺满宽度、只变高；
         //   装不下（内容比框高）→ 预览高/内容高 更小 → 整体等比缩小，宁可缩也不裁。
         // neededHeightPx 必须按「宽度铺满」来算，否则会和外层「框跟着长高」互相追。
         // 只跟「方框」比：方框宽 = 预览宽 - 两侧留缝；因此调键盘高度不会横向收缩，
-        // 只有方框高度装不下时才整体等比缩小（用户 m34976/m35040 口径）。
+        // 只有方框高度装不下时才整体等比缩小。
         val contentW = kbWidth + sidePad * 2f
         val widthScale = boxAvailW / contentW
         neededHeightPx = fullHeight * widthScale + outerPad * 2f
@@ -558,7 +558,7 @@ class ThemePreviewView(context: Context, attrs: AttributeSet? = null) : View(con
             canvas.drawRect(boxRect, boxBgPaint)
         }
         canvas.restore()
-        // 方框边线：1dp，底板亮度反相 40%（用户 m35056 确认）
+        // 方框边线：1dp，颜色取底板亮度反相的 40%，保证任何主题下都看得见边界
         boxBorderPaint.color = boxBorderColor(plateColor)
         boxBorderPaint.strokeWidth = dp(1f)
         canvas.drawRect(boxRect, boxBorderPaint)

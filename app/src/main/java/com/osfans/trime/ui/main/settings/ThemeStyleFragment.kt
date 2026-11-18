@@ -92,7 +92,7 @@ class ThemeStyleFragment : Fragment() {
     /** 从「按键」页跳到「配色」页时要高亮的色键；渲染一次后清空。 */
     private var highlightColorKey: String? = null
 
-    /** 配色页「详细」模式：每行多显示生效值 / 来源 / 引用键数（用户 m35620）。 */
+    /** 配色页「详细」模式：每行多显示生效值、来源与引用键数。 */
     private var showColorSource = false
     private var dirty = false
     private var lastY = 0f
@@ -125,7 +125,7 @@ class ThemeStyleFragment : Fragment() {
     )
 
     /**
-     * 页签顺序（用户 m35394 第 3 条）：键盘、配色、按键靠前，其余在后。
+     * 页签顺序：键盘、配色、按键靠前，其余在后。
      * 序号一律走 [Tabs] 常量，禁止再写裸数字——否则挪页签必错位。
      */
     private val tabs = listOf(
@@ -627,7 +627,7 @@ class ThemeStyleFragment : Fragment() {
      * 只打包覆盖层（`bamboo/theme-overrides/<主题id>.json`）里那些改过的字段。
      * 不导出完整主题：主题的 `preset_keyboards` 在加载时已被 `ThemeManager` 抽走
      * （`ThemeManager.kt:163-188`），导出的完整主题只会是个没有键盘的空壳，
-     * 放进 `themes/` 也显示不出任何东西（用户 m35737/m35738 确认后删掉该功能）。
+     * 放进 `themes/` 也不会显示出键盘，因此不提供完整主题导出。
      */
     private fun exportPatch() {
         val ov = BambooThemeOverrides.read(themeId)
@@ -651,7 +651,7 @@ class ThemeStyleFragment : Fragment() {
         exportLauncher.launch("$themeId.bamboo-patch.json")
     }
 
-    /** 选一个补丁 .json；只允许导入**与本主题同 id** 的补丁（用户 m35738：对不上号就不给导）。 */
+    /** 选一个补丁 .json；只接受 themeId 与当前主题完全一致的补丁。 */
     private fun pickPatchToImport() {
         runCatching { importLauncher.launch(arrayOf("application/json", "*/*")) }
             .onFailure { toast("无法打开文件选择器") }
@@ -761,7 +761,7 @@ class ThemeStyleFragment : Fragment() {
 
     /**
      * 重画某个页签。
-     * [keepScroll] 默认 true：改色/改数值后停在原来那一行（用户 m35281 第 2 条）；
+     * [keepScroll] 默认 true：改色/改数值后停在原来那一行；
      * 切页签、切模式、首次进入时传 false，回到顶部。
      */
     private fun renderTab(index: Int, keepScroll: Boolean = true) {
@@ -1378,7 +1378,7 @@ class ThemeStyleFragment : Fragment() {
 
     // ---------------------------------------------------------------- 单键
 
-    /** 本键盘里「自带显式底色」的键数：这些键不跟随「配色 · 按键底色」（用户 m35390）。 */
+    /** 本键盘里「自带显式底色」的键数：这些键不跟随「配色 · 按键底色」。 */
     private fun countKeyBackOverrides(): Int {
         val raw = ThemeManager.getKeyboard(keyboardName) ?: return 0
         val patched = draft.patchedKeyboard(raw)
@@ -1407,7 +1407,7 @@ class ThemeStyleFragment : Fragment() {
 
     private fun renderKeyTab() {
         content.addView(sectionTitle("按键"))
-        // 用户 m35390：这些自带底色的键不吃配色里的「按键底色」，给出可一键清除的入口
+        // 自带底色的键不跟随配色里的「按键底色」，提供一键清除入口
         val bgOverrides = countKeyBackOverrides()
         content.addView(
             hint(
@@ -1623,7 +1623,7 @@ class ThemeStyleFragment : Fragment() {
 
     /**
      * 该键在键盘 JSON 里**本来就写着**的颜色值（通常是 zmu_q 这类色键名）。
-     * 用户 m35470：调色板主题的键自己指定了底色，这里必须能读出来，
+     * 调色板主题的键会自己指定底色，这里必须能读出来，
      * 否则按键页会把「用专属变量」误显示成「继承」。
      */
     private fun ownColorValue(path: KeyPath, field: String): String? {
@@ -1648,7 +1648,7 @@ class ThemeStyleFragment : Fragment() {
         val raw = rawText(path, field)
         val patched = draft.hasField(path, field)
         val own = ownColorValue(path, field)
-        // 三层：自定义 > 键自带变量 > 跟随配色（用户 m35461 第 2 条）
+        // 三层优先级：自定义 > 键自带变量 > 跟随配色
         val custom = if (patched && !raw.isNullOrEmpty()) {
             runCatching { parseColor(raw) }.getOrNull()
         } else {
@@ -1978,7 +1978,7 @@ class ThemeStyleFragment : Fragment() {
         draft.schemeId = schemeId
         draft.keyboardName = keyboardName
         if (pressedDemo) preview.selectedKey = preview.selectedKey else preview.selectedKey = selectedKey
-        // 用户 m35281：改色后预览不重算 → 先丢掉旧键盘，逼 setDraft 走到 rebuild
+        // 先丢掉旧键盘，让 setDraft 一定走到 rebuild，否则改色后预览不会重算
         preview.invalidateKeyboard()
         preview.setDraft(draft)
         syncPreviewHeightToContent()

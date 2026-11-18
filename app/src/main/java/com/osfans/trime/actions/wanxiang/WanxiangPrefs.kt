@@ -15,7 +15,7 @@ import com.osfans.trime.BuildConfig
  *
  * 口径：
  *  * **一律以官方默认为默认值**，官方关掉的一律关（`userDict` / `contextual` 默认 false）；
- *  * 辅助码默认关闭（用户要求），只有手动打开才写进 custom；
+ *  * 辅助码默认关闭，只有手动打开才写进 custom；
  *  * 九键那一侧保持官方 schema 的值（`userDict` 默认 true），单独一组键[KEY_T9_*]。
  */
 object WanxiangPrefs {

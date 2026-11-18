@@ -88,7 +88,7 @@ object SchemaHintCard {
             matchWidth(),
         )
 
-        // 两个按钮同款（用户要求「我自己配置方案」也是一个正常选项，不做弱化）
+        // 两个按钮同款：都是正常选项，不做主次弱化
         val buttons = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             setPadding(0, dp(ctx, 10), 0, 0)
