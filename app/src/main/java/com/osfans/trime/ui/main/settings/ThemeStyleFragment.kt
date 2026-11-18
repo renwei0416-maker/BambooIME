@@ -913,7 +913,6 @@ class ThemeStyleFragment : Fragment() {
                         renderTab(Tabs.COLORS)
                         refreshPreview()
                     },
-                    rowParams(),
                 )
             }
         }
@@ -2007,7 +2006,7 @@ class ThemeStyleFragment : Fragment() {
         }
     }
 
-    /** 按键自带字号的档位滑块：拖动后把该档所有键一起写成新值。 */
+    /** 按键自带字号的档位滑块：与 sliderRow 同一套排版，拖动结束后把该档所有键一起写成新值。 */
     private fun batchNumberRow(
         title: String,
         value: Float,
@@ -2016,42 +2015,63 @@ class ThemeStyleFragment : Fragment() {
         step: Float,
         onApply: (Float) -> Unit,
     ): View {
-        val ctx = requireContext()
-        val box = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
-        val head = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
-        val label = TextView(ctx).apply {
+        val wrap = LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(6), dp(16), dp(2))
+        }
+        val head = LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        val name = TextView(requireContext()).apply {
             text = title
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
             setTextColor(textColor)
-            textSize = 15f
-            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         }
-        val shown = TextView(ctx).apply {
-            text = value.toInt().toString()
-            setTextColor(subColor)
-            textSize = 13f
+        val valView = TextView(requireContext()).apply {
+            text = fmt(value)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+            setTextColor(accentColor)
+            gravity = Gravity.END
         }
-        head.addView(label)
-        head.addView(shown)
+        head.addView(name, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        head.addView(
+            valView,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ),
+        )
+        wrap.addView(head)
+
+        val steps = (((max - min) / step).toInt()).coerceAtLeast(1)
         var pending = value
-        val bar = SeekBar(ctx).apply {
-            this.max = (((max - min) / step).toInt()).coerceAtLeast(1)
-            progress = (((value - min) / step).toInt()).coerceIn(0, this.max)
-            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                override fun onProgressChanged(bar: SeekBar?, progress: Int, fromUser: Boolean) {
-                    pending = min + progress * step
-                    shown.text = pending.toInt().toString()
-                }
-
-                override fun onStartTrackingTouch(bar: SeekBar?) = Unit
-
-                override fun onStopTrackingTouch(bar: SeekBar?) {
-                    if (pending != value) onApply(pending)
-                }
-            })
+        val bar = SeekBar(requireContext()).apply {
+            this.max = steps
+            progress = (((value - min) / step).toInt()).coerceIn(0, steps)
         }
-        box.addView(head)
-        box.addView(bar)
-        return box
+        bar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(bar: SeekBar, progress: Int, fromUser: Boolean) {
+                if (!fromUser) return
+                pending = min + progress * step
+                valView.text = fmt(pending)
+            }
+
+            override fun onStartTrackingTouch(bar: SeekBar) = Unit
+
+            override fun onStopTrackingTouch(bar: SeekBar) {
+                if (pending != value) onApply(pending)
+            }
+        })
+        wrap.addView(
+            bar,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(26)),
+        )
+        return LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(wrap, rowParams())
+            addView(divider())
+        }
     }
 
     private fun keyNumberRow(
@@ -2407,7 +2427,6 @@ class ThemeStyleFragment : Fragment() {
                         onChange()
                         renderTab(tab)
                     },
-                    rowParams(),
                 )
             }
             content.addView(
