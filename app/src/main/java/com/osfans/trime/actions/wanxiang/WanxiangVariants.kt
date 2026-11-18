@@ -21,7 +21,7 @@ object WanxiangVariants {
     const val GRAM_FILE = "wanxiang-lts-zh-hans.gram"
     const val GRAM_BYTES = 408_552_492L
 
-    /** 国内镜像（cnb.cool）——需要 token，暂时只作为「自定义地址」的示例。 */
+    /** 国内镜像根地址，供「自定义下载地址」示例使用。 */
     const val MIRROR_HINT = "https://cnb.cool/amzxyz/rime-wanxiang"
 
     data class Variant(
@@ -53,8 +53,6 @@ object WanxiangVariants {
         val base = baseUrl.ifBlank { "https://github.com/amzxyz/rime-wanxiang/releases/download/$TAG/" }
         return if (base.endsWith("/")) base + v.file else "$base/${v.file}"
     }
-
-    fun gramUrl(): String = "https://github.com/amzxyz/RIME-LMDG/releases/download/LTS/$GRAM_FILE"
 
     fun sizeText(bytes: Long): String = String.format(java.util.Locale.US, "%.1f MB", bytes / 1048576.0)
 

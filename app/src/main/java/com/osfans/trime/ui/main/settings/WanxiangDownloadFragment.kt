@@ -14,6 +14,7 @@ import androidx.preference.PreferenceScreen
 import com.osfans.trime.R
 import com.osfans.trime.actions.wanxiang.WanxiangCustom
 import com.osfans.trime.actions.wanxiang.WanxiangInstaller
+import com.osfans.trime.actions.wanxiang.WanxiangMirror
 import com.osfans.trime.actions.wanxiang.WanxiangPrefs
 import com.osfans.trime.actions.wanxiang.WanxiangVariants
 import com.osfans.trime.daemon.RimeDaemon
@@ -249,13 +250,11 @@ class WanxiangDownloadFragment : PaddingPreferenceFragment() {
             return
         }
         busy = true
-        val url = WanxiangVariants.urlOf(v)
-        Timber.d("wanxiang: download $url")
         lifecycleScope.launch {
             val zip = File(requireContext().cacheDir, v.file)
             if (zip.isFile) zip.delete()
             toast("开始下载 ${v.title}")
-            val ok = WanxiangInstaller.download(url, zip) { done, total ->
+            val ok = WanxiangMirror.downloadPack(v, zip) { done, total ->
                 if (total > 0) {
                     val pct = (done * 100 / total).toInt()
                     activity?.runOnUiThread { updateRow(v.title, "下载中 $pct%") }
@@ -326,7 +325,7 @@ class WanxiangDownloadFragment : PaddingPreferenceFragment() {
         if (gramFile().isFile) {
             "${WanxiangVariants.sizeText(gramFile().length())} · 点击可删除"
         } else {
-            "${WanxiangVariants.sizeText(WanxiangVariants.GRAM_BYTES)} · 让长句更顺，可选"
+            "约 400 MB · 让长句更顺，可选"
         }
 
     private fun confirmGram() {
@@ -360,7 +359,7 @@ class WanxiangDownloadFragment : PaddingPreferenceFragment() {
             val dest = gramFile()
             dest.parentFile?.mkdirs()
             toast("开始下载语法模型")
-            val ok = WanxiangInstaller.download(WanxiangVariants.gramUrl(), dest) { done, total ->
+            val ok = WanxiangMirror.downloadGram(dest) { done, total ->
                 if (total > 0) {
                     val pct = (done * 100 / total).toInt()
                     activity?.runOnUiThread { updateRow("下载语法模型", "下载中 $pct%") }
