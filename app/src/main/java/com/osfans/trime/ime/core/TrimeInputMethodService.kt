@@ -287,7 +287,6 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
         InputFeedbackManager.init(this)
         registerReceiver()
         super.onCreate()
-        SherpaSpeechClient.prewarmAsync(this)
         Timber.d("onCreate")
         decorView = window.window!!.decorView
         contentView = decorView.findViewById(android.R.id.content)

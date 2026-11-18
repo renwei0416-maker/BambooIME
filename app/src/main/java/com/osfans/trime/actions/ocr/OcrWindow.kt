@@ -70,6 +70,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import com.osfans.trime.util.memory.IdleReclaimer
 import timber.log.Timber
 
 /**
@@ -219,6 +220,10 @@ class OcrWindow : BoardWindow.NoBarBoardWindow() {
         /** 全局唯一实例：与手写板同样的理由（保持状态、避免重复占窗口）。 */
         val instance: OcrWindow by lazy { OcrWindow() }
 
+        /** 拍照面板当前是否挂上；空闲释放器据此判断能否释放识别模型。 */
+        @Volatile
+        var isPanelVisible: Boolean = false
+
         /** 主题里用的固定动作名。 */
         /** 相册图片解码上限（长边像素）：再大对模型没帮助，只会吃内存。 */
         private const val MAX_GALLERY_SIDE = 2000
@@ -316,6 +321,8 @@ class OcrWindow : BoardWindow.NoBarBoardWindow() {
 
     override fun onAttached() {
         BambooLog.ocr.d("ocr", "onAttached")
+        isPanelVisible = true
+        IdleReclaimer.touch("ocr")
         // 只要面板被挂上就算会话开着：切 App、换输入框回来后靠这个把面板接回来
         markSessionActive()
         // 面板接管后卡片就不再是「当前状态」：清掉留底，避免切 App 时旧卡片又冒出来
@@ -353,6 +360,7 @@ class OcrWindow : BoardWindow.NoBarBoardWindow() {
 
     override fun onDetached() {
         BambooLog.ocr.d("ocr", "onDetached")
+        isPanelVisible = false
         runCatching { service.currentInputView?.setInputBarSuppressed(false) }
             .onFailure { Timber.w(it, "ocr: restore input bar failed") }
         stability.reset()

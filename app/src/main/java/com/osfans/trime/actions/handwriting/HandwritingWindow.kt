@@ -49,6 +49,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.osfans.trime.util.memory.IdleReclaimer
 import timber.log.Timber
 
 /**
@@ -178,6 +179,10 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
         /** 是否停留在手写板（只有点「返回」才置 false）。 */
         @Volatile
         var active: Boolean = false
+
+        /** 手写板当前是否挂在窗口上；空闲释放器据此判断能否释放模型。 */
+        @Volatile
+        var isBoardVisible: Boolean = false
 
         /** 主题弹窗里用的固定标识。 */
         const val TOKEN = "Handwriting"
@@ -1802,10 +1807,13 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
 
     override fun onAttached() {
         BambooLog.hw.d("life", "onAttached active=$active")
+        isBoardVisible = true
+        IdleReclaimer.touch("handwriting")
         ensureModel()
     }
 
     override fun onDetached() {
+        isBoardVisible = false
         hideGroupPopup()
         // 不管从哪条路离开（返回键 / 切输入法 / 换输入框 / 打开剪贴板等其它面板），
         // 都算这一次手写结束：清候选、清笔迹，避免下次进来接着拼。

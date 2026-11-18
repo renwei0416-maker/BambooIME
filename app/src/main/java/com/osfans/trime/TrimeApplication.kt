@@ -29,6 +29,10 @@ import com.osfans.trime.actions.bamboo.BambooPrefs
 import com.osfans.trime.data.theme.ThemeManager
 import com.osfans.trime.ime.clipboard.ScreenshotClipboardWatcher
 import com.osfans.trime.link.SherpaSpeechClient
+import com.osfans.trime.actions.ocr.OcrRecognizer
+import com.osfans.trime.actions.handwriting.HandwritingRecognizer
+import com.osfans.trime.data.prefs.MemoryPrefs
+import com.osfans.trime.util.memory.IdleReclaimer
 import com.osfans.trime.receiver.RimeIntentReceiver
 import com.osfans.trime.ui.main.LogActivity
 import com.osfans.trime.util.CrashLogExporter
@@ -134,6 +138,9 @@ class TrimeApplication : Application() {
             initScreenshotWatcher(sharedPreferences)
             initSyncClipboardManager(sharedPreferences)
             registerBroadcastReceiver()
+            MemoryPrefs.init(applicationContext)
+            registerIdleReclaimers()
+            registerScreenOffReceiver()
             startWorkManager()
             coroutineScope.launch {
                 // 正式包默认不产生任何日志文件；只有用户主动打开「日志落盘」才写。
@@ -146,6 +153,61 @@ class TrimeApplication : Application() {
             e.fillInStackTrace()
             return
         }
+    }
+
+    /**
+     * 注册三个可空闲释放的模型：语音、手写、拍照识字。
+     *
+     * 释放只清 native 会话，模型文件仍在用户目录；下一次使用由各模块自行懒加载。
+     */
+    private fun registerIdleReclaimers() {
+        IdleReclaimer.register(
+            IdleReclaimer.Entry(
+                name = "voice",
+                label = "语音",
+                isBusy = { SherpaSpeechClient.isHolding() },
+                release = { SherpaSpeechClient.releaseEngineForMemoryPressure() },
+                pinned = { MemoryPrefs.voicePinned },
+            ),
+        )
+        IdleReclaimer.register(
+            IdleReclaimer.Entry(
+                name = "handwriting",
+                label = "手写",
+                isBusy = { com.osfans.trime.actions.handwriting.HandwritingWindow.isBoardVisible },
+                release = { HandwritingRecognizer.release() },
+            ),
+        )
+        IdleReclaimer.register(
+            IdleReclaimer.Entry(
+                name = "ocr",
+                label = "识图",
+                isBusy = { com.osfans.trime.actions.ocr.OcrWindow.isPanelVisible },
+                release = { OcrRecognizer.release() },
+            ),
+        )
+        IdleReclaimer.start()
+    }
+
+    /** 息屏时用户不在打字，把三个模型都放掉。 */
+    private fun registerScreenOffReceiver() {
+        ContextCompat.registerReceiver(
+            this,
+            object : android.content.BroadcastReceiver() {
+                override fun onReceive(context: android.content.Context?, intent: android.content.Intent?) {
+                    if (intent?.action == Intent.ACTION_SCREEN_OFF) {
+                        IdleReclaimer.releaseAll()
+                    }
+                }
+            },
+            IntentFilter(Intent.ACTION_SCREEN_OFF),
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
+    }
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        IdleReclaimer.onTrimMemory(level)
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {

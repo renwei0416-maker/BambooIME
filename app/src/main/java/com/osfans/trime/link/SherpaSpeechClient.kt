@@ -35,6 +35,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.osfans.trime.util.memory.IdleReclaimer
 import timber.log.Timber
 import java.lang.ref.WeakReference
 import java.nio.ByteBuffer
@@ -276,6 +277,7 @@ object SherpaSpeechClient {
 
     fun startHoldSession(service: TrimeInputMethodService) {
         if (!isHolding.compareAndSet(false, true)) return
+        IdleReclaimer.touch("voice")
         invokeHoldingChanged(true)
 
         serviceRef = WeakReference(service)
