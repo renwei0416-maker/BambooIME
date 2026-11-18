@@ -9,6 +9,8 @@ import android.content.Context
 import com.osfans.trime.util.BambooLog
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.StateListDrawable
+import android.content.res.ColorStateList
 import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.StaticLayout
@@ -1159,8 +1161,38 @@ open class PreeditUi(
                         text = token
                         textSize = bodyTextSize()
                         typeface = FontManager.getTypeface()
-                        setTextColor(tipColor)
-                        setPadding(ctx.dp(1), ctx.dp(2), ctx.dp(1), ctx.dp(2))
+                        setPadding(ctx.dp(6), ctx.dp(3), ctx.dp(6), ctx.dp(3))
+                        setTextColor(
+                            ColorStateList(
+                                arrayOf(
+                                    intArrayOf(-android.R.attr.state_pressed),
+                                    intArrayOf(android.R.attr.state_pressed),
+                                ),
+                                intArrayOf(
+                                    ColorManager.getColor("key_text_color"),
+                                    ColorManager.getColor("hilited_key_text_color"),
+                                ),
+                            ),
+                        )
+                        background =
+                            StateListDrawable().apply {
+                                addState(
+                                    intArrayOf(-android.R.attr.state_pressed),
+                                    ColorManager.getDecorDrawable(
+                                        "key_back_color",
+                                        cornerRadius = ctx.dp(theme.generalStyle.roundCorner),
+                                    ),
+                                )
+                                addState(
+                                    intArrayOf(android.R.attr.state_pressed),
+                                    ColorManager.getDecorDrawable(
+                                        "hilited_key_back_color",
+                                        cornerRadius = ctx.dp(theme.generalStyle.roundCorner),
+                                    ),
+                                )
+                            }
+                        clipToOutline = true
+                        outlineProvider = ViewOutlineProvider.BACKGROUND
                         tag = token
                     }
                 row.addView(
@@ -1168,9 +1200,14 @@ open class PreeditUi(
                     LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.WRAP_CONTENT,
                         ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ),
+                    ).apply {
+                        leftMargin = ctx.dp(2)
+                        rightMargin = ctx.dp(2)
+                        topMargin = ctx.dp(2)
+                        bottomMargin = ctx.dp(2)
+                    },
                 )
-                used += w
+                used += w + ctx.dp(4)
             }
             flush()
             return root
@@ -1234,6 +1271,8 @@ open class PreeditUi(
         private var entries: List<TipEntry> = emptyList()
         private var snapshot = 0
         private var expandedIndex = -1
+        /** 「全部上屏」已经提交的字符数（>0 表示可以撤回）。 */
+        private var committedLen = 0
         private var scrollBeforeExpand = 0
 
         /** 上一次测出的高度，只用来避免日志刷屏。 */
@@ -1401,7 +1440,7 @@ open class PreeditUi(
          */
         fun refresh(active: Boolean, clear: Boolean = false) {
             // 展开态自持：点词上屏会清空组合，此时不允许刷新把整块收掉。
-            if (expandedIndex >= 0 && !clear) return
+            if (expandedIndex >= 0 && (active || !clear)) return
             if (!active) {
                 // 「真的没有候选了」和「只是窗口暂时不可见」必须分开：
                 // 前者要连指纹一起清（否则重新打回同样的编码会命中淡出的旧指纹，
@@ -1755,11 +1794,12 @@ open class PreeditUi(
                     // 不看按压时长，也不要求手指完全不动（此前就是被这两条筛掉的）。
                     if (expandedIndex >= 0 && !moved) {
                         if (hitCommitAllButton(ev.rawX, ev.rawY)) {
-                            entries.getOrNull(expandedIndex)?.let { commitPayload(it.detail) }
+                            onCommitAllClick()
                             return true
                         }
                         val token = findTokenAt(column, ev.rawX, ev.rawY)
                         if (token != null) {
+                            resetCommitAll()
                             (token.tag as? String)?.let { commitPayload(it) }
                             return true
                         }
@@ -1842,6 +1882,38 @@ open class PreeditUi(
                 }
             }
             return super.dispatchTouchEvent(ev)
+        }
+
+        /**
+         * 「全部上屏 / 撤回上屏」两态。
+         *
+         * 第一次点击把当前条目的整段正文上屏并记住字符数；再次点击按该字符数删回去。
+         * 换条目、收起、点单词上屏都会复位，避免删掉用户后面输入的内容。
+         */
+        private fun onCommitAllClick() {
+            val service = TrimeInputMethodService.current ?: return
+            if (committedLen > 0) {
+                val n = committedLen
+                committedLen = 0
+                commitAllButton.text = COMMIT_ALL_LABEL
+                service.postKeyJob {
+                    runCatching { service.currentInputConnection?.deleteSurroundingText(n, 0) }
+                }
+                return
+            }
+            val item = entries.getOrNull(expandedIndex) ?: return
+            val payload = item.detail
+            if (payload.isEmpty()) return
+            committedLen = payload.length
+            commitAllButton.text = COMMIT_ALL_UNDO_LABEL
+            commitPayload(payload)
+        }
+
+        /** 复位「全部上屏」按钮；已经上屏的内容不动。 */
+        private fun resetCommitAll() {
+            if (committedLen == 0) return
+            committedLen = 0
+            commitAllButton.text = COMMIT_ALL_LABEL
         }
 
         private fun hitCommitAllButton(rawX: Float, rawY: Float): Boolean {
@@ -2012,6 +2084,10 @@ open class PreeditUi(
                 MeasureSpec.makeMeasureSpec(ctx.dp(COLLAPSE_W_DP), MeasureSpec.EXACTLY),
                 MeasureSpec.makeMeasureSpec(ctx.dp(COLLAPSE_H_DP), MeasureSpec.EXACTLY),
             )
+            commitAllButton.measure(
+                MeasureSpec.makeMeasureSpec(ctx.dp(COMMIT_ALL_W_DP), MeasureSpec.EXACTLY),
+                MeasureSpec.makeMeasureSpec(ctx.dp(COLLAPSE_H_DP), MeasureSpec.EXACTLY),
+            )
             setMeasuredDimension(w, h)
             if (h != lastMeasured) {
                 lastMeasured = h
@@ -2023,6 +2099,7 @@ open class PreeditUi(
         }
 
         private fun expand(index: Int) {
+            resetCommitAll()
             val item = entries.getOrNull(index) ?: return
             if (entryExpandable[index] != true) {
                 commitPayload(item.payload)
@@ -2084,6 +2161,7 @@ open class PreeditUi(
         }
 
         private fun collapse() {
+            resetCommitAll()
             expandedIndex = -1
             collapseButton.visibility = View.GONE
             render()
@@ -2168,6 +2246,7 @@ open class PreeditUi(
         private var buildLogged = false
         private const val TAP_SLOP_DP = 12
         private const val COMMIT_ALL_LABEL = "全部上屏"
+    private const val COMMIT_ALL_UNDO_LABEL = "撤回上屏"
     private const val COMMIT_ALL_W_DP = 74
     private const val COLLAPSE_W_DP = 60
         private const val COLLAPSE_H_DP = 26
