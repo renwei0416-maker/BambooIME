@@ -33,6 +33,7 @@ import com.osfans.trime.data.theme.BambooThemeOverrides
 import com.osfans.trime.data.theme.Theme
 import com.osfans.trime.data.theme.ThemeManager
 import com.osfans.trime.data.theme.ThemeResourceResolver
+import com.osfans.trime.data.theme.model.TextKeyboard
 import com.osfans.trime.data.theme.model.ColorScheme
 import com.osfans.trime.data.theme.model.GeneralStyle
 import com.osfans.trime.ui.settings.theme.ColorPickerDialog
@@ -1437,59 +1438,102 @@ class ThemeStyleFragment : Fragment() {
 
     // ---------------------------------------------------------------- 单键
 
-    /** 本键盘里「自带显式底色」的键数：这些键不跟随「配色 · 按键底色」。 */
-    private fun countKeyBackOverrides(): Int {
-        val raw = ThemeManager.getKeyboard(keyboardName) ?: return 0
-        val patched = draft.patchedKeyboard(raw)
-        return patched.rows.sumOf { row -> row.keys.count { !it.keyBackColor.isNullOrEmpty() } }
+    /** 可批量解除的按键级颜色字段：下标 -> (field, 中文名)。 */
+    private val KEY_COLOR_FIELDS = listOf(
+        "key_back_color" to "底色",
+        "key_text_color" to "文字色",
+        "key_symbol_color" to "符号色",
+        "key_border_color" to "描边色",
+        "hilited_key_back_color" to "按下底色",
+        "hilited_key_text_color" to "按下文字色",
+        "hilited_key_symbol_color" to "按下符号色",
+    )
+
+    /** 读一个键在某颜色字段上的自带值；没写就返回 null。 */
+    private fun ownKeyColorOf(k: TextKeyboard.TextKey, field: String): String? {
+        val v =
+            when (field) {
+                "key_back_color" -> k.keyBackColor
+                "key_text_color" -> k.keyTextColor
+                "key_symbol_color" -> k.keySymbolColor
+                "key_border_color" -> k.keyBorderColor
+                "hilited_key_back_color" -> k.hlKeyBackColor
+                "hilited_key_text_color" -> k.hlKeyTextColor
+                "hilited_key_symbol_color" -> k.hlKeySymbolColor
+                else -> null
+            }
+        return v?.takeIf { it.isNotEmpty() }
     }
 
-    /** 把本键盘所有键的 `key_back_color` 删掉，让它们统一跟随配色的按键底色。 */
-    private fun clearAllKeyBackOverrides() {
+    /** 本键盘里写了该颜色字段的键有几个。 */
+    private fun countKeyFieldOverrides(field: String): Int {
+        val raw = ThemeManager.getKeyboard(keyboardName) ?: return 0
+        return raw.rows.sumOf { row -> row.keys.count { ownKeyColorOf(it, field) != null } }
+    }
+
+    /** 删掉这些键的该颜色字段，让它们回到「跟随配色」。 */
+    private fun clearKeyFieldOverrides(field: String): Int {
+        val raw = ThemeManager.getKeyboard(keyboardName) ?: return 0
         pushUndo()
-        val raw = ThemeManager.getKeyboard(keyboardName)
         var cleared = 0
-        if (raw != null) {
-            raw.rows.forEachIndexed { r, row ->
-                row.keys.forEachIndexed { c, key ->
-                    if (!key.keyBackColor.isNullOrEmpty()) {
-                        draft.setField(KeyPath(keyboardName, r, c), "key_back_color", null)
-                        cleared++
-                    }
+        raw.rows.forEachIndexed { r, row ->
+            row.keys.forEachIndexed { c, key ->
+                if (ownKeyColorOf(key, field) != null) {
+                    draft.setField(KeyPath(keyboardName, r, c), field, null)
+                    cleared++
                 }
             }
         }
-        onChange()
-        renderTab(Tabs.KEY)
-        toast("已清除 $cleared 个键的自定义底色，改为跟随配色")
+        if (cleared > 0) onChange()
+        return cleared
     }
 
+    /** 选一个颜色字段批量解除自带的键值；入参为 (field, 键数)。 */
+    private fun showDecoupleDialog(list: List<Pair<String, Int>>) {
+        val labels =
+            (
+                list.map { (field, count) -> "${KEY_COLOR_FIELDS.first { it.first == field }.second} · $count 处" } +
+                    "全部一起解除 · ${list.sumOf { it.second }} 处"
+            ).toTypedArray()
+        AlertDialog.Builder(requireContext())
+            .setTitle("解除哪些颜色？")
+            .setMessage("解除后这些键跟随「配色」里对应的项，改一次全部一起变；可用「撤销」恢复。")
+            .setItems(labels) { _, which ->
+                val cleared =
+                    if (which < list.size) {
+                        clearKeyFieldOverrides(list[which].first)
+                    } else {
+                        list.sumOf { (field, _) -> clearKeyFieldOverrides(field) }
+                    }
+                renderTab(Tabs.KEY)
+                toast("已解除 $cleared 处，改为跟随配色")
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    
     private fun renderKeyTab() {
         content.addView(sectionTitle("按键"))
-        // 自带底色的键不跟随配色里的「按键底色」，提供一键清除入口
-        val bgOverrides = countKeyBackOverrides()
+        // 键自带的颜色值会盖过配色里的同名项，这里提供批量解除的入口
+        val fieldOverrides =
+            KEY_COLOR_FIELDS
+                .map { it.first to countKeyFieldOverrides(it.first) }
+                .filter { it.second > 0 }
         content.addView(
             hint(
-                if (bgOverrides > 0) {
-                    "本键盘有 $bgOverrides 个键自带显式底色（调色板类主题的字母键就是），" +
-                        "它们不跟随「配色 · 按键底色」。"
+                if (fieldOverrides.isNotEmpty()) {
+                    "本键盘有 ${fieldOverrides.sumOf { it.second }} 处按键自带显式颜色（调色板类主题的字母键就是），" +
+                        "它们不跟随配色里的同名项。"
                 } else {
-                    "本键盘所有键都跟随「配色 · 按键底色」，改一次全部一起变。"
+                    "本键盘所有键都跟随配色，改一次全部一起变。"
                 },
             ),
         )
-        if (bgOverrides > 0) {
+        if (fieldOverrides.isNotEmpty()) {
             content.addView(
-                plainRow("清除全部自定义底色（改为跟随配色） · $bgOverrides 个键") {
-                    AlertDialog.Builder(requireContext())
-                        .setTitle("清除 $bgOverrides 个键的自定义底色？")
-                        .setMessage(
-                            "清除后这些键统一跟随「配色 · 按键底色」，改一次全部一起变；\n" +
-                                "想单独调某个键，回到本页给它单独设色即可。可用「撤销」恢复。",
-                        )
-                        .setPositiveButton("清除") { _, _ -> clearAllKeyBackOverrides() }
-                        .setNegativeButton("取消", null)
-                        .show()
+                plainRow("批量解除按键自带颜色 · 共 ${fieldOverrides.sumOf { it.second }} 处") {
+                    showDecoupleDialog(fieldOverrides)
                 },
                 rowParams(),
             )
