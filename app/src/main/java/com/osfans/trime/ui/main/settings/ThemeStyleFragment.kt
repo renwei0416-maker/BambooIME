@@ -1438,7 +1438,7 @@ class ThemeStyleFragment : Fragment() {
 
     // ---------------------------------------------------------------- 单键
 
-    /** 可批量解除的按键级颜色字段：下标 -> (field, 中文名)。 */
+    /** 可批量解除的按键级颜色字段：field -> 中文名。 */
     private val KEY_COLOR_FIELDS = listOf(
         "key_back_color" to "底色",
         "key_text_color" to "文字色",
@@ -1465,20 +1465,29 @@ class ThemeStyleFragment : Fragment() {
         return v?.takeIf { it.isNotEmpty() }
     }
 
-    /** 本键盘里写了该颜色字段的键有几个。 */
-    private fun countKeyFieldOverrides(field: String): Int {
+    /** 字母键的调色板引用（zmu_a…zmu_z）。 */
+    private fun isLetterPaletteRef(v: String?): Boolean = v != null && v.startsWith("zmu_")
+
+    /** 本键盘里写了该颜色字段的键有几个；[keepLetters] 为真时跳过字母键。 */
+    private fun countKeyFieldOverrides(field: String, keepLetters: Boolean = false): Int {
         val raw = ThemeManager.getKeyboard(keyboardName) ?: return 0
-        return raw.rows.sumOf { row -> row.keys.count { ownKeyColorOf(it, field) != null } }
+        return raw.rows.sumOf { row ->
+            row.keys.count { k ->
+                val v = ownKeyColorOf(k, field)
+                v != null && !(keepLetters && isLetterPaletteRef(v))
+            }
+        }
     }
 
     /** 删掉这些键的该颜色字段，让它们回到「跟随配色」。 */
-    private fun clearKeyFieldOverrides(field: String): Int {
+    private fun clearKeyFieldOverrides(field: String, keepLetters: Boolean = false): Int {
         val raw = ThemeManager.getKeyboard(keyboardName) ?: return 0
         pushUndo()
         var cleared = 0
         raw.rows.forEachIndexed { r, row ->
             row.keys.forEachIndexed { c, key ->
-                if (ownKeyColorOf(key, field) != null) {
+                val v = ownKeyColorOf(key, field)
+                if (v != null && !(keepLetters && isLetterPaletteRef(v))) {
                     draft.setField(KeyPath(keyboardName, r, c), field, null)
                     cleared++
                 }
@@ -1488,22 +1497,40 @@ class ThemeStyleFragment : Fragment() {
         return cleared
     }
 
-    /** 选一个颜色字段批量解除自带的键值；入参为 (field, 键数)。 */
-    private fun showDecoupleDialog(list: List<Pair<String, Int>>) {
+    /** 批量解除按键自带颜色；底色额外提供「保留字母键」一档。 */
+    private fun showDecoupleDialog() {
+        val items = ArrayList<Triple<String, Boolean, Int>>()
+        KEY_COLOR_FIELDS.forEach { (field, _) ->
+            val all = countKeyFieldOverrides(field)
+            if (all == 0) return@forEach
+            if (field == "key_back_color") {
+                val kept = countKeyFieldOverrides(field, keepLetters = true)
+                if (kept in 1 until all) items.add(Triple(field, true, kept))
+                items.add(Triple(field, false, all))
+            } else {
+                items.add(Triple(field, false, all))
+            }
+        }
+        if (items.isEmpty()) {
+            toast("本键盘没有自带的按键颜色")
+            return
+        }
         val labels =
             (
-                list.map { (field, count) -> "${KEY_COLOR_FIELDS.first { it.first == field }.second} · $count 处" } +
-                    "全部一起解除 · ${list.sumOf { it.second }} 处"
+                items.map { (field, keepLetters, count) ->
+                    val name = KEY_COLOR_FIELDS.first { it.first == field }.second
+                    if (keepLetters) "$name（保留字母键） · $count 处" else "$name · $count 处"
+                } + "全部一起解除 · ${items.sumOf { it.third }} 处"
             ).toTypedArray()
         AlertDialog.Builder(requireContext())
-            .setTitle("解除哪些颜色？")
-            .setMessage("解除后这些键跟随「配色」里对应的项，改一次全部一起变；可用「撤销」恢复。")
+            .setTitle("解除哪些颜色？（解除后跟随配色，可撤销）")
             .setItems(labels) { _, which ->
                 val cleared =
-                    if (which < list.size) {
-                        clearKeyFieldOverrides(list[which].first)
+                    if (which < items.size) {
+                        val (field, keepLetters, _) = items[which]
+                        clearKeyFieldOverrides(field, keepLetters)
                     } else {
-                        list.sumOf { (field, _) -> clearKeyFieldOverrides(field) }
+                        items.sumOf { (field, keepLetters, _) -> clearKeyFieldOverrides(field, keepLetters) }
                     }
                 renderTab(Tabs.KEY)
                 toast("已解除 $cleared 处，改为跟随配色")
@@ -1512,7 +1539,6 @@ class ThemeStyleFragment : Fragment() {
             .show()
     }
 
-    
     private fun renderKeyTab() {
         content.addView(sectionTitle("按键"))
         // 键自带的颜色值会盖过配色里的同名项，这里提供批量解除的入口
@@ -1533,7 +1559,7 @@ class ThemeStyleFragment : Fragment() {
         if (fieldOverrides.isNotEmpty()) {
             content.addView(
                 plainRow("批量解除按键自带颜色 · 共 ${fieldOverrides.sumOf { it.second }} 处") {
-                    showDecoupleDialog(fieldOverrides)
+                    showDecoupleDialog()
                 },
                 rowParams(),
             )
