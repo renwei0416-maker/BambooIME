@@ -27,6 +27,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
 import com.osfans.trime.R
+import com.osfans.trime.BuildConfig
 import com.osfans.trime.data.prefs.ThemeStylePrefs
 import com.osfans.trime.data.theme.BambooThemeOverrides
 import com.osfans.trime.data.theme.Theme
@@ -38,7 +39,6 @@ import com.osfans.trime.ui.settings.theme.ColorPickerDialog
 import com.osfans.trime.ui.settings.theme.ThemeDraft
 import com.osfans.trime.ui.settings.theme.KeyPath
 import com.osfans.trime.ui.settings.theme.ThemePreviewView
-import com.osfans.trime.ui.settings.theme.ThemeLuaExporter
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -101,14 +101,21 @@ class ThemeStyleFragment : Fragment() {
     private var previewAutoHeight = true
     private val undoStack = ArrayDeque<Snapshot>()
 
-    private var exportLuaContent: String = ""
+    private var exportJsonContent: String = ""
     private val exportLauncher = registerForActivityResult(
-        ActivityResultContracts.CreateDocument("text/x-lua"),
+        ActivityResultContracts.CreateDocument("application/json"),
     ) { uri ->
         if (uri != null) {
-            val ok = writeToUri(uri, exportLuaContent)
-            toast(if (ok) "已导出主题" else "导出失败")
+            val ok = writeToUri(uri, exportJsonContent)
+            toast(if (ok) "已导出补丁" else "导出失败")
         }
+    }
+
+    /** 导入补丁：选文件后走 [applyPatchFrom]。 */
+    private val importLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri != null) applyPatchFrom(uri)
     }
 
     private data class Snapshot(
@@ -583,13 +590,14 @@ class ThemeStyleFragment : Fragment() {
     }
 
     private fun showMoreMenu() {
-        val items = arrayOf("恢复主题出厂样式", "导出为完整主题文件")
+        val items = arrayOf("恢复主题出厂样式", "导出我的改动（.json）", "导入我的改动（.json）")
         android.app.AlertDialog.Builder(requireContext())
             .setTitle("更多")
             .setItems(items) { _, which ->
                 when (which) {
                     0 -> confirmResetFactory()
-                    else -> exportTheme()
+                    1 -> exportPatch()
+                    else -> pickPatchToImport()
                 }
             }
             .show()
@@ -613,21 +621,91 @@ class ThemeStyleFragment : Fragment() {
             .show()
     }
 
-    /** 把「基础主题 + 草稿覆盖」合并成 effective theme，导出为自包含 .lua。 */
-    private fun exportTheme() {
+    /**
+     * 导出「我的改动」为补丁 .json。
+     *
+     * 只打包覆盖层（`bamboo/theme-overrides/<主题id>.json`）里那些改过的字段。
+     * 不导出完整主题：主题的 `preset_keyboards` 在加载时已被 `ThemeManager` 抽走
+     * （`ThemeManager.kt:163-188`），导出的完整主题只会是个没有键盘的空壳，
+     * 放进 `themes/` 也显示不出任何东西（用户 m35737/m35738 确认后删掉该功能）。
+     */
+    private fun exportPatch() {
+        val ov = BambooThemeOverrides.read(themeId)
+        if (ov == null || ov.isEmpty()) {
+            toast("这个主题还没有任何改动，没有可导出的内容")
+            return
+        }
         val active = ThemeManager.activeTheme
-        val effective = active.copy(
-            generalStyle = style,
-            colorSchemes = schemes,
-            presetKeyboards = active.presetKeyboards.mapValues { (name, kb) ->
-                if (name == keyboardName) draft.patchedKeyboard(kb) else kb
-            },
-        )
-        val lua = ThemeLuaExporter.buildLua(effective)
-        val suggested = (effective.name.takeIf { it.isNotBlank() } ?: themeId) + ".lua"
-        exportLuaContent = lua
-        exportLauncher.launch(suggested)
+        val stamp = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US)
+            .format(java.util.Date())
+        val wrapper = buildJsonObject {
+            put("_format", JsonPrimitive("bamboo-theme-patch"))
+            put("version", JsonPrimitive(1))
+            put("themeId", JsonPrimitive(themeId))
+            put("themeName", JsonPrimitive(active.name))
+            put("createdAt", JsonPrimitive(stamp))
+            put("appVersion", JsonPrimitive(BuildConfig.BUILD_VERSION_NAME))
+            put("patch", ov)
+        }
+        exportJsonContent = Theme.json.encodeToString(JsonElement.serializer(), wrapper)
+        exportLauncher.launch("$themeId.bamboo-patch.json")
     }
+
+    /** 选一个补丁 .json；只允许导入**与本主题同 id** 的补丁（用户 m35738：对不上号就不给导）。 */
+    private fun pickPatchToImport() {
+        runCatching { importLauncher.launch(arrayOf("application/json", "*/*")) }
+            .onFailure { toast("无法打开文件选择器") }
+    }
+
+    /** 校验格式 → 校验主题 id 完全一致 → 与已有改动深合并 → 重载主题。 */
+    private fun applyPatchFrom(uri: Uri) {
+        val text = runCatching {
+            requireContext().contentResolver.openInputStream(uri)?.use {
+                it.readBytes().toString(Charsets.UTF_8)
+            }
+        }.getOrNull()
+        if (text.isNullOrBlank()) {
+            toast("读取失败")
+            return
+        }
+        val root = runCatching { Theme.json.parseToJsonElement(text) as? JsonObject }.getOrNull()
+        if (root == null) {
+            toast("不是有效的 JSON 文件")
+            return
+        }
+        if (jstr(root["_format"]) != "bamboo-theme-patch") {
+            toast("不是本编辑器导出的补丁文件")
+            return
+        }
+        val fileTheme = jstr(root["themeId"])
+        if (fileTheme != themeId) {
+            val fileThemeName = jstr(root["themeName"]).ifBlank { fileTheme }
+            toast("这是「$fileThemeName」的补丁，与当前主题「${ThemeManager.activeTheme.name}」不一致，已取消")
+            return
+        }
+        val patch = root["patch"] as? JsonObject
+        if (patch == null || patch.isEmpty()) {
+            toast("补丁里没有可用的内容")
+            return
+        }
+        val existing = BambooThemeOverrides.read(themeId) ?: JsonObject(emptyMap())
+        val merged = BambooThemeOverrides.merge(existing, patch)
+        if (!BambooThemeOverrides.write(themeId, merged)) {
+            toast("写入失败")
+            return
+        }
+        ThemeManager.selectTheme(themeId, forceReload = true)
+        loadState()
+        rebuildChips()
+        renderTab(tab, keepScroll = false)
+        refreshPreview()
+        updateActionState()
+        toast("已导入并应用")
+    }
+
+    /** 从 JSON 里安全取字符串（非字符串/缺省判空）。 */
+    private fun jstr(e: JsonElement?): String =
+        (e as? JsonPrimitive)?.takeIf { it.isString }?.content.orEmpty()
 
     private fun writeToUri(uri: Uri, content: String): Boolean = runCatching {
         val out = requireContext().contentResolver.openOutputStream(uri) ?: return false
