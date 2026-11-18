@@ -40,6 +40,7 @@ import com.osfans.trime.core.CompositionProto
 import com.osfans.trime.data.theme.ColorManager
 import com.osfans.trime.data.theme.FontManager
 import com.osfans.trime.data.theme.Theme
+import com.osfans.trime.ime.segments.PieceTokenizer
 import com.osfans.trime.ime.core.TrimeInputMethodService
 import splitties.dimensions.dp
 import splitties.views.dsl.core.Ui
@@ -1101,6 +1102,104 @@ open class PreeditUi(
                 )
             }
 
+        /** 展开态：按分词结果把正文排成可点的词块，顺序与原文一致。 */
+        private fun makeTokenDetail(item: TipEntry): View {
+            val avail = entryAvailWidth()
+            val paint = textPaint()
+            val tokens =
+                runCatching { PieceTokenizer.split(item.detail) }
+                    .getOrDefault(listOf(item.detail))
+            val root =
+                LinearLayout(ctx).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(sidePadPx(), ctx.dp(2), sidePadPx(), ctx.dp(2))
+                }
+            var row =
+                LinearLayout(ctx).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                }
+            var used = 0
+
+            fun flush() {
+                if (row.childCount > 0) {
+                    root.addView(
+                        row,
+                        LinearLayout.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.WRAP_CONTENT,
+                        ),
+                    )
+                }
+                row =
+                    LinearLayout(ctx).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER_VERTICAL
+                    }
+                used = 0
+            }
+
+            for (token in tokens) {
+                if (token.any { it == '\n' || it == '\r' }) {
+                    flush()
+                    continue
+                }
+                val w = paint.measureText(token).toInt()
+                if (token.isBlank()) {
+                    val gap = w.coerceAtLeast(ctx.dp(3))
+                    if (used + gap <= avail) {
+                        row.addView(View(ctx), LinearLayout.LayoutParams(gap, 1))
+                        used += gap
+                    }
+                    continue
+                }
+                if (used > 0 && used + w > avail) flush()
+                val cell =
+                    TextView(ctx).apply {
+                        text = token
+                        textSize = bodyTextSize()
+                        typeface = FontManager.getTypeface()
+                        setTextColor(tipColor)
+                        setPadding(ctx.dp(1), ctx.dp(2), ctx.dp(1), ctx.dp(2))
+                        tag = token
+                    }
+                row.addView(
+                    cell,
+                    LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ),
+                )
+                used += w
+            }
+            flush()
+            return root
+        }
+
+        /** 找出坐标落在哪个词块上；空白与行容器返回 null。 */
+        private fun findTokenAt(
+            parent: ViewGroup,
+            rawX: Float,
+            rawY: Float,
+        ): TextView? {
+            val loc = IntArray(2)
+            for (i in parent.childCount - 1 downTo 0) {
+                val child = parent.getChildAt(i)
+                if (child.visibility != View.VISIBLE) continue
+                child.getLocationOnScreen(loc)
+                val inside =
+                    rawX >= loc[0] && rawX <= loc[0] + child.width &&
+                        rawY >= loc[1] && rawY <= loc[1] + child.height
+                if (!inside) continue
+                if (child is ViewGroup) {
+                    findTokenAt(child, rawX, rawY)?.let { return it }
+                } else if (child is TextView && child.tag is String) {
+                    return child
+                }
+            }
+            return null
+        }
+
         /** 固定在右上角的「收起」：不参与滚动，只在展开态出现。 */
         val collapseButton: TextView =
             TextView(ctx).apply {
@@ -1115,6 +1214,21 @@ open class PreeditUi(
                         cornerRadius = ctx.dp(6).toFloat()
                     }
                 setOnClickListener { collapse() }
+            }
+
+        /** 展开态右上角「全部上屏」，位于「收起」左侧。 */
+        val commitAllButton: TextView =
+            TextView(ctx).apply {
+                text = COMMIT_ALL_LABEL
+                textSize = COLLAPSE_TEXT_SP
+                setTextColor(textColor)
+                gravity = Gravity.CENTER
+                visibility = View.GONE
+                background =
+                    GradientDrawable().apply {
+                        setColor(withAlpha(textColor, BUTTON_BG_ALPHA))
+                        cornerRadius = ctx.dp(6).toFloat()
+                    }
             }
 
         private var entries: List<TipEntry> = emptyList()
@@ -1141,6 +1255,13 @@ open class PreeditUi(
                 LayoutParams(ctx.dp(COLLAPSE_W_DP), ctx.dp(COLLAPSE_H_DP), Gravity.TOP or Gravity.END).apply {
                     topMargin = ctx.dp(4)
                     rightMargin = ctx.dp(8)
+                },
+            )
+            addView(
+                commitAllButton,
+                LayoutParams(ctx.dp(COMMIT_ALL_W_DP), ctx.dp(COLLAPSE_H_DP), Gravity.TOP or Gravity.END).apply {
+                    topMargin = ctx.dp(4)
+                    rightMargin = ctx.dp(8 + COLLAPSE_W_DP + 6)
                 },
             )
         }
@@ -1279,6 +1400,8 @@ open class PreeditUi(
          * @param clear   本次「彻底没有候选」——要丢掉展开态，避免下次输入同一编码又看到上次的展开内容
          */
         fun refresh(active: Boolean, clear: Boolean = false) {
+            // 展开态自持：点词上屏会清空组合，此时不允许刷新把整块收掉。
+            if (expandedIndex >= 0 && !clear) return
             if (!active) {
                 // 「真的没有候选了」和「只是窗口暂时不可见」必须分开：
                 // 前者要连指纹一起清（否则重新打回同样的编码会命中淡出的旧指纹，
@@ -1370,13 +1493,15 @@ open class PreeditUi(
                     scroller.setPadding(0, ctx.dp(COLLAPSE_H_DP + 8), 0, 0)
                     // 展开态也要带 tag：dispatchTouchEvent 的 childIndexAtScreen 只认带 tag 的子 View，
                     // 不带的话点正文拿不到 index → activate 不执行 → 「展开后点内容不上屏」。
-                    column.addView(makeDetail(item).apply { tag = expandedIndex })
+                    column.addView(makeTokenDetail(item).apply { tag = expandedIndex })
                     collapseButton.visibility = View.VISIBLE
+                    commitAllButton.visibility = View.VISIBLE
                     return
                 }
             }
             scroller.setPadding(0, 0, 0, 0)
             collapseButton.visibility = View.GONE
+            commitAllButton.visibility = View.GONE
             val badge = if (wenquxing) runCatching { WenquxingTips.badgeText() }.getOrNull() else null
             if (!badge.isNullOrEmpty()) column.addView(makeBadge(badge))
             val markAt = entries.indexOfFirst { it.highlighted }.takeIf { it >= 0 } ?: 0
@@ -1543,7 +1668,8 @@ open class PreeditUi(
                 } else {
                     fitLines(text, width, maxLines())
                 }
-            val truncated = if (wenquxing) item.expandable else fitted.second
+            // 外语学习每条都可展开：展开后进去点词，条目本身不再直接上屏。
+            val truncated = true
             entryExpandable[index] = truncated
             return entryRow(fitted.first, truncated).apply {
                 tag = index
@@ -1627,6 +1753,17 @@ open class PreeditUi(
                 MotionEvent.ACTION_UP -> {
                     // 收起：按钮矩形命中，或落在展开态顶部那一行 —— 任一即可。
                     // 不看按压时长，也不要求手指完全不动（此前就是被这两条筛掉的）。
+                    if (expandedIndex >= 0 && !moved) {
+                        if (hitCommitAllButton(ev.rawX, ev.rawY)) {
+                            entries.getOrNull(expandedIndex)?.let { commitPayload(it.detail) }
+                            return true
+                        }
+                        val token = findTokenAt(column, ev.rawX, ev.rawY)
+                        if (token != null) {
+                            (token.tag as? String)?.let { commitPayload(it) }
+                            return true
+                        }
+                    }
                     if (expandedIndex >= 0 &&
                         hitCollapseButton(ev.rawX, ev.rawY)
                     ) {
@@ -1707,6 +1844,15 @@ open class PreeditUi(
             return super.dispatchTouchEvent(ev)
         }
 
+        private fun hitCommitAllButton(rawX: Float, rawY: Float): Boolean {
+            if (commitAllButton.visibility != View.VISIBLE) return false
+            val loc = IntArray(2)
+            commitAllButton.getLocationOnScreen(loc)
+            val pad = ctx.dp(8).toFloat()
+            return rawX >= loc[0] - pad && rawX <= loc[0] + commitAllButton.width + pad &&
+                rawY >= loc[1] - pad && rawY <= loc[1] + commitAllButton.height + pad
+        }
+
         private fun hitCollapseButton(rawX: Float, rawY: Float): Boolean {
             if (collapseButton.visibility != View.VISIBLE) return false
             val loc = IntArray(2)
@@ -1783,9 +1929,7 @@ open class PreeditUi(
 
         private fun activate(idx: Int) {
             if (expandedIndex >= 0) {
-                // 展开态：点正文 = 上屏
-                val item = entries.getOrNull(expandedIndex) ?: return
-                commitPayload(item.payload)
+                // 展开态的词块由 dispatchTouchEvent 处理，这里不再整条上屏。
                 return
             }
             val item = entries.getOrNull(idx) ?: return
@@ -2023,7 +2167,9 @@ open class PreeditUi(
         private const val GAP_SLACK_DP = 10
         private var buildLogged = false
         private const val TAP_SLOP_DP = 12
-        private const val COLLAPSE_W_DP = 60
+        private const val COMMIT_ALL_LABEL = "全部上屏"
+    private const val COMMIT_ALL_W_DP = 74
+    private const val COLLAPSE_W_DP = 60
         private const val COLLAPSE_H_DP = 26
     }
 }
