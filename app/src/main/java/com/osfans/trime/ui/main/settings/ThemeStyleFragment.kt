@@ -1465,16 +1465,18 @@ class ThemeStyleFragment : Fragment() {
         return v?.takeIf { it.isNotEmpty() }
     }
 
-    /** 字母键的调色板引用（zmu_a…zmu_z）。 */
-    private fun isLetterPaletteRef(v: String?): Boolean = v != null && v.startsWith("zmu_")
+    /** 字母键：click 是单个 a–z。这类键的底色常来自字母调色板，批量解除会丢掉配色差异。 */
+    private fun isLetterKey(k: TextKeyboard.TextKey): Boolean {
+        val c = k.click
+        return c.length == 1 && c[0].lowercaseChar() in 'a'..'z'
+    }
 
     /** 本键盘里写了该颜色字段的键有几个；[keepLetters] 为真时跳过字母键。 */
     private fun countKeyFieldOverrides(field: String, keepLetters: Boolean = false): Int {
         val raw = ThemeManager.getKeyboard(keyboardName) ?: return 0
         return raw.rows.sumOf { row ->
             row.keys.count { k ->
-                val v = ownKeyColorOf(k, field)
-                v != null && !(keepLetters && isLetterPaletteRef(v))
+                ownKeyColorOf(k, field) != null && !(keepLetters && isLetterKey(k))
             }
         }
     }
@@ -1486,8 +1488,7 @@ class ThemeStyleFragment : Fragment() {
         var cleared = 0
         raw.rows.forEachIndexed { r, row ->
             row.keys.forEachIndexed { c, key ->
-                val v = ownKeyColorOf(key, field)
-                if (v != null && !(keepLetters && isLetterPaletteRef(v))) {
+                if (ownKeyColorOf(key, field) != null && !(keepLetters && isLetterKey(key))) {
                     draft.setField(KeyPath(keyboardName, r, c), field, null)
                     cleared++
                 }
@@ -1507,6 +1508,10 @@ class ThemeStyleFragment : Fragment() {
                 val kept = countKeyFieldOverrides(field, keepLetters = true)
                 if (kept in 1 until all) items.add(Triple(field, true, kept))
                 items.add(Triple(field, false, all))
+            } else if (field == "key_border_color" || field == "key_text_color") {
+                val kept = countKeyFieldOverrides(field, keepLetters = true)
+                if (kept in 1 until all) items.add(Triple(field, true, kept))
+                items.add(Triple(field, false, all))
             } else {
                 items.add(Triple(field, false, all))
             }
@@ -1519,7 +1524,7 @@ class ThemeStyleFragment : Fragment() {
             (
                 items.map { (field, keepLetters, count) ->
                     val name = KEY_COLOR_FIELDS.first { it.first == field }.second
-                    if (keepLetters) "$name（保留字母键） · $count 处" else "$name · $count 处"
+                    if (keepLetters) "$name（保留字母键 A–Z） · $count 处" else "$name · $count 处"
                 } + "全部一起解除 · ${items.sumOf { it.third }} 处"
             ).toTypedArray()
         AlertDialog.Builder(requireContext())
