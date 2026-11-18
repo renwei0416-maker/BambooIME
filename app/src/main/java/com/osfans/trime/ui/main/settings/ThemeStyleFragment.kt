@@ -965,7 +965,6 @@ class ThemeStyleFragment : Fragment() {
     /** 配色分组：组名 → [(键, 显示名, 回退目标)]。回退目标来自 `theme-dsl.lua` 的 SchemeColors 注释。 */
     private fun colorGroups(): List<Pair<String, List<Triple<String, String, String>>>> = listOf(
         "基础（键盘本体）" to listOf(
-            Triple("keyboard_back_color", "按键键身色", "border_color"),
             Triple("keyboard_background", "键盘底板色", "keyboard_back_color"),
             Triple("key_back_color", "按键底色", "back_color"),
             Triple("key_text_color", "按键文字", "candidate_text_color"),
@@ -985,6 +984,7 @@ class ThemeStyleFragment : Fragment() {
             Triple("back_color", "窗口根底色", ""),
             Triple("root_background", "根背景图", "back_color"),
             Triple("text_back_color", "编码区背景", "back_color"),
+            Triple("keyboard_back_color", "键盘视图底色（备用）", "border_color"),
         ),
         "候选栏" to listOf(
             Triple("candidate_text_color", "候选文字", "text_color"),
