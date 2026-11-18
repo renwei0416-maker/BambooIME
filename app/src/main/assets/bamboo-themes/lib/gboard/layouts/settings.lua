@@ -34,17 +34,6 @@ local keyboard = keyboard(merge(S.settings, keyboard {
         key { spacer = true, width = 0.1 }
       }
     },
-    row {
-      height = 0.3,
-      keys = {
-        key { spacer = true, width = 0.1 },
-        key(merge(S.settings, key { click = "SchemaWanxiang", hint = { { text = "小鹤" } } })),
-        key(merge(S.settings, key { click = "Schema18key", hint = { { text = "18 键" } } })),
-        key(merge(S.settings, key { click = "Schema9key", hint = { { text = "T9" } } })),
-        key(merge(S.settings, key { click = "SchemaEnglish", hint = { { text = "English" } } })),
-        key { spacer = true, width = 0.1 }
-      }
-    }
   }
 }))
 

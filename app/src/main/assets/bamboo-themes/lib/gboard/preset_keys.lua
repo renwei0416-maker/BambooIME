@@ -49,7 +49,7 @@ BaiduSearch        = { label = "百", popup_label = "百", command = "run", opti
   Restart            = { label = "ic@restart", command = "apply", option = "RESTART_RIME" },               -- 重启 Rime
   Settings           = { label = "ic@cog-outline", send = "SETTINGS" },                                    -- 设置
   Info               = { label = "ic@information-outline", send = "INFO" },                                -- 关于
-  SchemeList         = { label = "ic@list-box-outline", send = "Menu" },                                   -- 方案列表
+  SchemeList         = { label = "ic@list-box-outline", send = "MENU" },                                   -- 方案列表
   ThemeList          = { label = "ic@palette-swatch-outline", send = "SETTINGS", option = "theme" },       -- 主题列表
   ColorList          = { label = "ic@palette-outline", send = "PROG_RED" },                                -- 配色列表
   IMESwitch          = { label = "ic@web", send = "LANGUAGE_SWITCH" },                                     -- 输入法切换
@@ -103,10 +103,6 @@ AiPanel            = { label = "AI", popup_label = "'ic@robot'", text = "BambooA
   BambooSymbol       = { label = "ic@symbol", popup_label = "ic@symbol", text = "BambooSymbol" },
 
   -- 方案切换（需配合方案使用）
-  SchemaWanxiang    = { label = "\u{F83B}", command = "set_schema", option = "wanxiang_pro" },     -- 万象拼音PRO（小鹤）
-  Schema18key        = { label = "\u{F83F}", send = "Eisu_toggle", select = "wanxiang_18key" },     -- 万象 18 键（切键盘）
-  Schema9key         = { label = "\u{F83E}", command = "set_schema", option = "wanxiang_t9" },       -- 万象九键（切方案，键盘自动跟随）
-  SchemaEnglish      = { label = "\u{F83C}", send = "Eisu_toggle", select = "wanxiang_english" },   -- 英文（切键盘）
 
   -- 窗口切换
   WindowMenu         = { label = "ic@tune-variant", command = "menu_keyboard" },              -- 方案开关页面
