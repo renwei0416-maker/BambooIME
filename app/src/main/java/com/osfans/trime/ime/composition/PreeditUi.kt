@@ -1862,6 +1862,18 @@ open class PreeditUi(
                     downAt = System.currentTimeMillis()
                     moved = false
                     downIndex = hitIndexAt(ev.rawY)
+                    val _r1 = android.graphics.Rect(); val _r2 = android.graphics.Rect()
+                    val _v1 = collapseButton.visibility
+                    val _v2 = commitAllButton.visibility
+                    collapseButton.getGlobalVisibleRect(_r1)
+                    commitAllButton.getGlobalVisibleRect(_r2)
+                    BambooLog.tips.d(
+                        "tips",
+                        "gl btns collapseVis=" + _v1 + " collapseRect=" + _r1 +
+                            " commitVis=" + _v2 + " commitRect=" + _r2 +
+                            " tapInCollapse=" + _r1.contains(ev.rawX.toInt(), ev.rawY.toInt()) +
+                            " tapInCommit=" + _r2.contains(ev.rawX.toInt(), ev.rawY.toInt()),
+                    )
                     BambooLog.tips.d(
                         "tips",
                         "gl down rawY=" + ev.rawY.toInt() + " idx=" + downIndex +
