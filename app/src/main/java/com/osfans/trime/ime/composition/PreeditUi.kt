@@ -1,4 +1,4 @@
-/*
+﻿/*
  * SPDX-FileCopyrightText: 2015 - 2025 Rime community
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
@@ -237,7 +237,7 @@ open class PreeditUi(
             BambooLog.tips.d(
                 "tips",
                 "build=" + BuildConfig.BUILD_VERSION_NAME + " vc=" + BuildConfig.VERSION_CODE +
-                    " (glfit1: rows fit inside, padEnd 18dp, header gap 12dp)",
+                    " (glkeep1: token commit keeps composition)",
             )
         }
         val here = tipsShownHere()
@@ -2346,13 +2346,24 @@ open class PreeditUi(
             post { scroller.scrollTo(0, scrollBeforeExpand) }
         }
 
-        /** 上屏：与 `BambooTip` 系列 token 同一条路——先清组合，再提交。 */
+        /**
+         * 上屏：只提交文本，**不清组合**。
+         *
+         * 清组合（`clearComposition()`）会推回一个空组合，带来两个连锁反应：
+         * 1. 编码行立刻消失，退格从「删编码」变成「删正文」；
+         * 2. 实体键盘时候选窗按「组合为空」判成不该显示而收起，提示块跟着整条消失。
+         * 保留组合后，引擎的组句还在，编码行、退格、候选窗都维持原样；
+         * `InputConnection.commitText()` 会顺带把编辑器里的组合区换成上屏文本，不留残留。
+         */
         private fun commitPayload(payload: String) {
             if (payload.isEmpty()) return
             val service = TrimeInputMethodService.current ?: return
             service.postKeyJob {
                 runCatching {
-                    clearComposition()
+                    BambooLog.tips.d(
+                        "tips",
+                        "commit gl keepComposition len=" + payload.length,
+                    )
                     service.commitText(payload)
                 }
             }
