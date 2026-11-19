@@ -197,6 +197,9 @@ class CommonKeyboardActionListener {
                 if (action.code == 0 &&
                     HandwritingWindow.isToken(action.getText(KeyboardWindow.currentKeyboard))
                 ) {
+                    // 进画布要用手写模型：先把「只是开面板」的登记清掉，
+                    // 否则上一次面板剩下的跳过计数会把这次加载也跳掉。
+                    handwritingWindow.clearPanelOnly()
                     if (windowManager.isAttached(handwritingWindow)) {
                         windowManager.attachWindow(keyboardWindow)
                     } else {

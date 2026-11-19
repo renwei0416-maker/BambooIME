@@ -1036,6 +1036,19 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
     }
 
     /**
+     * 进手写画布前调用：把「只是开面板」的登记清干净。
+     * 面板那次加载被跳过后计数器可能还剩 1，若不清就会把画布这次也一起跳掉，
+     * 表现为手写板一直提示「手写模型未就绪」。
+     */
+    fun clearPanelOnly() {
+        if (panelOnlyPage != -1 || pendingPanelOnlyBuilds != 0) {
+            panelOnlyPage = -1
+            pendingPanelOnlyBuilds = 0
+            BambooLog.hw.d("model", "clear panel-only")
+        }
+    }
+
+    /**
      * 主题 token（`BambooNumber` / `BambooSymbol`）从键盘唤起面板。
      * 与手写画布进面板的区别：返回/收起都回键盘；候选态整个清空（含 Rime 组合），
      * 否则面板里的数字会直接 commit、而 Rime 还挂着编码，返回键盘时文字与候选对不上。
@@ -1855,6 +1868,8 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
         // 切 App（收起输入法）不会 detach，所以「切走再回来接着写」不受影响。
         BambooLog.hw.d("life", "onDetached active=$active segs=${segs.size}")
         active = false
+        // 离开窗口就把「只是开面板」的登记清掉，不让它留到下一次会话。
+        pendingPanelOnlyBuilds = 0
         resetHandwritingState()
         if (this::panel.isInitialized) hidePanel()
     }
