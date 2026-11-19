@@ -1166,17 +1166,27 @@ open class PreeditUi(
                 used = 0
             }
 
-            for (token in tokens) {
-                // 空白与换行也做成可见块：它们本身要被上屏，只留不可见的间隔会让
-                // 相邻两个词上屏后粘在一起。
-                val hasBreak = token.any { it == '\n' || it == '\r' }
-                val display =
-                    when {
-                        hasBreak -> "↵"
-                        token.all { it == '\t' } -> "⇥"
-                        token.isBlank() -> "␣"
-                        else -> token
-                    }
+            // 空白与换行不显示，但并入它前一个词的上屏文本，
+            // 否则相邻两个词点出来会粘在一起。
+            val cells = ArrayList<Pair<String, String>>()
+            var ti = 0
+            while (ti < tokens.size) {
+                val word = tokens[ti]
+                if (word.isBlank()) {
+                    ti++
+                    continue
+                }
+                var commit = word
+                var tj = ti + 1
+                while (tj < tokens.size && tokens[tj].isBlank()) {
+                    commit += tokens[tj]
+                    tj++
+                }
+                cells.add(word to commit)
+                ti = tj
+            }
+
+            for ((display, commitText) in cells) {
                 // cell 的真实宽度 = 文字宽 + 左右 padding + 左右 margin，
                 // 只按文字宽判断会在行尾“看着放得下、实际放不下”，被父行硬压成两行。
                 val w = paint.measureText(display).toInt() + cellPadH
@@ -1214,7 +1224,7 @@ open class PreeditUi(
                             }
                         clipToOutline = true
                         outlineProvider = ViewOutlineProvider.BACKGROUND
-                        tag = token
+                        tag = commitText
                     }
                 row.addView(
                     cell,
@@ -1228,7 +1238,6 @@ open class PreeditUi(
                     },
                 )
                 used += w
-                if (hasBreak) flush()
             }
             flush()
             return root
@@ -1965,7 +1974,8 @@ open class PreeditUi(
                 }
                 return
             }
-            val item = entries.getOrNull(expandedIndex) ?: return
+            // 提交后组合被清空，entries 会变空；这里必须和渲染用同一份来源。
+            val item = pinnedItem ?: entries.getOrNull(expandedIndex) ?: return
             val payload = item.detail
             if (payload.isEmpty()) return
             committedLen = payload.length
