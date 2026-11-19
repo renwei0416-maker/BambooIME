@@ -58,6 +58,8 @@ class ShotActivity : Activity() {
     private lateinit var resultBox: LinearLayout
     private lateinit var resultText: TextView
     private lateinit var busyBox: LinearLayout
+    /** 菜单打开时的全屏拦截层：吃掉所有触摸，避免穿透到下面的选区。 */
+    private lateinit var shield: View
 
     private val items = listOf("取消", "全屏", "识字", "问 AI", "保存", "复制")
     private var itemViews = ArrayList<TextView>()
@@ -119,23 +121,25 @@ class ShotActivity : Activity() {
 
     // ---------------- 菜单球 ----------------
 
+    private val ITEM_DP = 54
+    private val GAP_DP = 8
+
     private fun buildBall() {
         ball = TextView(this)
         ball.text = "菜单"
-        ball.setTextColor(Color.WHITE)
-        ball.textSize = 15f
+        ball.setTextColor(0xFF23332C.toInt())
+        ball.textSize = 13f
         ball.gravity = Gravity.CENTER
-        ball.background = round(0xFF2F4F43.toInt(), dp(32).toFloat())
-        ball.elevation = dp(8).toFloat()
+        ball.background = round(0xF8FFFFFF.toInt(), dp(30).toFloat())
+        ball.elevation = dp(10).toFloat()
         ball.isClickable = true
-        val lp = FrameLayout.LayoutParams(dp(64), dp(64))
-        lp.gravity = Gravity.BOTTOM or Gravity.END
-        lp.rightMargin = dp(18)
-        lp.bottomMargin = dp(56)
+        val lp = FrameLayout.LayoutParams(dp(60), dp(60), Gravity.TOP or Gravity.START)
         root.addView(ball, lp)
-        ball.x = prefsX(lp.rightMargin.toFloat())
-        ball.y = prefsY(lp.bottomMargin.toFloat())
-
+        ball.post {
+            ball.x = prefsX((root.width - dp(60) - dp(18)).toFloat())
+            ball.y = prefsY((root.height - dp(60) - dp(90)).toFloat())
+            clampBall()
+        }
         ball.setOnTouchListener { v, e ->
             when (e.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
@@ -144,33 +148,28 @@ class ShotActivity : Activity() {
                     ballStartX = v.x
                     ballStartY = v.y
                     ballMoved = false
+                    v.animate().scaleX(1.08f).scaleY(1.08f).setDuration(90L).start()
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val dx = e.rawX - ballDownRawX
                     val dy = e.rawY - ballDownRawY
-                    if (!ballMoved && (abs(dx) > dp(8) || abs(dy) > dp(8))) {
+                    if (!ballMoved && (abs(dx) > dp(6).toFloat() || abs(dy) > dp(6).toFloat())) {
                         ballMoved = true
-                        if (!menuOpen) openMenu()
                     }
-                    if (ballMoved && !menuOpen) {
-                        v.x = (ballStartX + dx).coerceIn(0f, (root.width - v.width).toFloat())
-                        v.y = (ballStartY + dy).coerceIn(0f, (root.height - v.height).toFloat())
+                    if (ballMoved) {
+                        v.x = ballStartX + dx
+                        v.y = ballStartY + dy
+                        clampBall()
                     }
-                    if (menuOpen) updateSelectedByY(e.rawY)
                     true
                 }
                 MotionEvent.ACTION_UP -> {
-                    if (menuOpen) {
-                        val hit = selected
-                        closeMenu()
-                        if (hit >= 0) perform(hit) else openMenu()
-                    } else if (!ballMoved) {
-                        v.x = ballStartX
-                        v.y = ballStartY
-                        openMenu()
-                    } else {
+                    v.animate().scaleX(1f).scaleY(1f).setDuration(90L).start()
+                    if (ballMoved) {
                         snapBall()
+                    } else {
+                        if (menuOpen) closeMenu() else openMenu()
                     }
                     true
                 }
@@ -179,10 +178,16 @@ class ShotActivity : Activity() {
         }
     }
 
+    private fun clampBall() {
+        ball.x = ball.x.coerceIn(0f, (root.width - ball.width).coerceAtLeast(0).toFloat())
+        ball.y = ball.y.coerceIn(0f, (root.height - ball.height).coerceAtLeast(0).toFloat())
+    }
+
     private fun snapBall() {
-        val margin = dp(18).toFloat()
+        val margin = dp(14).toFloat()
         val toLeft = ball.x + ball.width / 2f < root.width / 2f
-        val targetX = if (toLeft) margin else root.width - ball.width - margin
+        val targetX = if (toLeft) margin else (root.width - ball.width - margin).coerceAtLeast(0f)
+        clampBall()
         ball.animate().x(targetX).setDuration(160L).start()
         savePrefs(targetX, ball.y)
     }
@@ -204,59 +209,85 @@ class ShotActivity : Activity() {
     // ---------------- 菜单 ----------------
 
     private fun buildMenu() {
-        itemH = dp(52)
+        // 拦截层先加（在选区之上、菜单与球之下），菜单打开时吃掉所有触摸
+        shield = View(this)
+        shield.setBackgroundColor(Color.TRANSPARENT)
+        shield.isClickable = true
+        shield.visibility = View.GONE
+        root.addView(shield, FrameLayout.LayoutParams(MATCH, MATCH))
+        shield.setOnTouchListener { _, e ->
+            when (e.actionMasked) {
+                MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
+                    updateSelectedByY(e.rawY)
+                    true
+                }
+                MotionEvent.ACTION_UP -> {
+                    val hit = selected
+                    if (hit >= 0) perform(hit) else closeMenu()
+                    true
+                }
+                else -> true
+            }
+        }
+
+        itemH = dp(ITEM_DP)
         menu = LinearLayout(this)
         menu.orientation = LinearLayout.VERTICAL
         menu.visibility = View.GONE
         for (label in items) {
             val t = TextView(this)
             t.text = label
-            t.setTextColor(Color.WHITE)
-            t.textSize = 16f
+            t.setTextColor(0xFF23332C.toInt())
+            t.textSize = 13f
             t.gravity = Gravity.CENTER
-            t.background = round(0xF2FFFFFF.toInt(), dp(22).toFloat())
-            t.setTextColor(0xFF1F2A26.toInt())
-            val lp = LinearLayout.LayoutParams(dp(96), itemH)
-            lp.bottomMargin = dp(6)
+            t.background = round(0xF8FFFFFF.toInt(), dp(ITEM_DP / 2).toFloat())
+            t.elevation = dp(4).toFloat()
+            val lp = LinearLayout.LayoutParams(dp(ITEM_DP), dp(ITEM_DP))
+            lp.bottomMargin = dp(GAP_DP)
             menu.addView(t, lp)
             itemViews.add(t)
         }
-        val lp = FrameLayout.LayoutParams(WRAP, WRAP)
-        lp.gravity = Gravity.BOTTOM or Gravity.END
+        val lp = FrameLayout.LayoutParams(WRAP, WRAP, Gravity.TOP or Gravity.START)
         root.addView(menu, lp)
     }
 
+    /** 菜单贴球的正上方弹出，水平方向以球心对齐。 */
     private fun openMenu() {
         menuOpen = true
         selected = -1
-        val panelH = itemH * items.size + dp(6) * (items.size - 1)
-        var right = (root.width - ball.x - ball.width).toInt()
-        var bottom = (root.height - ball.y).toInt() + dp(10)
-        right = right.coerceIn(dp(12), root.width - dp(96) - dp(12))
-        bottom = bottom.coerceIn(panelH + dp(12), root.height - dp(12))
-        val lp = menu.layoutParams as FrameLayout.LayoutParams
-        lp.rightMargin = right
-        lp.bottomMargin = bottom
-        menu.layoutParams = lp
+        val panelH = dp(ITEM_DP) * items.size + dp(GAP_DP) * (items.size - 1)
+        val left = (ball.x + ball.width / 2f - dp(ITEM_DP) / 2f)
+            .coerceIn(dp(8).toFloat(), (root.width - dp(ITEM_DP) - dp(8)).coerceAtLeast(0).toFloat())
+        val top = (ball.y - dp(GAP_DP) - panelH).coerceAtLeast(dp(40).toFloat())
+        menu.x = left
+        menu.y = top
         menu.visibility = View.VISIBLE
         menu.alpha = 0f
-        menu.animate().alpha(1f).setDuration(120L).start()
-        panelTop = root.height - bottom - panelH
+        menu.scaleX = 0.88f
+        menu.scaleY = 0.88f
+        menu.pivotY = panelH.toFloat()
+        menu.pivotX = dp(ITEM_DP) / 2f
+        menu.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(150L).start()
+        panelTop = top.toInt()
+        shield.visibility = View.VISIBLE
         refreshItems()
-        ball.text = "≡"
+        ball.text = "×"
     }
 
     private fun closeMenu() {
         menuOpen = false
-        menu.visibility = View.GONE
+        menu.animate().alpha(0f).scaleX(0.9f).scaleY(0.9f).setDuration(120L)
+            .withEndAction { menu.visibility = View.GONE }.start()
+        shield.visibility = View.GONE
         ball.text = "菜单"
         selected = -1
         refreshItems()
     }
 
     private fun updateSelectedByY(rawY: Float) {
-        if (itemH <= 0) return
-        val idx = ((rawY - panelTop) / itemH).toInt()
+        val step = dp(ITEM_DP + GAP_DP)
+        if (step <= 0) return
+        val idx = ((rawY - panelTop) / step).toInt()
         val clamped = if (idx < 0 || idx >= items.size) -1 else idx
         if (clamped == selected) return
         selected = clamped
@@ -267,10 +298,12 @@ class ShotActivity : Activity() {
         for (i in itemViews.indices) {
             val t = itemViews[i]
             val on = i == selected
-            t.textSize = if (on) 18f else 15f
-            t.alpha = if (selected < 0) 1f else if (on) 1f else 0.55f
-            t.setTextColor(if (on) Color.WHITE else 0xFF1F2A26.toInt())
-            t.background = round(if (on) 0xFF4FA46A.toInt() else 0xF2FFFFFF.toInt(), dp(22).toFloat())
+            t.textSize = if (on) 15f else 13f
+            t.alpha = if (selected < 0) 1f else if (on) 1f else 0.5f
+            t.setTextColor(if (on) Color.WHITE else 0xFF23332C.toInt())
+            t.background = round(if (on) 0xFF4FA46A.toInt() else 0xF8FFFFFF.toInt(), dp(ITEM_DP / 2).toFloat())
+            t.scaleX = if (on) 1.12f else 1f
+            t.scaleY = if (on) 1.12f else 1f
         }
     }
 
@@ -380,7 +413,11 @@ class ShotActivity : Activity() {
     private fun perform(index: Int) {
         if (busy) return
         when (index) {
-            0 -> finish()
+            0 -> {
+                selector.clearSelection()
+                closeMenu()
+                Toast.makeText(this, "已取消选框", Toast.LENGTH_SHORT).show()
+            }
             1 -> {
                 if (selector.isFullSelection()) selector.setDefault() else selector.selectAll()
             }
