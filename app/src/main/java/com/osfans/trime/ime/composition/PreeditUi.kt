@@ -1301,8 +1301,12 @@ open class PreeditUi(
         private var entries: List<TipEntry> = emptyList()
         private var snapshot = 0
         private var expandedIndex = -1
-        /** 「全部上屏」已经提交的字符数（>0 表示可以撤回）。 */
-        private var committedLen = 0
+        /**
+         * 「全部上屏」已经提交的字符数（>0 表示下一次点击是撤回）。
+         *
+         * 按钮文案与这个值永远同源，避免出现“写着撤回上屏、点了却无反应”。
+         */
+        private var undoLength = 0
         private var scrollBeforeExpand = 0
 
         /**
@@ -1344,6 +1348,11 @@ open class PreeditUi(
                     rightMargin = ctx.dp(8 + COLLAPSE_W_DP + 6)
                 },
             )
+            // 两颗按钮都走原生点击：值机时机的变化（visibility/布局）不会让点击静默失效。
+            collapseButton.isClickable = true
+            commitAllButton.isClickable = true
+            collapseButton.setOnClickListener { collapse() }
+            commitAllButton.setOnClickListener { onCommitAllClick() }
         }
 
         private fun scalePct(): Int =
@@ -1862,15 +1871,6 @@ open class PreeditUi(
                 MotionEvent.ACTION_UP -> {
                     // 收起：按钮矩形命中，或落在展开态顶部那一行 —— 任一即可。
                     // 不看按压时长，也不要求手指完全不动（此前就是被这两条筛掉的）。
-                    // 两颗按钮在独立一行里，与滚动无关：不看 moved，先判。
-                    if (expandedIndex >= 0 && hitCloseButton(ev.rawX, ev.rawY)) {
-                        collapse()
-                        return true
-                    }
-                    if (expandedIndex >= 0 && hitCommitAllButton(ev.rawX, ev.rawY)) {
-                        onCommitAllClick()
-                        return true
-                    }
                     if (expandedIndex >= 0 && !moved) {
                         val token = findTokenAt(column, ev.rawX, ev.rawY)
                         if (token != null) {
@@ -1963,31 +1963,59 @@ open class PreeditUi(
          * 第一次点击把当前条目的整段正文上屏并记住字符数；再次点击按该字符数删回去。
          * 换条目、收起、点单词上屏都会复位，避免删掉用户后面输入的内容。
          */
+        /**
+         * 「全部上屏」/「撤回上屏」两个动作共用一个按钮，由 [undoLength] 单一决定。
+         *
+         * 这里不再使用 `entries`：提交后组合被清空、`entries` 会变空，
+         * 旧写法会在第二次点击时 `?: return`，表现成“点了没反应”。
+         */
         private fun onCommitAllClick() {
-            val service = TrimeInputMethodService.current ?: return
-            if (committedLen > 0) {
-                val n = committedLen
-                committedLen = 0
-                commitAllButton.text = COMMIT_ALL_LABEL
+            val service = TrimeInputMethodService.current
+            if (service == null) {
+                toast("输入法未就绪，稍后再试")
+                return
+            }
+            BambooLog.tips.d("tips", "commitAll click undo=" + undoLength)
+            if (undoLength > 0) {
+                val n = undoLength
+                setUndo(0)
                 service.postKeyJob {
-                    runCatching { service.currentInputConnection?.deleteSurroundingText(n, 0) }
+                    val ic = service.currentInputConnection
+                    if (ic == null) {
+                        BambooLog.tips.w("tips", "commitAll undo: no input connection")
+                    } else {
+                        runCatching { ic.deleteSurroundingText(n, 0) }
+                    }
                 }
                 return
             }
-            // 提交后组合被清空，entries 会变空；这里必须和渲染用同一份来源。
-            val item = pinnedItem ?: entries.getOrNull(expandedIndex) ?: return
+            val item =
+                pinnedItem ?: entries.getOrNull(expandedIndex) ?: run {
+                    BambooLog.tips.w("tips", "commitAll: no item to commit")
+                    return
+                }
             val payload = item.detail
             if (payload.isEmpty()) return
-            committedLen = payload.length
-            commitAllButton.text = COMMIT_ALL_UNDO_LABEL
+            setUndo(payload.length)
             commitPayload(payload)
+        }
+
+        /** 按钮文案与撤回长度永远同源。 */
+        private fun setUndo(length: Int) {
+            undoLength = length
+            commitAllButton.text = if (length > 0) COMMIT_ALL_UNDO_LABEL else COMMIT_ALL_LABEL
+        }
+
+        private fun toast(msg: String) {
+            runCatching {
+                android.widget.Toast.makeText(ctx, msg, android.widget.Toast.LENGTH_SHORT).show()
+            }
         }
 
         /** 复位「全部上屏」按钮；已经上屏的内容不动。 */
         private fun resetCommitAll() {
-            if (committedLen == 0) return
-            committedLen = 0
-            commitAllButton.text = COMMIT_ALL_LABEL
+            if (undoLength == 0) return
+            setUndo(0)
         }
 
         private fun hitCommitAllButton(rawX: Float, rawY: Float): Boolean {
