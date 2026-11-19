@@ -36,7 +36,8 @@ object LogSwitches {
     const val WENQUXING = false
 
     /** 提示区（文曲星 + 外语学习共用那块）布局与展开 */
-    const val TIPS = false
+    // debug 排查用：设为 true 时 tips 日志会落盘到 Documents/BambooIME[Debug]/logs
+    const val TIPS = true
 
     /** 外语学习：词库加载、查询 */
     const val GLOSSARY = false

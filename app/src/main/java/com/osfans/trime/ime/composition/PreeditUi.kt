@@ -1183,31 +1183,6 @@ open class PreeditUi(
             flush()
             return root
         }
-
-        /** 找出坐标落在哪个词块上；空白与行容器返回 null。 */
-        private fun findTokenAt(
-            parent: ViewGroup,
-            rawX: Float,
-            rawY: Float,
-        ): TextView? {
-            val loc = IntArray(2)
-            for (i in parent.childCount - 1 downTo 0) {
-                val child = parent.getChildAt(i)
-                if (child.visibility != View.VISIBLE) continue
-                child.getLocationOnScreen(loc)
-                val inside =
-                    rawX >= loc[0] && rawX <= loc[0] + child.width &&
-                        rawY >= loc[1] && rawY <= loc[1] + child.height
-                if (!inside) continue
-                if (child is ViewGroup) {
-                    findTokenAt(child, rawX, rawY)?.let { return it }
-                } else if (child is TextView && child.tag is String) {
-                    return child
-                }
-            }
-            return null
-        }
-
         /** 固定在右上角的「收起」：不参与滚动，只在展开态出现。 */
         val collapseButton: TextView =
             TextView(ctx).apply {
@@ -1292,7 +1267,10 @@ open class PreeditUi(
             // 两颗按钮都走原生点击：值机时机的变化（visibility/布局）不会让点击静默失效。
             collapseButton.isClickable = true
             commitAllButton.isClickable = true
-            collapseButton.setOnClickListener { collapse() }
+            collapseButton.setOnClickListener {
+                BambooLog.tips.d("tips", "collapseBtn click")
+                collapse()
+            }
             commitAllButton.setOnClickListener { onCommitAllClick() }
         }
 
@@ -1445,6 +1423,12 @@ open class PreeditUi(
          * @param clear   本次「彻底没有候选」——要丢掉展开态，避免下次输入同一编码又看到上次的展开内容
          */
         fun refresh(active: Boolean, clear: Boolean = false) {
+        BambooLog.tips.d(
+            "tips",
+            "refresh active=" + active + " clear=" + clear + " entries=" + entries.size +
+                " expanded=" + expandedIndex + " pinned=" + (pinnedItem != null) +
+                " session=" + sessionToken + " seen=" + seenSession,
+        )
             if (seenSession != sessionToken) {
                 seenSession = sessionToken
                 pinnedItem = null
@@ -1541,6 +1525,7 @@ open class PreeditUi(
 
         /** 列表态重画：每条一个 View；展开态：只放一条全文。 */
         private fun render() {
+        BambooLog.tips.d("tips", "render expanded=" + expandedIndex + " entries=" + entries.size)
             entryExpandable.clear()
             column.removeAllViews()
             if (expandedIndex >= 0) {
@@ -1566,7 +1551,16 @@ open class PreeditUi(
             val markAt = entries.indexOfFirst { it.highlighted }.takeIf { it >= 0 } ?: 0
             entries.forEachIndexed { index, item ->
                 if (index > 0) column.addView(makeDivider())
-                column.addView(makeEntry(index, item, index == markAt))
+                // 列表条目自己响应点击：展开由条目视图触发，父类不再算坐标。
+                column.addView(
+                    makeEntry(index, item, index == markAt).apply {
+                        isClickable = true
+                        setOnClickListener {
+                            BambooLog.tips.d("tips", "entry click idx=" + index)
+                            activate(index)
+                        }
+                    },
+                )
             }
         }
 
@@ -1874,93 +1868,10 @@ open class PreeditUi(
             setUndo(0)
         }
 
-        private fun hitCommitAllButton(rawX: Float, rawY: Float): Boolean {
-            if (commitAllButton.visibility != View.VISIBLE) return false
-            val loc = IntArray(2)
-            commitAllButton.getLocationOnScreen(loc)
-            val pad = ctx.dp(8).toFloat()
-            return rawX >= loc[0] - pad && rawX <= loc[0] + commitAllButton.width + pad &&
-                rawY >= loc[1] - pad && rawY <= loc[1] + commitAllButton.height + pad
-        }
-
-        /** 收起按钮的命中区（含 8dp 外扩），用于在词块判定之前拦下这一下。 */
-        private fun hitCloseButton(rawX: Float, rawY: Float): Boolean = hitCollapseButton(rawX, rawY)
-
-        private fun hitCollapseButton(rawX: Float, rawY: Float): Boolean {
-            if (collapseButton.visibility != View.VISIBLE) return false
-            val loc = IntArray(2)
-            collapseButton.getLocationOnScreen(loc)
-            val pad = ctx.dp(12).toFloat()
-            val l = loc[0] - pad
-            val t = loc[1] - pad
-            val r = loc[0] + collapseButton.width + pad
-            val b = loc[1] + collapseButton.height + pad
-            return rawX >= l && rawX <= r && rawY >= t && rawY <= b
-        }
-
-        private fun childIndexAtScreen(rawY: Float): Int {
-            val loc = IntArray(2)
-            for (i in 0 until column.childCount) {
-                val child = column.getChildAt(i)
-                val entryIdx = (child.tag as? Int) ?: continue
-                child.getLocationOnScreen(loc)
-                val top = loc[1].toFloat()
-                val bottom = top + child.height
-                if (rawY >= top && rawY < bottom) {
-                    return if (entryIdx in entries.indices) entryIdx else -1
-                }
-            }
-            // 落在分隔线/缝里：吸附到最近的一条
-            val slack = ctx.dp(GAP_SLACK_DP).toFloat()
-            var best = -1
-            var bestDist = Float.MAX_VALUE
-            for (i in 0 until column.childCount) {
-                val child = column.getChildAt(i)
-                val entryIdx = (child.tag as? Int) ?: continue
-                if (entryIdx !in entries.indices) continue
-                child.getLocationOnScreen(loc)
-                val top = loc[1].toFloat()
-                val bottom = top + child.height
-                val d = if (rawY < top) top - rawY else rawY - bottom
-                if (d <= slack && d < bestDist) {
-                    bestDist = d
-                    best = entryIdx
-                }
-            }
-            return best
-        }
-
         @Suppress("unused")
-        private fun childIndexAt(yInColumn: Float): Int {
-            for (i in 0 until column.childCount) {
-                val child = column.getChildAt(i)
-                val entryIdx = (child.tag as? Int) ?: continue
-                if (yInColumn >= child.top && yInColumn < child.bottom) {
-                    return if (entryIdx in entries.indices) entryIdx else -1
-                }
-            }
-            // 落在条目之间的缝里（底部 6dp margin）：吸附到最近的那一条，别让手指落空
-            val slack = ctx.dp(GAP_SLACK_DP).toFloat()
-            var best = -1
-            var bestDist = Float.MAX_VALUE
-            for (i in 0 until column.childCount) {
-                val child = column.getChildAt(i)
-                val entryIdx = (child.tag as? Int) ?: continue
-                if (entryIdx !in entries.indices) continue
-                val d =
-                    when {
-                        yInColumn < child.top -> child.top - yInColumn
-                        else -> yInColumn - child.bottom
-                    }
-                if (d <= slack && d < bestDist) {
-                    bestDist = d
-                    best = entryIdx
-                }
-            }
-            return best
-        }
 
         private fun activate(idx: Int) {
+        BambooLog.tips.d("tips", "activate idx=" + idx + " expandedBefore=" + expandedIndex)
             if (expandedIndex >= 0) {
                 // 展开态的词块由 dispatchTouchEvent 处理，这里不再整条上屏。
                 return
@@ -2073,6 +1984,7 @@ open class PreeditUi(
         }
 
         private fun expand(index: Int) {
+            BambooLog.tips.d("tips", "expand idx=" + index)
             resetCommitAll()
             val item = entries.getOrNull(index) ?: return
             if (entryExpandable[index] != true) {
@@ -2136,6 +2048,7 @@ open class PreeditUi(
         }
 
         private fun collapse() {
+        BambooLog.tips.d("tips", "collapse")
             resetCommitAll()
             expandedIndex = -1
             pinnedItem = null
