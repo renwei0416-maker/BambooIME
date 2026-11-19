@@ -237,7 +237,7 @@ open class PreeditUi(
             BambooLog.tips.d(
                 "tips",
                 "build=" + BuildConfig.BUILD_VERSION_NAME + " vc=" + BuildConfig.VERSION_CODE +
-                    " (glwidth2: row width fills, header padEnd 14dp)",
+                    " (glfit1: rows fit inside, padEnd 18dp, header gap 12dp)",
             )
         }
         val here = tipsShownHere()
@@ -1205,7 +1205,14 @@ open class PreeditUi(
             val root =
                 LinearLayout(ctx).apply {
                     orientation = LinearLayout.VERTICAL
-                    setPadding(sidePadPx(), ctx.dp(2), sidePadPx(), ctx.dp(2))
+                    // 这里不能用 sidePadPx()：那是列表态给右侧三角列留的位置，
+                    // 展开态没有那一列，按它设内边距会让末尾词块排到父容器外被裁掉。
+                    setPadding(
+                        ctx.dp(EXPAND_PAD_H_DP),
+                        ctx.dp(2),
+                        ctx.dp(EXPAND_PAD_H_DP),
+                        ctx.dp(2),
+                    )
                 }
             var row =
                 LinearLayout(ctx).apply {
@@ -1516,7 +1523,7 @@ open class PreeditUi(
             // 展开态没有三角列，不要扣 sidePad —— 否则每行右侧会白白空掉一段，
             // 看着就像“右边被裁掉了”。只扣真实存在的内边距与块的外边距。
             val used = paddingLeft + paddingRight + column.paddingLeft + column.paddingRight +
-                ctx.dp(2) * 2
+                ctx.dp(EXPAND_PAD_H_DP) * 2 + ctx.dp(2) * 2
             return (w - used - ctx.dp(HEADER_PAD_END_DP)).coerceAtLeast(120)
         }
 
@@ -2402,9 +2409,12 @@ open class PreeditUi(
         private const val MAX_EXPAND_ROWS = 8
         private const val BUTTON_BG_ALPHA = 40
         /** header 行右侧留白（「收起」按钮与右边界之间）。 */
-        private const val HEADER_PAD_END_DP = 14
+        /** 展开正文左右内边距；与列表态的 sidePad 无关。 */
+        private const val EXPAND_PAD_H_DP = 8
+
+        private const val HEADER_PAD_END_DP = 18
         /** header 行高度 = 按钮高 + 这个值（决定首行正文离按钮行多远）。 */
-        private const val HEADER_EXTRA_DP = 6
+        private const val HEADER_EXTRA_DP = 12
 
         /** 三角和提示块底色的最低对比度，低于这个就退回文字色，避免箭头看不见。 */
         private const val MIN_MARK_CONTRAST = 2.0
