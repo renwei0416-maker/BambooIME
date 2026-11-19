@@ -167,6 +167,7 @@ class TrimeApplication : Application() {
                 label = "语音",
                 isBusy = { SherpaSpeechClient.isHolding() },
                 release = { SherpaSpeechClient.releaseEngineForMemoryPressure() },
+                loaded = { SherpaSpeechClient.isHolding() },
                 pinned = { MemoryPrefs.voicePinned },
             ),
         )
@@ -176,6 +177,7 @@ class TrimeApplication : Application() {
                 label = "手写",
                 isBusy = { com.osfans.trime.actions.handwriting.HandwritingWindow.isBoardVisible },
                 release = { HandwritingRecognizer.release() },
+                loaded = { HandwritingRecognizer.isReady },
             ),
         )
         IdleReclaimer.register(
@@ -184,6 +186,7 @@ class TrimeApplication : Application() {
                 label = "识图",
                 isBusy = { com.osfans.trime.actions.ocr.OcrWindow.isPanelVisible },
                 release = { OcrRecognizer.release() },
+                loaded = { OcrRecognizer.isReady() },
             ),
         )
         IdleReclaimer.start()

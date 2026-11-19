@@ -237,7 +237,7 @@ open class PreeditUi(
             BambooLog.tips.d(
                 "tips",
                 "build=" + BuildConfig.BUILD_VERSION_NAME + " vc=" + BuildConfig.VERSION_CODE +
-                    " (nomodel1: symbol panel skips handwriting model)",
+                    " (nomodel2: held state follows real load)",
             )
         }
         val here = tipsShownHere()

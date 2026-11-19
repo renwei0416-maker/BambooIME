@@ -46,6 +46,8 @@ object IdleReclaimer {
         val release: () -> Unit,
         /** 常驻：跳过空闲释放（仍可被「立即释放」清掉）。 */
         val pinned: () -> Boolean = { false },
+        /** 模型此刻是否真的还占着内存。设置页据此显示「当前在内存 / 已释放」。 */
+        val loaded: () -> Boolean = { true },
     )
 
     private val entries = LinkedHashMap<String, Entry>()
@@ -119,9 +121,15 @@ object IdleReclaimer {
 
     /** 当前持有（已加载）的模块中文名，供设置页显示。 */
     /** 模型是否仍驻留在内存（已加载且未被释放）。 */
-    fun isHeld(name: String): Boolean = lastUsed.containsKey(name) && !released.containsKey(name)
+    fun isHeld(name: String): Boolean =
+        lastUsed.containsKey(name) &&
+            !released.containsKey(name) &&
+            (entries[name]?.loaded?.invoke() ?: true)
 
-    fun heldLabels(): List<String> = entries.values.filter { lastUsed.containsKey(it.name) && !released.containsKey(it.name) }.map { it.label }
+    fun heldLabels(): List<String> =
+        entries.values
+            .filter { lastUsed.containsKey(it.name) && !released.containsKey(it.name) && it.loaded() }
+            .map { it.label }
 
     private fun sweep() {
         if (!MemoryPrefs.idleRelease) return
