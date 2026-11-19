@@ -68,7 +68,8 @@ SPDX-License-Identifier: GPL-3.0-or-later
         <service
             android:name=".actions.shot.ShotService"
             android:exported="true"
-            android:label="@string/shot_accessibility_summary"
+            android:label="@string/shot_service_label"
+            android:description="@string/shot_accessibility_desc"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
             <intent-filter>
                 <action android:name="android.accessibilityservice.AccessibilityService" />

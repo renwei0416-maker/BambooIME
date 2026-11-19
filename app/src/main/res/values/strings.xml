@@ -637,6 +637,7 @@
     <string name="text_editor_right">Right</string>
     <string name="text_editor_yaml_check">YAML syntax check</string>
     <string name="text_editor_yaml_error_on_save">YAML error at line %1$d, column %2$d:\n%3$s\n\nSave anyway?</string>
+    <string name="shot_service_label">截图</string>
     <string name="shot_accessibility_summary">点一下就能截屏，再把选中的部分存图或复制</string>
     <string name="shot_accessibility_desc">苍竹输入法用「截图」功能时需要这项权限：它只调用系统的截屏接口抓取当前画面，不读取屏幕上的文字、不监听按键、不联网。除了截图，其它功能都不依赖它。</string>
 </resources>
