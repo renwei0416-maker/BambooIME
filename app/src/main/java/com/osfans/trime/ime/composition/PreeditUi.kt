@@ -1130,7 +1130,7 @@ open class PreeditUi(
         }
 
         private fun makeTokenDetail(item: TipEntry): View {
-            val avail = entryAvailWidth()
+            val avail = expandedAvailWidth()
             val paint = textPaint()
             val tokens =
                 runCatching { PieceTokenizer.split(item.detail) }
@@ -1167,25 +1167,23 @@ open class PreeditUi(
             }
 
             for (token in tokens) {
-                if (token.any { it == '\n' || it == '\r' }) {
-                    flush()
-                    continue
-                }
+                // 空白与换行也做成可见块：它们本身要被上屏，只留不可见的间隔会让
+                // 相邻两个词上屏后粘在一起。
+                val hasBreak = token.any { it == '\n' || it == '\r' }
+                val display =
+                    when {
+                        hasBreak -> "↵"
+                        token.all { it == '\t' } -> "⇥"
+                        token.isBlank() -> "␣"
+                        else -> token
+                    }
                 // cell 的真实宽度 = 文字宽 + 左右 padding + 左右 margin，
                 // 只按文字宽判断会在行尾“看着放得下、实际放不下”，被父行硬压成两行。
-                val w = paint.measureText(token).toInt() + cellPadH
-                if (token.isBlank()) {
-                    val gap = w.coerceAtLeast(ctx.dp(3))
-                    if (used + gap <= avail) {
-                        row.addView(View(ctx), LinearLayout.LayoutParams(gap, 1))
-                        used += gap
-                    }
-                    continue
-                }
+                val w = paint.measureText(display).toInt() + cellPadH
                 if (used > 0 && used + w > avail) flush()
                 val cell =
                     TextView(ctx).apply {
-                        text = token
+                        text = display
                         textSize = bodyTextSize()
                         typeface = FontManager.getTypeface()
                         setPadding(ctx.dp(4), ctx.dp(1), ctx.dp(4), ctx.dp(1))
@@ -1230,6 +1228,7 @@ open class PreeditUi(
                     },
                 )
                 used += w
+                if (hasBreak) flush()
             }
             flush()
             return root
@@ -1304,6 +1303,9 @@ open class PreeditUi(
          * 展开块既画不出东西也会被当成“没有匹配项”收掉。钉住之后渲染与判定都不再依赖 `entries`。
          */
         private var pinnedItem: TipEntry? = null
+
+        /** 上次看到的输入会话号；变了说明换了编辑框，展开块要退掉。 */
+        private var seenSession = sessionToken
 
         /** 上一次测出的高度，只用来避免日志刷屏。 */
         private var lastMeasured = -1
@@ -1380,6 +1382,21 @@ open class PreeditUi(
             runCatching { GlossaryPrefs.maxLines }.getOrDefault(2).coerceIn(1, MAX_ENTRY_LINES)
 
         /** 条目可用宽度（px）：块宽 - 内边距 - 条目自身左右 padding。 */
+        /**
+         * 展开态可用宽度。
+         *
+         * [entryAvailWidth] 会扣掉右下角三角列（列表态才有），展开态没有那一列，
+         * 继续扣就会每行凭空少两个字宽，表现为“右边明明还有空间却提前换行”。
+         */
+        private fun expandedAvailWidth(): Int {
+            val w =
+                width.takeIf { it > 0 } ?: measuredWidth.takeIf { it > 0 }
+                    ?: runCatching { ctx.resources.displayMetrics.widthPixels }.getOrDefault(1080)
+            val used = paddingLeft + paddingRight + column.paddingLeft + column.paddingRight +
+                sidePadPx() * 2
+            return (w - used).coerceAtLeast(120)
+        }
+
         private fun entryAvailWidth(): Int {
             val w =
                 measuredWidth.takeIf { it > 0 }
@@ -1469,6 +1486,12 @@ open class PreeditUi(
          * @param clear   本次「彻底没有候选」——要丢掉展开态，避免下次输入同一编码又看到上次的展开内容
          */
         fun refresh(active: Boolean, clear: Boolean = false) {
+            if (seenSession != sessionToken) {
+                seenSession = sessionToken
+                pinnedItem = null
+                hardReset()
+                return
+            }
             if (!active) {
                 pinnedItem = null
                 // 「真的没有候选了」和「只是窗口暂时不可见」必须分开：
@@ -1830,17 +1853,16 @@ open class PreeditUi(
                 MotionEvent.ACTION_UP -> {
                     // 收起：按钮矩形命中，或落在展开态顶部那一行 —— 任一即可。
                     // 不看按压时长，也不要求手指完全不动（此前就是被这两条筛掉的）。
+                    // 两颗按钮在独立一行里，与滚动无关：不看 moved，先判。
+                    if (expandedIndex >= 0 && hitCloseButton(ev.rawX, ev.rawY)) {
+                        collapse()
+                        return true
+                    }
+                    if (expandedIndex >= 0 && hitCommitAllButton(ev.rawX, ev.rawY)) {
+                        onCommitAllClick()
+                        return true
+                    }
                     if (expandedIndex >= 0 && !moved) {
-                        // 两颗浮动按钮盖在首行词块上方，必须先判它们，否则点「收起」会命中
-                        // 下层的词块并被当成“点词上屏”。
-                        if (hitCloseButton(ev.rawX, ev.rawY)) {
-                            collapse()
-                            return true
-                        }
-                        if (hitCommitAllButton(ev.rawX, ev.rawY)) {
-                            onCommitAllClick()
-                            return true
-                        }
                         val token = findTokenAt(column, ev.rawX, ev.rawY)
                         if (token != null) {
                             resetCommitAll()
@@ -2245,6 +2267,15 @@ open class PreeditUi(
     }
 
     companion object {
+        /**
+         * 输入会话号：`onStartInput` 每次进入新的编辑框都会 +1。
+         *
+         * 提示块据此判断「换了编辑区」，把展开态退掉——不能靠 `active`，
+         * 它只表示提示该挂在键盘还是候选窗，与人换了哪个编辑框无关。
+         */
+        @Volatile
+        var sessionToken: Int = 0
+
         /** 键盘上那一份。 */
         const val OWNER_KEYBOARD = 0
 

@@ -683,6 +683,8 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
         composingText = ""
         cursorComposingText = ""
         runCatching { com.osfans.trime.actions.wenquxing.WenquxingTips.clear() }
+        // 换了编辑框：让外语学习提示块把展开态退掉（编号只增不减，用于跨实例判定）。
+        PreeditUi.sessionToken++
         BambooActions.onEditorStart(attribute, restarting)
         Timber.d("onStartInput: restarting=$restarting")
         val isNullType = attribute.inputType and InputType.TYPE_MASK_CLASS == InputType.TYPE_NULL
