@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 BambooIME contributors
+﻿// SPDX-FileCopyrightText: 2026 BambooIME contributors
 //
 // SPDX-License-Identifier: GPL-3.0-or-later
 
@@ -37,13 +37,13 @@ object LogSwitches {
 
     /** 提示区（文曲星 + 外语学习共用那块）布局与展开 */
     // debug 排查用：设为 true 时 tips 日志会落盘到 Documents/BambooIME[Debug]/logs
-    const val TIPS = true
+    const val TIPS = false
 
     /** 外语学习：词库加载、查询 */
     const val GLOSSARY = false
 
     /** 方案包：释放、覆盖、写 custom、部署 */
-    const val WANXIANG = false // 临时：排查键盘恢复，排查完改回 false
+    const val WANXIANG = false
 
     /** 语音：sherpa / asrkb / 语音发 AI */
     const val VOICE = false
