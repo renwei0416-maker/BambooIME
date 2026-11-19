@@ -210,6 +210,9 @@ class CommonKeyboardActionListener {
                 if (action.code == 0) {
                     HandwritingWindow.panelTokenPage(action.getText(KeyboardWindow.currentKeyboard))
                         ?.let { page ->
+                            // 先登记「只是开面板」，再挂窗口：挂窗口会走 buildView/onAttached，
+                            // 它们据此跳过手写模型加载。顺序反过来就会白加载一次模型。
+                            handwritingWindow.requestPanelOnly(page)
                             if (!windowManager.isAttached(handwritingWindow)) {
                                 windowManager.attachWindow(handwritingWindow)
                             }

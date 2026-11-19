@@ -237,7 +237,7 @@ open class PreeditUi(
             BambooLog.tips.d(
                 "tips",
                 "build=" + BuildConfig.BUILD_VERSION_NAME + " vc=" + BuildConfig.VERSION_CODE +
-                    " (glkeep1: token commit keeps composition)",
+                    " (nomodel1: symbol panel skips handwriting model)",
             )
         }
         val here = tipsShownHere()

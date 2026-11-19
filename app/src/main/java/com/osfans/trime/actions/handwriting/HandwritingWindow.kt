@@ -217,6 +217,9 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
      */
     @Volatile
     private var panelOnlyPage = -1
+    // 从 token 打开符号面板时，紧跟着会有两次 ensureModel()（buildView + onAttached）；
+    // 用一次性计数把它们跳掉，之后真正进手写板仍会正常加载模型。
+    private var pendingPanelOnlyBuilds = 0
 
         private const val TAG_SPACE = "bamboo_space"
 
@@ -1022,6 +1025,17 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
     }
 
     /**
+     * 在挂上窗口之前先登记「这次只是打开符号面板」，
+     * 于是 buildView()/onAttached() 里的 ensureModel() 会跳过手写模型加载。
+     */
+    fun requestPanelOnly(requested: Int) {
+        panelOnlyPage = resolveEntryPage(requested)
+        // buildView() 与 onAttached() 各会调一次 ensureModel()，两次都跳过。
+        pendingPanelOnlyBuilds = 2
+        BambooLog.hw.d("model", "request panel-only page=" + panelOnlyPage)
+    }
+
+    /**
      * 主题 token（`BambooNumber` / `BambooSymbol`）从键盘唤起面板。
      * 与手写画布进面板的区别：返回/收起都回键盘；候选态整个清空（含 Rime 组合），
      * 否则面板里的数字会直接 commit、而 Rime 还挂着编码，返回键盘时文字与候选对不上。
@@ -1374,6 +1388,14 @@ class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
     // ---------------------------------------------------------------- 识别与上屏
 
     private fun ensureModel() {
+        // 只是从 token 打开「数字和符号」面板时，画布不会出现，这一轮不加载手写模型
+        // 和拼音表：白白占内存，还会让面板弹出变慢。计数只覆盖紧随其后的两次调用，
+        // 之后从手写入口进来仍会照常加载。
+        if (pendingPanelOnlyBuilds > 0 && !modelLoaded && !HandwritingRecognizer.isReady) {
+            pendingPanelOnlyBuilds--
+            BambooLog.hw.d("model", "skip load: panel-only left=" + pendingPanelOnlyBuilds)
+            return
+        }
         if (HandwritingPrefs.showPinyin) HanziPinyin.load(service)
         if (modelLoaded || HandwritingRecognizer.isReady) {
             modelLoaded = true
