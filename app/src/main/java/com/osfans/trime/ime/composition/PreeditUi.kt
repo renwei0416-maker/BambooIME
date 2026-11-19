@@ -80,6 +80,44 @@ import splitties.views.horizontalPadding
  * - `expandedIndex`：展开的是第几条，`-1` 表示列表态。
  * - 高度：列表态 = 前「显示几条」条之和（超出才能滚）；展开态 = 展开行数与屏高 40% 取小。
  */
+/**
+ * 外语学习提示块的共享状态。
+ *
+ * 键盘侧与候选窗侧各有一个 [PreeditUi]，也就各有一个 GlossaryTipsView 实例。
+ * 展开项、钉住的条目、撤回长度、会话号若挂成 View 的字段，两个实例会各算一份，
+ * 于是「屏幕上显示的是哪一份」与「点击落到哪一份」可能不一致 —— 撤回会凭空失效。
+ * 这里集中放一份，两个实例只读写这里。
+ */
+private object GlossaryTipsState {
+    /** 展开的条目下标；-1 = 列表态。 */
+    var expandedIndex: Int = -1
+
+    /** 提交之后钉住的条目快照（组合被清空后仍要能画出来）。 */
+    var pinnedItem: TipEntry? = null
+
+    /** 待撤回的 UTF-16 长度；>0 表示按钮处于「撤回上屏」。 */
+    var undoLength: Int = 0
+
+    /** 提交/撤回事务号，用来丢弃过期的异步回调。 */
+    var txn: Int = 0
+
+    /** 事务状态：见 [UNDO_NONE] / [UNDO_COMMITTED] / [UNDO_PENDING]。 */
+    var undoState: Int = UNDO_NONE
+
+    /** 上次看到的输入会话号。 */
+    var seenSession: Int = -1
+}
+
+/** 没有待办事务。 */
+private const val UNDO_NONE = 0
+
+/** 已上屏，可以撤回。 */
+private const val UNDO_COMMITTED = 1
+
+/** 正在撤回（按钮禁用以防连点）。 */
+private const val UNDO_PENDING = 2
+
+
 open class PreeditUi(
     final override val ctx: Context,
     private val theme: Theme,
@@ -231,8 +269,23 @@ open class PreeditUi(
      */
     private fun syncTouchable() {
         val any = wqTips.visibility == View.VISIBLE || glTips.visibility == View.VISIBLE
+        val active = tipsShownHere()
+        val before = tipsTouchable
+        val me = "owner=" + tipsOwner + " @" + Integer.toHexString(System.identityHashCode(this))
+        // 非活动的那个实例只能把触摸区打开，不能写回 false。
+        // 两个实例各 refresh 一轮就会 true/false 互相覆盖，抖动期间手指按下的那一下
+        // 会被系统判成点到下面的 App（表现为「块还在，却点不动、穿透」）。
+        if (!active && !any) {
+            BambooLog.tips.d("tips", "touchable skip inactive any=false before=" + before + " " + me)
+            return
+        }
         if (any == tipsTouchable) return
         tipsTouchable = any
+        BambooLog.tips.d(
+            "tips",
+            "touchable active=" + active + " any=" + any + " before=" + before +
+                " after=" + tipsTouchable + " " + me,
+        )
         runCatching { TrimeInputMethodService.current?.updateInputViewShown() }
     }
 
@@ -1292,13 +1345,24 @@ open class PreeditUi(
 
         private var entries: List<TipEntry> = emptyList()
         private var snapshot = 0
-        private var expandedIndex = -1
+
+        /** 展开项下标；与另一份实例共用，见 [GlossaryTipsState]。 */
+        private var expandedIndex: Int
+            get() = GlossaryTipsState.expandedIndex
+            set(v) {
+                GlossaryTipsState.expandedIndex = v
+            }
+
         /**
          * 「全部上屏」已经提交的字符数（>0 表示下一次点击是撤回）。
          *
-         * 按钮文案与这个值永远同源，避免出现“写着撤回上屏、点了却无反应”。
+         * 与按钮文案同源；放在共享状态里，避免「显示的是这一份、点击落到那一份」导致撤回凭空丢失。
          */
-        private var undoLength = 0
+        private var undoLength: Int
+            get() = GlossaryTipsState.undoLength
+            set(v) {
+                GlossaryTipsState.undoLength = v
+            }
         private var scrollBeforeExpand = 0
 
         /**
@@ -1307,14 +1371,23 @@ open class PreeditUi(
          * 点词 / 「全部上屏」会清空组合，`entries` 随之变空；此时若还从 `entries` 取内容，
          * 展开块既画不出东西也会被当成“没有匹配项”收掉。钉住之后渲染与判定都不再依赖 `entries`。
          */
-        private var pinnedItem: TipEntry? = null
+        private var pinnedItem: TipEntry?
+            get() = GlossaryTipsState.pinnedItem
+            set(v) {
+                GlossaryTipsState.pinnedItem = v
+            }
 
         /** 上次看到的输入会话号；变了说明换了编辑框，展开块要退掉。 */
-        private var seenSession = sessionToken
+        private var seenSession: Int
+            get() = GlossaryTipsState.seenSession
+            set(v) {
+                GlossaryTipsState.seenSession = v
+            }
 
         /** 上一次测出的高度，只用来避免日志刷屏。 */
         private var lastMeasured = -1
         private var lastBounds = ""
+
         /** 视图被清空过（隐藏时），回来要按 snapshot 重画一次。 */
         private var dirty = true
 
@@ -1529,11 +1602,23 @@ open class PreeditUi(
             if (seenSession != sessionToken) {
                 seenSession = sessionToken
                 pinnedItem = null
+                // 换了编辑框：旧的下文/上屏事务都不再成立，撤回也必须失效，
+                // 否则会把删除作用到新编辑框里。
+                GlossaryTipsState.txn++
+                GlossaryTipsState.undoState = UNDO_NONE
+                GlossaryTipsState.undoLength = 0
                 hardReset()
                 return
             }
             if (!active) {
-                // 不可见（收起键盘、换到别的窗口）时一律收掉：不保留 pin、不重绘。
+                // 只是「本实例不该显示」：清自己的绘制与可见性即可，
+                // 不能动共享的展开项/撤回状态 —— 另一个实例可能正靠它显示同一块。
+                hideLocal()
+                return
+            }
+            if (clear && GlossaryTipsState.undoState == UNDO_NONE && pinnedItem == null) {
+                // 调用方明确说「一条候选都没有」，且没有待撤回的事务：丢掉展开态，
+                // 免得下次打出同一编码又看到上一次的展开内容。
                 pinnedItem = null
                 hardReset()
                 return
@@ -1583,6 +1668,20 @@ open class PreeditUi(
                 dirty = false
             }
             applyVisibility(View.VISIBLE)
+        }
+
+        /**
+         * 本实例不再显示时的收尾：清自己的列表快照与可见性。
+         *
+         * 与 [hardReset] 的区别是**不碰共享状态**：展开项、钉住的条目、撤回事务属于整个
+         * 外语学习功能，不属于某一个宿主实例。
+         */
+        private fun hideLocal() {
+            entries = emptyList()
+            snapshot = 0
+            dirty = true
+            entryExpandable.clear()
+            reset()
         }
 
         private fun reset() {
@@ -1946,19 +2045,14 @@ open class PreeditUi(
                 toast("输入法未就绪，稍后再试")
                 return
             }
-            BambooLog.tips.d("tips", "commitAll click undo=" + undoLength)
+            BambooLog.tips.d(
+                "tips",
+                idTag + " commitAll click undo=" + undoLength + " txn=" + GlossaryTipsState.txn +
+                    " state=" + GlossaryTipsState.undoState + " session=" + sessionToken +
+                    " expanded=" + expandedIndex,
+            )
             if (undoLength > 0) {
-                val n = undoLength
-                setUndo(0)
-                service.postKeyJob {
-                    val ic = service.currentInputConnection
-                    if (ic == null) {
-                        BambooLog.tips.w("tips", "commitAll undo: no input connection")
-                    } else {
-                        runCatching { ic.deleteSurroundingText(n, 0) }
-                    }
-                }
-                BambooLog.tips.d("tips", idTag + " commitAll done undoLen=" + undoLength + " undo=" + n)
+                undoCommit(service)
                 return
             }
             val item =
@@ -1968,15 +2062,61 @@ open class PreeditUi(
                 }
             val payload = item.detail
             if (payload.isEmpty()) return
+            val txn = ++GlossaryTipsState.txn
+            GlossaryTipsState.undoState = UNDO_COMMITTED
             setUndo(payload.length)
+            BambooLog.tips.d("tips", idTag + " commitAll commit txn=" + txn + " len=" + payload.length)
             commitPayload(payload)
-            BambooLog.tips.d("tips", idTag + " commitAll done undoLen=" + undoLength + " commit=" + payload.length)
         }
 
-        /** 按钮文案与撤回长度永远同源。 */
+        /**
+         * 撤回刚上屏的整段内容。
+         *
+         * 顺序必须是「先标记待撤回 → 再删 → 按结果恢复按钮」。删除是异步的，
+         * 若先清零再删，删除失败时按钮已经变回「全部上屏」，用户看到的就是「点了没反应、文字还在」。
+         */
+        private fun undoCommit(service: TrimeInputMethodService) {
+            val n = undoLength
+            val txn = ++GlossaryTipsState.txn
+            GlossaryTipsState.undoState = UNDO_PENDING
+            commitAllButton.isEnabled = false
+            BambooLog.tips.d("tips", idTag + " undo start txn=" + txn + " len=" + n)
+            service.postKeyJob {
+                val ic = service.currentInputConnection
+                val ok =
+                    ic != null &&
+                        runCatching { ic.deleteSurroundingText(n, 0) }.getOrDefault(false)
+                commitAllButton.post {
+                    if (GlossaryTipsState.txn != txn) {
+                        // 期间又提交/收起/换了编辑框：这次回调作废，不要把新状态改回去。
+                        BambooLog.tips.d("tips", idTag + " undo stale txn=" + txn)
+                        return@post
+                    }
+                    commitAllButton.isEnabled = true
+                    if (ok) {
+                        GlossaryTipsState.undoState = UNDO_NONE
+                        setUndo(0)
+                        BambooLog.tips.d("tips", idTag + " undo ok txn=" + txn + " len=" + n)
+                    } else {
+                        // 删除没成功：保留「撤回上屏」，用户可以再点一次，同时留下证据。
+                        GlossaryTipsState.undoState = UNDO_COMMITTED
+                        commitAllButton.text = COMMIT_ALL_UNDO_LABEL
+                        BambooLog.tips.w(
+                            "tips",
+                            idTag + " undo FAILED txn=" + txn + " len=" + n +
+                                " ic=" + (ic != null),
+                        )
+                        toast("撤回失败，可再点一次")
+                    }
+                }
+            }
+        }
+
+        /** 按钮文案、可点状态、撤回长度三者永远同源。 */
         private fun setUndo(length: Int) {
             undoLength = length
             commitAllButton.text = if (length > 0) COMMIT_ALL_UNDO_LABEL else COMMIT_ALL_LABEL
+            commitAllButton.isEnabled = true
             BambooLog.tips.d("tips", idTag + " setUndo len=" + length)
         }
 
@@ -2100,8 +2240,9 @@ open class PreeditUi(
             applyHeight()
             BambooLog.tips.d(
                 "tips",
-                "expand ${if (wenquxing) "wq" else "gl"} idx=" + index +
-                    " h=" + expandHeightPx(),
+                "expand gl idx=" + index + " h=" + expandHeightPx() +
+                    " txn=" + GlossaryTipsState.txn + " state=" + GlossaryTipsState.undoState +
+                    " undo=" + undoLength,
             )
             post { scroller.scrollTo(0, 0) }
         }
@@ -2151,6 +2292,9 @@ open class PreeditUi(
 
         private fun collapse() {
         BambooLog.tips.d("tips", "collapse")
+            // 收起 = 显式结束撤回事务：之后不再允许撤回，并作废仍在飞行中的删除回调。
+            GlossaryTipsState.txn++
+            GlossaryTipsState.undoState = UNDO_NONE
             resetCommitAll()
             expandedIndex = -1
             pinnedItem = null
@@ -2158,7 +2302,10 @@ open class PreeditUi(
             render()
             // 收起后把高度交还给内容（WRAP_CONTENT）并强制父容器重排
             applyHeight()
-            BambooLog.tips.d("tips", "collapse ${if (wenquxing) "wq" else "gl"}")
+            BambooLog.tips.d(
+                "tips",
+                "collapse gl txn=" + GlossaryTipsState.txn + " state=" + GlossaryTipsState.undoState,
+            )
             post { scroller.scrollTo(0, scrollBeforeExpand) }
         }
 
