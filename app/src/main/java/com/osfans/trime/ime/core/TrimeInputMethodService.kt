@@ -743,7 +743,21 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
         }
     }
 
+    override fun onFinishInput() {
+        super.onFinishInput()
+        // 离开编辑框：外语学习提示块不再保留展开态。
+        PreeditUi.sessionToken++
+    }
+
+    override fun onWindowHidden() {
+        super.onWindowHidden()
+        // 输入法窗口被隐藏（收起键盘 / 切后台）：同样视为换了会话。
+        PreeditUi.sessionToken++
+    }
+
     override fun onFinishInputView(finishingInput: Boolean) {
+        // 窗口收起：展开态不再保留。
+        PreeditUi.sessionToken++
         Timber.d("onFinishInputView: finishingInput=$finishingInput")
         inputView?.dismissCandidateActionMenu()
         KeyboardWindow.sidebarController?.clear()

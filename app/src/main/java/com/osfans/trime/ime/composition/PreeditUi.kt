@@ -744,72 +744,6 @@ open class PreeditUi(
                     if (!moved && kotlin.math.abs(ev.rawY - downRawY) > ctx.dp(TAP_SLOP_DP)) moved = true
                 }
 
-                MotionEvent.ACTION_UP -> {
-                    val quick = System.currentTimeMillis() - downAt < 600L
-                    if (!moved && quick) {
-                        val me = IntArray(2)
-                        getLocationOnScreen(me)
-                        val localY = ev.rawY - me[1]
-                        // 先判「收起」：它浮在右上角、盖在内容上方，不能被当成条目
-                        val collapseTop = scroller.top.toFloat()
-                        val collapseBottom = collapseTop + ctx.dp(COLLAPSE_H_DP + 8)
-                        if (expandedIndex >= 0 && localY in collapseTop..collapseBottom) {
-                            BambooLog.tips.d("tips", "tap collapse rawY=" + ev.rawY.toInt())
-                            collapse()
-                            return true
-                        }
-                        val yInColumn = localY - scroller.top - scroller.paddingTop + scroller.scrollY
-                        val idx = childIndexAtScreen(ev.rawY)
-                        val dead = StringBuilder()
-                        for (ci in 0 until column.childCount) {
-                            val cv = column.getChildAt(ci)
-                            val tv = cv as? TextView
-                            val lay = tv?.layout
-                            val textBottom =
-                                if (tv != null && lay != null && lay.lineCount > 0) {
-                                    cv.top + tv.totalPaddingTop + lay.getLineBottom(lay.lineCount - 1)
-                                } else {
-                                    cv.bottom
-                                }
-                            dead.append(" #").append(ci).append(':').append(cv.top).append("..")
-                                .append(cv.bottom).append("/txt").append(textBottom)
-                        }
-                        runCatching {
-                            val me = IntArray(2)
-                            getLocationOnScreen(me)
-                            val sc = IntArray(2)
-                            scroller.getLocationOnScreen(sc)
-                            val col = IntArray(2)
-                            column.getLocationOnScreen(col)
-                            val scr = StringBuilder()
-                            for (ci in 0 until column.childCount) {
-                                val cv = column.getChildAt(ci)
-                                val loc = IntArray(2)
-                                cv.getLocationOnScreen(loc)
-                                scr.append(" #").append(ci).append(':').append(loc[1])
-                                    .append("..").append(loc[1] + cv.height)
-                            }
-                            BambooLog.tips.d(
-                                "tips",
-                                "tap rawY=" + ev.rawY.toInt() + " blockTop=" + me[1] +
-                                    " scrollerTop=" + sc[1] + " columnTop=" + col[1] +
-                                    " localY=" + ev.y.toInt() + " yInColumn=" + yInColumn.toInt() +
-                                    " idx=" + idx + " scrollY=" + scroller.scrollY,
-                            )
-                            BambooLog.tips.d("tips", "screen$scr")
-                        }
-                        BambooLog.tips.d(
-                            "tips",
-                            "tap y=" + ev.y.toInt() + " yInColumn=" + yInColumn.toInt() +
-                                " idx=" + idx + " expanded=" + expandedIndex +
-                                " scrollY=" + scroller.scrollY + dead,
-                        )
-                        if (idx >= 0) {
-                            activate(idx)
-                            return true
-                        }
-                    }
-                }
             }
             return super.dispatchTouchEvent(ev)
         }
@@ -1225,6 +1159,13 @@ open class PreeditUi(
                         clipToOutline = true
                         outlineProvider = ViewOutlineProvider.BACKGROUND
                         tag = commitText
+                        // 点击由 cell 自己消费：父类只做滚动，不再算坐标命中。
+                        isClickable = true
+                        setOnClickListener {
+                            BambooLog.tips.d("tips", "cell click len=" + commitText.length)
+                            setUndo(0)
+                            commitPayload(commitText)
+                        }
                     }
                 row.addView(
                     cell,
@@ -1868,91 +1809,6 @@ open class PreeditUi(
                     }
                 }
 
-                MotionEvent.ACTION_UP -> {
-                    // 收起：按钮矩形命中，或落在展开态顶部那一行 —— 任一即可。
-                    // 不看按压时长，也不要求手指完全不动（此前就是被这两条筛掉的）。
-                    if (expandedIndex >= 0 && !moved) {
-                        val token = findTokenAt(column, ev.rawX, ev.rawY)
-                        if (token != null) {
-                            resetCommitAll()
-                            (token.tag as? String)?.let { commitPayload(it) }
-                            return true
-                        }
-                    }
-                    if (false) {
-                        BambooLog.tips.d(
-                            "tips",
-                            "tap collapseBtn rawX=" + ev.rawX.toInt() +
-                                " rawY=" + ev.rawY.toInt() + " moved=" + moved,
-                        )
-                        collapse()
-                        return true
-                    }
-                    val quick = System.currentTimeMillis() - downAt < 600L
-                    if (!moved && quick) {
-                        val me = IntArray(2)
-                        getLocationOnScreen(me)
-                        val localY = ev.rawY - me[1]
-                        // 先判「收起」：它浮在右上角、盖在内容上方，不能被当成条目
-                        val collapseTop = scroller.top.toFloat()
-                        val collapseBottom = collapseTop + ctx.dp(COLLAPSE_H_DP + 8)
-                        if (expandedIndex >= 0 && localY in collapseTop..collapseBottom) {
-                            BambooLog.tips.d("tips", "tap collapse rawY=" + ev.rawY.toInt())
-                            collapse()
-                            return true
-                        }
-                        val yInColumn = localY - scroller.top - scroller.paddingTop + scroller.scrollY
-                        val idx = childIndexAtScreen(ev.rawY)
-                        val dead = StringBuilder()
-                        for (ci in 0 until column.childCount) {
-                            val cv = column.getChildAt(ci)
-                            val tv = cv as? TextView
-                            val lay = tv?.layout
-                            val textBottom =
-                                if (tv != null && lay != null && lay.lineCount > 0) {
-                                    cv.top + tv.totalPaddingTop + lay.getLineBottom(lay.lineCount - 1)
-                                } else {
-                                    cv.bottom
-                                }
-                            dead.append(" #").append(ci).append(':').append(cv.top).append("..")
-                                .append(cv.bottom).append("/txt").append(textBottom)
-                        }
-                        runCatching {
-                            val me = IntArray(2)
-                            getLocationOnScreen(me)
-                            val sc = IntArray(2)
-                            scroller.getLocationOnScreen(sc)
-                            val col = IntArray(2)
-                            column.getLocationOnScreen(col)
-                            val scr = StringBuilder()
-                            for (ci in 0 until column.childCount) {
-                                val cv = column.getChildAt(ci)
-                                val loc = IntArray(2)
-                                cv.getLocationOnScreen(loc)
-                                scr.append(" #").append(ci).append(':').append(loc[1])
-                                    .append("..").append(loc[1] + cv.height)
-                            }
-                            BambooLog.tips.d(
-                                "tips",
-                                "tap rawY=" + ev.rawY.toInt() + " blockTop=" + me[1] +
-                                    " scrollerTop=" + sc[1] + " columnTop=" + col[1] +
-                                    " localY=" + ev.y.toInt() + " yInColumn=" + yInColumn.toInt() +
-                                    " idx=" + idx + " scrollY=" + scroller.scrollY,
-                            )
-                            BambooLog.tips.d("tips", "screen$scr")
-                        }
-                        BambooLog.tips.d(
-                            "tips",
-                            "tap y=" + ev.y.toInt() + " yInColumn=" + yInColumn.toInt() +
-                                " idx=" + idx + " expanded=" + expandedIndex +
-                                " scrollY=" + scroller.scrollY + dead,
-                        )
-                        if (idx >= 0) {
-                            activate(idx)
-                            return true
-                        }
-                    }
-                }
             }
             return super.dispatchTouchEvent(ev)
         }
