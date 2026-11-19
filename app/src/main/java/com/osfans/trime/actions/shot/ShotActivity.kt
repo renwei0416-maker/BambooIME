@@ -86,7 +86,6 @@ class ShotActivity : Activity() {
             return
         }
         full = bmp
-        goImmersive()
 
         root = FrameLayout(this)
         selector = ShotSelectorView(this)
@@ -105,6 +104,9 @@ class ShotActivity : Activity() {
         buildResult()
 
         setContentView(root)
+        // 华为 API 31 上 DecorView 未 attach 时取 insetsController 会 NPE，
+        // 所以等首帧布局完成后再进入沉浸式
+        root.post { goImmersive() }
         selector.onSelectionChanged = { rect ->
             BambooLog.shot.d("sel", "bitmap=" + rect.toShortString())
         }
@@ -495,10 +497,11 @@ class ShotActivity : Activity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             window.setDecorFitsSystemWindows(false)
-            window.insetsController?.let {
-                it.hide(WindowInsets.Type.systemBars())
-                it.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-            }
+            runCatching {
+                val c = window.decorView.windowInsetsController ?: return@runCatching
+                c.hide(WindowInsets.Type.systemBars())
+                c.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            }.onFailure { BambooLog.shot.d("ui", "immersive failed: " + it.javaClass.simpleName) }
         } else {
             @Suppress("DEPRECATION")
             window.decorView.systemUiVisibility =
