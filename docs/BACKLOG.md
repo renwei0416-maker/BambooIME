@@ -129,7 +129,7 @@
 - 候选注入点在 `core/Rime.kt:472` 的 `CandidateListMessage` 分支：方案自带 comment 优先，空则填译词；加开关。
 - 估计 2–3 天（不含「点译词直接上屏英文」，那项要 ClickableSpan，另加半天）。
 
-## 6. 外语学习：点词上屏后编码行被清空（用户 2026-11-19 决定先记着、暂不改）
+## 6. 外语学习：点词上屏后编码行被清空（2026-11-19 已按方案 1 修复：不再清组合）
 
 - 现象：点提示块里的英文词后，编码行立刻变空；此时退格删的是编辑器正文，删不到编码。
 - 直接原因（已定位，不是引擎设计）：`PreeditUi.commitPayload()` 第一行就是 `clearComposition()`，
@@ -142,6 +142,9 @@
      下一次上屏可能把整段组合再提交一次，需要真机验证。
   2. 不清组合但把 `input` 标记为「已消费」，让编码行继续显示、退格仍走引擎。
   3. 提交后用 `simulateKeySequence` 重放原输入（等于「清了再喂回来」，会多触发一轮候选，最不优雅）。
+- **2026-11-19 结论：按方案 1 做了**（提交 `1044a06c`，`GlossaryTipsView.commitPayload()` 只 `commitText`）。
+  同时解决了实体键盘下的连带问题：候选窗的 `evaluateVisibility()` 以「组合非空 或 候选非空」判定，
+  清组合会让候选窗收起、提示块整条消失。方案 2/3 未采用。
 - 相关位置：`ime/composition/PreeditUi.kt` 的 `commitPayload()`（外语学习与文曲星各一份）、
   `core/Rime.kt` 的 `clearComposition()`。
 
