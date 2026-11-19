@@ -237,7 +237,7 @@ open class PreeditUi(
             BambooLog.tips.d(
                 "tips",
                 "build=" + BuildConfig.BUILD_VERSION_NAME + " vc=" + BuildConfig.VERSION_CODE +
-                    " (tips54: glossary scroller=UNSPECIFIED)",
+                    " (glwidth2: row width fills, header padEnd 14dp)",
             )
         }
         val here = tipsShownHere()
@@ -1513,9 +1513,11 @@ open class PreeditUi(
                 measuredW.takeIf { it > 0 } ?: width.takeIf { it > 0 }
                     ?: measuredWidth.takeIf { it > 0 }
                     ?: runCatching { ctx.resources.displayMetrics.widthPixels }.getOrDefault(1080)
+            // 展开态没有三角列，不要扣 sidePad —— 否则每行右侧会白白空掉一段，
+            // 看着就像“右边被裁掉了”。只扣真实存在的内边距与块的外边距。
             val used = paddingLeft + paddingRight + column.paddingLeft + column.paddingRight +
-                sidePadPx() * 2
-            return (w - used).coerceAtLeast(120)
+                ctx.dp(2) * 2
+            return (w - used - ctx.dp(HEADER_PAD_END_DP)).coerceAtLeast(120)
         }
 
         private fun entryAvailWidth(): Int {
@@ -2400,7 +2402,7 @@ open class PreeditUi(
         private const val MAX_EXPAND_ROWS = 8
         private const val BUTTON_BG_ALPHA = 40
         /** header 行右侧留白（「收起」按钮与右边界之间）。 */
-        private const val HEADER_PAD_END_DP = 10
+        private const val HEADER_PAD_END_DP = 14
         /** header 行高度 = 按钮高 + 这个值（决定首行正文离按钮行多远）。 */
         private const val HEADER_EXTRA_DP = 6
 
