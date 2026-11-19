@@ -253,11 +253,21 @@ class PanelQuickFragment : PaddingPreferenceFragment() {
     /**
      * 模型占用只能实测：取上次加载前后的进程 PSS 差值，并标注是否仍在内存。
      */
+    /**
+     * 模型状态：主句说「在不在内存」，实测增量只作补充。
+     *
+     * 增量是整进程 PSS 的前后差值，测不到（0）时如实说「未测出增量」，
+     * 不能因为没测到就说「还没加载过」——那是两件事。
+     */
     private fun modelSummary(name: String): String {
         val mb = MemoryPrefs.measuredMb(name)
-        val measured = if (mb > 0) "上次加载实测 +$mb MB" else "尚未测量（还没加载过）"
         val held = com.osfans.trime.util.memory.IdleReclaimer.isHeld(name)
-        return "$measured · " + if (held) "当前在内存" else "已释放或未加载"
+        return when {
+            held && mb > 0 -> "当前在内存 · 上次加载实测 +$mb MB"
+            held -> "当前在内存 · 未测出增量"
+            mb > 0 -> "已释放 · 上次加载实测 +$mb MB"
+            else -> "未加载"
+        }
     }
 
     private fun processMemorySummary(): String {

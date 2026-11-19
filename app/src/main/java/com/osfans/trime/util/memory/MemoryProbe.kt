@@ -18,6 +18,9 @@ import android.os.Process
  * 用「加载前后各采一次、求差值」的方式实测，得到的是该次加载的增量而不是绝对值。
  */
 object MemoryProbe {
+    /** 加载后等多久再采第二次（毫秒）：让 mmap 的页真正读入。 */
+    private const val SETTLE_DELAY_MS = 300L
+
     class Snapshot(
         val totalMb: Int,
         val nativeMb: Int,
@@ -50,8 +53,12 @@ object MemoryProbe {
             return 0
         }
         block()
-        val after = memoryInfo(context)?.totalPss ?: return 0
-        val deltaKb = after - before
+        val first = memoryInfo(context)?.totalPss ?: return 0
+        // 模型权重多半是 mmap 进来的，加载那一刻页还没真正读入（按需缺页），
+        // 立刻采样经常是 0。等一会儿让缺页落定，再采一次，取两次里较大的。
+        runCatching { Thread.sleep(SETTLE_DELAY_MS) }
+        val second = memoryInfo(context)?.totalPss ?: first
+        val deltaKb = maxOf(first, second) - before
         return if (deltaKb <= 0) 0 else (deltaKb + 512) / 1024
     }
 

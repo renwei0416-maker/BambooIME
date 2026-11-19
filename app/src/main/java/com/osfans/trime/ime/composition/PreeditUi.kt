@@ -237,7 +237,7 @@ open class PreeditUi(
             BambooLog.tips.d(
                 "tips",
                 "build=" + BuildConfig.BUILD_VERSION_NAME + " vc=" + BuildConfig.VERSION_CODE +
-                    " (nomodel3: canvas entry always loads model)",
+                    " (nomodel4: memory state text + settle sampling)",
             )
         }
         val here = tipsShownHere()
