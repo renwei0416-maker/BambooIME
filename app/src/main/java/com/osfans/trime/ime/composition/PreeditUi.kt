@@ -1089,8 +1089,6 @@ open class PreeditUi(
         private val wenquxing = false
 
         /** 点词 / 全部上屏 / 撤回上屏后，下一次 refresh 的清空是被动的，要原地不动。 */
-        private var selfCommitClear = false
-
         private val column =
             LinearLayout(ctx).apply {
                 orientation = LinearLayout.VERTICAL
@@ -1299,6 +1297,14 @@ open class PreeditUi(
         private var committedLen = 0
         private var scrollBeforeExpand = 0
 
+        /**
+         * 展开时钉住那一条。
+         *
+         * 点词 / 「全部上屏」会清空组合，`entries` 随之变空；此时若还从 `entries` 取内容，
+         * 展开块既画不出东西也会被当成“没有匹配项”收掉。钉住之后渲染与判定都不再依赖 `entries`。
+         */
+        private var pinnedItem: TipEntry? = null
+
         /** 上一次测出的高度，只用来避免日志刷屏。 */
         private var lastMeasured = -1
         private var lastBounds = ""
@@ -1463,14 +1469,8 @@ open class PreeditUi(
          * @param clear   本次「彻底没有候选」——要丢掉展开态，避免下次输入同一编码又看到上次的展开内容
          */
         fun refresh(active: Boolean, clear: Boolean = false) {
-            // 展开态自持：点词上屏会清空组合，此时不允许刷新把整块收掉。
-            // 只豁免“刚刚由自己提交”的那一次清空；换编辑框、退出外语学习、删空编码
-            // 都会走到下面的常规分支，该收就收。标记用一次即复位。
-            if (selfCommitClear) {
-                selfCommitClear = false
-                if (expandedIndex >= 0) return
-            }
             if (!active) {
+                pinnedItem = null
                 // 「真的没有候选了」和「只是窗口暂时不可见」必须分开：
                 // 前者要连指纹一起清（否则重新打回同样的编码会命中淡出的旧指纹，
                 // 滚动位置也停在上次滑到的地方）；后者要保留，否则展开态会被自己人清掉。
@@ -1479,12 +1479,20 @@ open class PreeditUi(
                         if (wenquxing) WenquxingTips.entries().isEmpty() else GlossaryTips.entries().isEmpty()
                     }.getOrDefault(true)
                 if (clear || gone) hardReset() else reset()
+                pinnedItem = null
                 return
             }
             val list =
                 runCatching {
                     if (wenquxing) WenquxingTips.entries() else GlossaryTips.entries()
                 }.getOrNull().orEmpty()
+            if (list.isNotEmpty()) {
+                // 又打出了新的匹配项：之前钉住的那一条已经过期，换回按 entries 渲染。
+                pinnedItem = null
+            } else if (expandedIndex >= 0 && pinnedItem != null) {
+                // 空列表是我们自己提交造成的（点词 / 全部上屏 / 撤回），展开块保持不动。
+                return
+            }
             if (list.isEmpty()) {
                 hardReset()
                 return
@@ -1554,12 +1562,12 @@ open class PreeditUi(
             entryExpandable.clear()
             column.removeAllViews()
             if (expandedIndex >= 0) {
-                val item = entries.getOrNull(expandedIndex)
+                val item = pinnedItem ?: entries.getOrNull(expandedIndex)
                 if (item == null) {
                     expandedIndex = -1
                 } else {
-                    // 两个按钮浮在右上角，不再为它们整块留白，只留 6dp 让首行不贴边。
-                    scroller.setPadding(0, ctx.dp(6), 0, 0)
+                    // 按钮独占顶部一行，词块从它下方开始，这里不再留白。
+                    scroller.setPadding(0, 0, 0, 0)
                     // 展开态也要带 tag：dispatchTouchEvent 的 childIndexAtScreen 只认带 tag 的子 View，
                     // 不带的话点正文拿不到 index → activate 不执行 → 「展开后点内容不上屏」。
                     column.addView(makeTokenDetail(item).apply { tag = expandedIndex })
@@ -1836,7 +1844,6 @@ open class PreeditUi(
                         val token = findTokenAt(column, ev.rawX, ev.rawY)
                         if (token != null) {
                             resetCommitAll()
-                            selfCommitClear = true
                             (token.tag as? String)?.let { commitPayload(it) }
                             return true
                         }
@@ -1932,7 +1939,6 @@ open class PreeditUi(
                 committedLen = 0
                 commitAllButton.text = COMMIT_ALL_LABEL
                 service.postKeyJob {
-                    selfCommitClear = true
                     runCatching { service.currentInputConnection?.deleteSurroundingText(n, 0) }
                 }
                 return
@@ -1942,7 +1948,6 @@ open class PreeditUi(
             if (payload.isEmpty()) return
             committedLen = payload.length
             commitAllButton.text = COMMIT_ALL_UNDO_LABEL
-            selfCommitClear = true
             commitPayload(payload)
         }
 
@@ -2052,7 +2057,6 @@ open class PreeditUi(
             if (entryExpandable[idx] == true) {
                 expand(idx)
             } else {
-                selfCommitClear = true
                 commitPayload(item.payload)
             }
         }
@@ -2065,6 +2069,11 @@ open class PreeditUi(
             bottom: Int,
         ) {
             super.onLayout(changed, left, top, right, bottom)
+            // 按钮占顶部独立一行：词块区从它下方开始，滑动只作用在词块区，按钮不会被压住。
+            val headerH = if (expandedIndex >= 0) ctx.dp(COLLAPSE_H_DP) + ctx.dp(4) else 0
+            if (scroller.top != headerH || scroller.bottom != height) {
+                scroller.layout(0, headerH, width, height)
+            }
             // 高度已经在 onMeasure 里定好，这里不再改 layoutParams（布局阶段改参数会被推迟，
             // 表现就是「有时全显示 / 有时显示 N 条又滑不动」）。
             runCatching {
@@ -2124,7 +2133,11 @@ open class PreeditUi(
                     val want = if (count == 0) contentH + padV else sum + padV
                     if (contentH + padV <= want) contentH + padV else want
                 }.coerceAtLeast(1)
-            scroller.measure(wSpec, MeasureSpec.makeMeasureSpec(h, MeasureSpec.EXACTLY))
+            val headerH = if (expandedIndex >= 0) ctx.dp(COLLAPSE_H_DP) + ctx.dp(4) else 0
+            scroller.measure(
+                wSpec,
+                MeasureSpec.makeMeasureSpec((h - headerH).coerceAtLeast(1), MeasureSpec.EXACTLY),
+            )
             collapseButton.measure(
                 MeasureSpec.makeMeasureSpec(ctx.dp(COLLAPSE_W_DP), MeasureSpec.EXACTLY),
                 MeasureSpec.makeMeasureSpec(ctx.dp(COLLAPSE_H_DP), MeasureSpec.EXACTLY),
@@ -2147,12 +2160,12 @@ open class PreeditUi(
             resetCommitAll()
             val item = entries.getOrNull(index) ?: return
             if (entryExpandable[index] != true) {
-                selfCommitClear = true
                 commitPayload(item.payload)
                 return
             }
             scrollBeforeExpand = scroller.scrollY
             expandedIndex = index
+            pinnedItem = item
             render()
             applyHeight()
             BambooLog.tips.d(
@@ -2209,6 +2222,7 @@ open class PreeditUi(
         private fun collapse() {
             resetCommitAll()
             expandedIndex = -1
+            pinnedItem = null
             collapseButton.visibility = View.GONE
             render()
             // 收起后把高度交还给内容（WRAP_CONTENT）并强制父容器重排
