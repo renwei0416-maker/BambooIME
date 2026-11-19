@@ -144,3 +144,32 @@
   3. 提交后用 `simulateKeySequence` 重放原输入（等于「清了再喂回来」，会多触发一轮候选，最不优雅）。
 - 相关位置：`ime/composition/PreeditUi.kt` 的 `commitPayload()`（外语学习与文曲星各一份）、
   `core/Rime.kt` 的 `clearComposition()`。
+
+## 7. 技术债：文曲星提示块仍是「手写命中 + 浮层按钮」（2026-11-19 记录，暂不动）
+
+对照对象是同期做的「外语学习」提示块。两者是两份独立实现（用户要求互不影响），
+但实现路线不同，外语学习那份被验证更稳，文曲星仍是早期写法。
+
+| 维度 | 文曲星 `WenquxingTipsView`（`ime/composition/PreeditUi.kt:319`，FrameLayout） | 外语学习 `GlossaryTipsView`（同文件 `:1139`，LinearLayout 纵向） |
+| --- | --- | --- |
+| 按钮 | 「收起」绝对定位右上角（top 4dp / right 8dp），滚动区用 34dp 顶部内边距让位 | 真实一行 headerRow（全部上屏 + 收起），高 26+12dp |
+| 点击 | 覆写 `dispatchTouchEvent`，用 `ev.rawY` + `getLocationOnScreen` 手工算命中（`childIndexAtScreen:876`） | 每个 View 原生 `setOnClickListener`（行 / 词块 / 两个按钮） |
+| 展开内容 | 单个 TextView，只能看和滚 | 词块网格，每个词可点、单独上屏 |
+| 展开高度 | `EXPAND_RATIO_WQ = 0.28f` | `EXPAND_RATIO_GL = 0.17f` |
+| 状态 | 每实例私有（expandedIndex / scrollBeforeExpand / snapshot） | 文件级 `GlossaryTipsState` 两实例共享（含 txn / undoLength） |
+| 撤回上屏 | 无 | 有，事务号 + InputConnection 返回值校验 |
+
+结论：**外语学习那套更好**，判断依据是可靠性与可扩展性，不是新旧。
+
+- 点击可靠性：原生分发不依赖坐标换算；`ev.y` 经弹窗转发不可信这件事在提示卡上已经踩过。
+- 能力上限：文曲星目前**无法**「点某一句 / 某个词单独上屏」，要做只能照外语侧改。
+- 状态归属：外语侧把跨实例状态收进一个 object，双实例不再各说各话；文曲星仍是实例字段，
+  一旦也出现双实例（键盘 + 悬浮候选窗），同样的「穿透 / 虚假显示」会复现。
+- 文曲星唯一更优的点是简单：没有撤回事务、没有词块，出错面小。
+
+若哪天允许重构（用户此前明确要求「文曲星那侧一行都别动」，故仅记录）：
+1. 容器 `FrameLayout` → `LinearLayout(VERTICAL)` + `headerRow`，删掉 `dispatchTouchEvent` /
+   `childIndexAtScreen` / `childIndexAt` 三个方法（约 90 行），行上挂原生点击；
+2. 28% 高度的测量路径要按外语侧 `onMeasure` 的方式重算（否则展开高度会跳）；
+3. 顺带可把「点句子上屏」做成可选项（词块化才支持）；
+4. 风险：列表态三角列、展开态截断（字符数档位）都要跟着适配，属于「能跑就别动」的重构。
