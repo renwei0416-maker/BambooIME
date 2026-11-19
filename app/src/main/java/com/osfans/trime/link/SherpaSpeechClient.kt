@@ -365,6 +365,8 @@ object SherpaSpeechClient {
     fun stopHoldSession() {
         if (!isHolding.compareAndSet(true, false)) return
         invokeHoldingChanged(false)
+        // 保留时长从「这次用完」开始算，而不是从引擎加载那一刻算。
+        IdleReclaimer.touch("voice")
         val job = audioJob
         audioJob = null
         if (job == null) {
@@ -375,10 +377,14 @@ object SherpaSpeechClient {
     fun forceStop() {
         if (!isHolding.compareAndSet(true, false)) return
         invokeHoldingChanged(false)
+        IdleReclaimer.touch("voice")
         audioJob?.cancel()
         audioJob = null
         clearServiceRef()
     }
+
+    /** 引擎是否还在内存里（与「正在按住说话」无关，用来显示持有状态）。 */
+    fun isEngineLoaded(): Boolean = recognizerRef.get() != null
 
     /** Release the cached recognizer so the next session re-initializes the engine. */
     fun resetEngine() {

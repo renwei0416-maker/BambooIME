@@ -112,9 +112,18 @@ object IdleReclaimer {
         return done
     }
 
-    /** 系统内存紧张时调用：只释放非繁忙模块，不受保留时长限制。 */
+    /**
+     * 系统回调内存紧张时才放，且只在真正吃紧的两档：前台临界与进程被缓存后回收。
+     *
+     * TRIM_MEMORY_UI_HIDDEN（收起键盘、切走界面）**不算**内存紧张，忽略；
+     * 其余中间档也不放——保留时长由设置项决定，不让系统随手清掉。
+     */
     fun onTrimMemory(level: Int) {
-        if (level < ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) return
+        if (level != ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL &&
+            level != ComponentCallbacks2.TRIM_MEMORY_COMPLETE
+        ) {
+            return
+        }
         val done = releaseAll()
         if (done.isNotEmpty()) Timber.i("IdleReclaimer: trim(%d) released %s", level, done)
     }

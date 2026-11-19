@@ -237,7 +237,7 @@ open class PreeditUi(
             BambooLog.tips.d(
                 "tips",
                 "build=" + BuildConfig.BUILD_VERSION_NAME + " vc=" + BuildConfig.VERSION_CODE +
-                    " (nomodel4: memory state text + settle sampling)",
+                    " (nomodel5: voice idle timer + no trim on hide)",
             )
         }
         val here = tipsShownHere()

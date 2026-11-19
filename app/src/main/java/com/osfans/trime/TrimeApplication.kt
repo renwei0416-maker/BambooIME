@@ -167,7 +167,7 @@ class TrimeApplication : Application() {
                 label = "语音",
                 isBusy = { SherpaSpeechClient.isHolding() },
                 release = { SherpaSpeechClient.releaseEngineForMemoryPressure() },
-                loaded = { SherpaSpeechClient.isHolding() },
+                loaded = { SherpaSpeechClient.isEngineLoaded() },
                 pinned = { MemoryPrefs.voicePinned },
             ),
         )
