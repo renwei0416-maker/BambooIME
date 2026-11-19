@@ -1832,6 +1832,7 @@ open class PreeditUi(
                         val token = findTokenAt(column, ev.rawX, ev.rawY)
                         if (token != null) {
                             resetCommitAll()
+                            selfCommitClear = true
                             (token.tag as? String)?.let { commitPayload(it) }
                             return true
                         }
@@ -1927,6 +1928,7 @@ open class PreeditUi(
                 committedLen = 0
                 commitAllButton.text = COMMIT_ALL_LABEL
                 service.postKeyJob {
+                    selfCommitClear = true
                     runCatching { service.currentInputConnection?.deleteSurroundingText(n, 0) }
                 }
                 return
@@ -1936,6 +1938,7 @@ open class PreeditUi(
             if (payload.isEmpty()) return
             committedLen = payload.length
             commitAllButton.text = COMMIT_ALL_UNDO_LABEL
+            selfCommitClear = true
             commitPayload(payload)
         }
 
@@ -2042,7 +2045,12 @@ open class PreeditUi(
                 "tips",
                 "activate idx=" + idx + " expandable=" + entryExpandable[idx] + " text=" + item.text.take(12),
             )
-            if (entryExpandable[idx] == true) expand(idx) else commitPayload(item.payload)
+            if (entryExpandable[idx] == true) {
+                expand(idx)
+            } else {
+                selfCommitClear = true
+                commitPayload(item.payload)
+            }
         }
 
         override fun onLayout(
@@ -2135,6 +2143,7 @@ open class PreeditUi(
             resetCommitAll()
             val item = entries.getOrNull(index) ?: return
             if (entryExpandable[index] != true) {
+                selfCommitClear = true
                 commitPayload(item.payload)
                 return
             }
