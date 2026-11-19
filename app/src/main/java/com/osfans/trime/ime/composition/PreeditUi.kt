@@ -1083,7 +1083,17 @@ open class PreeditUi(
         }
     }
 
-    private inner class GlossaryTipsView : FrameLayout(ctx) {
+    private inner class GlossaryTipsView : LinearLayout(ctx) {
+        /**
+         * 顶部按钮行：占一行真实布局，不做浮层。
+         *
+         * 浮层按钮会被下面的滚动区盖住、并且只能靠手工坐标判命中；
+         * 改成独立一行后，点击走标准 View 分发，不会出现「点了没反应」。
+         */
+        private val headerRow = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
         // 由 TipsView 复制而来，`wenquxing` 固定为 false。
         // 两块提示各自一份代码：改这边不会影响另一边。
         private val wenquxing = false
@@ -1309,39 +1319,57 @@ open class PreeditUi(
         private var dirty = true
 
         init {
+            orientation = LinearLayout.VERTICAL
             visibility = View.GONE
             clipToOutline = true
             outlineProvider = ViewOutlineProvider.BACKGROUND
-            addView(
-                scroller,
-                LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT),
+            // 两颗按钮都走原生点击：不受可见性/布局时机影响。
+            collapseButton.isClickable = true
+            commitAllButton.isClickable = true
+            collapseButton.setOnClickListener {
+                BambooLog.tips.d("tips", "collapseBtn click " + idTag)
+                collapse()
+            }
+            commitAllButton.setOnClickListener {
+                BambooLog.tips.d("tips", "commitAll click undo=" + undoLength + " " + idTag)
+                onCommitAllClick()
+            }
+            // header 行：[弹性空白][全部上屏][6dp][收起][右 8dp]
+            headerRow.addView(
+                View(ctx),
+                LinearLayout.LayoutParams(0, 1, 1f),
             )
-            addView(
+            headerRow.addView(
+                commitAllButton,
+                LinearLayout.LayoutParams(ctx.dp(COMMIT_ALL_W_DP), ctx.dp(COLLAPSE_H_DP)),
+            )
+            headerRow.addView(
+                View(ctx),
+                LinearLayout.LayoutParams(ctx.dp(6), 1),
+            )
+            headerRow.addView(
                 collapseButton,
-                LayoutParams(ctx.dp(COLLAPSE_W_DP), ctx.dp(COLLAPSE_H_DP), Gravity.TOP or Gravity.END).apply {
-                    topMargin = ctx.dp(4)
+                LinearLayout.LayoutParams(ctx.dp(COLLAPSE_W_DP), ctx.dp(COLLAPSE_H_DP)).apply {
                     rightMargin = ctx.dp(8)
                 },
             )
             addView(
-                commitAllButton,
-                LayoutParams(ctx.dp(COMMIT_ALL_W_DP), ctx.dp(COLLAPSE_H_DP), Gravity.TOP or Gravity.END).apply {
-                    topMargin = ctx.dp(4)
-                    rightMargin = ctx.dp(8 + COLLAPSE_W_DP + 6)
-                },
+                headerRow,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    ctx.dp(COLLAPSE_H_DP) + ctx.dp(4),
+                ),
             )
-            // 两颗按钮都走原生点击：值机时机的变化（visibility/布局）不会让点击静默失效。
-            collapseButton.isClickable = true
-            commitAllButton.isClickable = true
-            collapseButton.setOnClickListener {
-                BambooLog.tips.d("tips", "collapseBtn click")
-                collapse()
-            }
-            commitAllButton.setOnClickListener {
-                BambooLog.tips.d("tips", "commitAll click undo=" + undoLength)
-                onCommitAllClick()
-            }
+            // 滚动区占满 header 以下的全部高度。
+            addView(
+                scroller,
+                LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f),
+            )
         }
+
+        /** 两个实例（键盘内 / 候选窗内）日志要能分清。 */
+        private val idTag: String get() = "#" + Integer.toHexString(System.identityHashCode(this))
+
 
         private fun scalePct(): Int =
             runCatching {
@@ -1494,7 +1522,7 @@ open class PreeditUi(
         fun refresh(active: Boolean, clear: Boolean = false) {
         BambooLog.tips.d(
             "tips",
-            "refresh active=" + active + " clear=" + clear + " entries=" + entries.size +
+            idTag + " refresh active=" + active + " clear=" + clear + " entries=" + entries.size +
                 " expanded=" + expandedIndex + " pinned=" + (pinnedItem != null) +
                 " session=" + sessionToken + " seen=" + seenSession,
         )
@@ -1505,16 +1533,9 @@ open class PreeditUi(
                 return
             }
             if (!active) {
+                // 不可见（收起键盘、换到别的窗口）时一律收掉：不保留 pin、不重绘。
                 pinnedItem = null
-                // 「真的没有候选了」和「只是窗口暂时不可见」必须分开：
-                // 前者要连指纹一起清（否则重新打回同样的编码会命中淡出的旧指纹，
-                // 滚动位置也停在上次滑到的地方）；后者要保留，否则展开态会被自己人清掉。
-                val gone =
-                    runCatching {
-                        if (wenquxing) WenquxingTips.entries().isEmpty() else GlossaryTips.entries().isEmpty()
-                    }.getOrDefault(true)
-                if (clear || gone) hardReset() else reset()
-                pinnedItem = null
+                hardReset()
                 return
             }
             val list =
@@ -1862,18 +1883,6 @@ open class PreeditUi(
                     downAt = System.currentTimeMillis()
                     moved = false
                     downIndex = hitIndexAt(ev.rawY)
-                    val _r1 = android.graphics.Rect(); val _r2 = android.graphics.Rect()
-                    val _v1 = collapseButton.visibility
-                    val _v2 = commitAllButton.visibility
-                    collapseButton.getGlobalVisibleRect(_r1)
-                    commitAllButton.getGlobalVisibleRect(_r2)
-                    BambooLog.tips.d(
-                        "tips",
-                        "gl btns collapseVis=" + _v1 + " collapseRect=" + _r1 +
-                            " commitVis=" + _v2 + " commitRect=" + _r2 +
-                            " tapInCollapse=" + _r1.contains(ev.rawX.toInt(), ev.rawY.toInt()) +
-                            " tapInCommit=" + _r2.contains(ev.rawX.toInt(), ev.rawY.toInt()),
-                    )
                     BambooLog.tips.d(
                         "tips",
                         "gl down rawY=" + ev.rawY.toInt() + " idx=" + downIndex +
@@ -2014,38 +2023,6 @@ open class PreeditUi(
                 commitPayload(item.payload)
             }
         }
-
-        override fun onLayout(
-            changed: Boolean,
-            left: Int,
-            top: Int,
-            right: Int,
-            bottom: Int,
-        ) {
-            super.onLayout(changed, left, top, right, bottom)
-            // 按钮占顶部独立一行：词块区从它下方开始，滑动只作用在词块区，按钮不会被压住。
-            val headerH = if (expandedIndex >= 0) ctx.dp(COLLAPSE_H_DP) + ctx.dp(4) else 0
-            if (scroller.top != headerH || scroller.bottom != height) {
-                scroller.layout(0, headerH, width, height)
-            }
-            // 高度已经在 onMeasure 里定好，这里不再改 layoutParams（布局阶段改参数会被推迟，
-            // 表现就是「有时全显示 / 有时显示 N 条又滑不动」）。
-            runCatching {
-                val sb = StringBuilder()
-                for (ci in 0 until column.childCount) {
-                    val cv = column.getChildAt(ci)
-                    sb.append(" #").append(ci).append(':').append(cv.top).append("..").append(cv.bottom)
-                }
-                val line = (if (wenquxing) "wq" else "gl") + " h=" + height +
-                    " scrollY=" + scroller.scrollY + " expanded=" + expandedIndex + sb
-                if (line != lastBounds) {
-                    lastBounds = line
-                    BambooLog.tips.d("tips", "bounds " + line)
-                }
-            }
-            this@PreeditUi.syncTouchable()
-        }
-
         /**
          * 高度只在测量阶段决定：先把内容按不限高量一遍，拿到每条的真实高度，
          * 再按「显示几条」或「展开行数」定自己的高度。用 measuredHeight，不用 height。
@@ -2088,30 +2065,26 @@ open class PreeditUi(
                     if (contentH + padV <= want) contentH + padV else want
                 }.coerceAtLeast(1)
             val headerH = if (expandedIndex >= 0) ctx.dp(COLLAPSE_H_DP) + ctx.dp(4) else 0
+            headerRow.measure(
+                wSpec,
+                MeasureSpec.makeMeasureSpec(headerH.coerceAtLeast(1), MeasureSpec.EXACTLY),
+            )
             scroller.measure(
                 wSpec,
                 MeasureSpec.makeMeasureSpec((h - headerH).coerceAtLeast(1), MeasureSpec.EXACTLY),
-            )
-            collapseButton.measure(
-                MeasureSpec.makeMeasureSpec(ctx.dp(COLLAPSE_W_DP), MeasureSpec.EXACTLY),
-                MeasureSpec.makeMeasureSpec(ctx.dp(COLLAPSE_H_DP), MeasureSpec.EXACTLY),
-            )
-            commitAllButton.measure(
-                MeasureSpec.makeMeasureSpec(ctx.dp(COMMIT_ALL_W_DP), MeasureSpec.EXACTLY),
-                MeasureSpec.makeMeasureSpec(ctx.dp(COLLAPSE_H_DP), MeasureSpec.EXACTLY),
             )
             setMeasuredDimension(w, h)
             if (h != lastMeasured) {
                 lastMeasured = h
                 BambooLog.tips.d(
                     "tips",
-                    "measure gl content=" + contentH + " final=" + h + " expanded=" + expandedIndex,
+                    idTag + " measure gl content=" + contentH + " final=" + h + " expanded=" + expandedIndex,
                 )
             }
         }
 
         private fun expand(index: Int) {
-            BambooLog.tips.d("tips", "expand idx=" + index)
+            BambooLog.tips.d("tips", idTag + " expand idx=" + index)
             resetCommitAll()
             val item = entries.getOrNull(index) ?: return
             if (entryExpandable[index] != true) {
