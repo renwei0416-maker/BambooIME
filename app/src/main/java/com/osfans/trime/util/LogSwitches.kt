@@ -51,6 +51,9 @@ object LogSwitches {
     /** 引擎与键盘：输入视图、窗口挂载、按键分发 */
     const val CORE = false
 
+    /** 截图：无障碍抓屏、框选、保存/复制 */
+    const val SHOT = false
+
     /** 一键全开：排查时先试这个 */
     const val ALL = false
 }

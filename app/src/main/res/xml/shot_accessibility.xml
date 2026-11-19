@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+SPDX-FileCopyrightText: 2026 BambooIME contributors
+SPDX-License-Identifier: GPL-3.0-or-later
+-->
+
+<!--
+无障碍服务只做一件事：用 AccessibilityService.takeScreenshot() 拿一张屏幕位图。
+不监听任何事件、不读取窗口内容（canRetrieveWindowContent=false），
+所以系统里显示的授权说明就是下面这段文字。
+-->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeWindowStateChanged"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagDefault"
+    android:canRetrieveWindowContent="false"
+    android:canTakeScreenshot="true"
+    android:description="@string/shot_accessibility_desc"
+    android:notificationTimeout="100"
+    android:summary="@string/shot_accessibility_summary" />

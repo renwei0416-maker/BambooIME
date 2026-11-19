@@ -34,6 +34,7 @@ import com.osfans.trime.data.packaging.SchemaPackStore
 import com.osfans.trime.data.theme.ColorManager
 import com.osfans.trime.daemon.RimeDaemon
 import com.osfans.trime.ime.clipboard.ClipboardWindow
+import com.osfans.trime.actions.shot.ShotActions
 import com.osfans.trime.ime.core.TrimeInputMethodService
 import com.osfans.trime.ime.keyboard.KeyboardWindow
 import com.osfans.trime.ime.window.BoardWindow
@@ -287,6 +288,7 @@ class KeyPanelWindow : BoardWindow.NoBarBoardWindow() {
                 Cell("aocr", "拍照", "", "cmd_camera", Kind.ACTION, "ocr"),
                 Cell("aai", "功能模式", "", "cmd_robot", Kind.ACTION, "ai"),
                 Cell("aclip", "剪贴板", "", "cmd_clipboard_text", Kind.ACTION, "clipboard"),
+                Cell("ashot", "截图", "", "cmd_monitor_screenshot", Kind.ACTION, "shot"),
             )
 
         // 每行最多 4 个：多了自动换行，绝不挤成 5 个一行
@@ -427,6 +429,11 @@ class KeyPanelWindow : BoardWindow.NoBarBoardWindow() {
                     "ocr" -> windowManager.attachWindow(OcrWindow.instance)
                     "ai" -> windowManager.attachWindow(AiPanelWindow.instance)
                     "clipboard" -> windowManager.attachWindow(ClipboardWindow())
+                    "shot" -> {
+                        // 截图是独立功能：先离开面板并收起键盘，由 ShotActions 负责抓屏与显示框选界面
+                        leaveToKeyboard()
+                        ShotActions.start(service)
+                    }
                     "glossary" -> {
                         GlossaryPrefs.enabled = !GlossaryPrefs.enabled
                         toast(if (GlossaryPrefs.enabled) "已开启外语学习" else "已关闭外语学习")

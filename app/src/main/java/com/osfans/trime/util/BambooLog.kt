@@ -44,6 +44,7 @@ object BambooLog {
     @JvmField val wx = BambooLogModule("wx", LogSwitches.WANXIANG || LogSwitches.ALL)
     @JvmField val voice = BambooLogModule("voice", LogSwitches.VOICE || LogSwitches.ALL)
     @JvmField val core = BambooLogModule("core", LogSwitches.CORE || LogSwitches.ALL)
+    @JvmField val shot = BambooLogModule("shot", LogSwitches.SHOT || LogSwitches.ALL)
 
     // ---- 落盘 ----------------------------------------------------------------
     private val timeFmt = SimpleDateFormat("HH:mm:ss.SSS", Locale.US)
