@@ -1148,6 +1148,7 @@ open class PreeditUi(
                     gravity = Gravity.CENTER_VERTICAL
                 }
             var used = 0
+            val cellPadH = ctx.dp(4) * 2 + ctx.dp(2) * 2
 
             fun flush() {
                 if (row.childCount > 0) {
@@ -1172,7 +1173,9 @@ open class PreeditUi(
                     flush()
                     continue
                 }
-                val w = paint.measureText(token).toInt()
+                // cell 的真实宽度 = 文字宽 + 左右 padding + 左右 margin，
+                // 只按文字宽判断会在行尾“看着放得下、实际放不下”，被父行硬压成两行。
+                val w = paint.measureText(token).toInt() + cellPadH
                 if (token.isBlank()) {
                     val gap = w.coerceAtLeast(ctx.dp(3))
                     if (used + gap <= avail) {
@@ -1187,7 +1190,9 @@ open class PreeditUi(
                         text = token
                         textSize = bodyTextSize()
                         typeface = FontManager.getTypeface()
-                        setPadding(ctx.dp(4), ctx.dp(2), ctx.dp(4), ctx.dp(2))
+                        setPadding(ctx.dp(4), ctx.dp(1), ctx.dp(4), ctx.dp(1))
+                        includeFontPadding = false
+                        setLineSpacing(0f, 1f)
                         setTextColor(
                             ColorStateList(
                                 arrayOf(
@@ -1224,11 +1229,9 @@ open class PreeditUi(
                         // 横向合计 5dp：左右各 2dp 外边距 + 累加时补 1dp。
                         leftMargin = ctx.dp(2)
                         rightMargin = ctx.dp(2)
-                        topMargin = ctx.dp(1)
-                        bottomMargin = ctx.dp(1)
                     },
                 )
-                used += w + ctx.dp(1)
+                used += w
             }
             flush()
             return root
@@ -1555,7 +1558,8 @@ open class PreeditUi(
                 if (item == null) {
                     expandedIndex = -1
                 } else {
-                    scroller.setPadding(0, ctx.dp(COLLAPSE_H_DP + 8), 0, 0)
+                    // 两个按钮浮在右上角，不再为它们整块留白，只留 6dp 让首行不贴边。
+                    scroller.setPadding(0, ctx.dp(6), 0, 0)
                     // 展开态也要带 tag：dispatchTouchEvent 的 childIndexAtScreen 只认带 tag 的子 View，
                     // 不带的话点正文拿不到 index → activate 不执行 → 「展开后点内容不上屏」。
                     column.addView(makeTokenDetail(item).apply { tag = expandedIndex })
