@@ -1958,6 +1958,7 @@ open class PreeditUi(
                         runCatching { ic.deleteSurroundingText(n, 0) }
                     }
                 }
+                BambooLog.tips.d("tips", idTag + " commitAll done undoLen=" + undoLength + " undo=" + n)
                 return
             }
             val item =
@@ -1969,12 +1970,14 @@ open class PreeditUi(
             if (payload.isEmpty()) return
             setUndo(payload.length)
             commitPayload(payload)
+            BambooLog.tips.d("tips", idTag + " commitAll done undoLen=" + undoLength + " commit=" + payload.length)
         }
 
         /** 按钮文案与撤回长度永远同源。 */
         private fun setUndo(length: Int) {
             undoLength = length
             commitAllButton.text = if (length > 0) COMMIT_ALL_UNDO_LABEL else COMMIT_ALL_LABEL
+            BambooLog.tips.d("tips", idTag + " setUndo len=" + length)
         }
 
         private fun toast(msg: String) {
@@ -2085,7 +2088,6 @@ open class PreeditUi(
 
         private fun expand(index: Int) {
             BambooLog.tips.d("tips", idTag + " expand idx=" + index)
-            resetCommitAll()
             val item = entries.getOrNull(index) ?: return
             if (entryExpandable[index] != true) {
                 commitPayload(item.payload)
