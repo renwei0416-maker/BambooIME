@@ -357,7 +357,7 @@ class Rime :
         // installation.yaml 并全量部署（deployment_tasks.cc 的 InstallationUpdate），
         // 而调试包的版本号跟着 buildVersionName 走的话，每次升版本都白部署一次。
         // 数据文件（schema/词典/主题）真的变了仍会由 DataManager.sync() 触发部署。
-        val distroVersion = if (BuildConfig.DEBUG) "dev" else BuildConfig.BUILD_VERSION_NAME
+        val distroVersion = if (BuildConfig.DEBUG) "dev (shot3: immersive ball menu + ocr/ai)" else BuildConfig.BUILD_VERSION_NAME
         startupRime(
             sharedDataDir,
             userDataDir,

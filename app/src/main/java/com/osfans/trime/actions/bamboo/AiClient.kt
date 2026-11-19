@@ -12,6 +12,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
+import android.util.Base64
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -127,6 +128,112 @@ object AiClient {
                 Result.failure(AiError(e.message ?: e.javaClass.simpleName))
             }
         }
+
+    /**
+     * 视觉请求：把一张图连同提示词发给模型。
+     *
+     * 与 [chat] 的区别：user 消息是内容数组（文本 + image_url），图以 base64 data URL 内联；
+     * **不传 max_tokens**（交给服务端默认，避免推理 token 把正文吃光）。
+     */
+    suspend fun vision(
+        prompt: String,
+        image: ByteArray,
+        mime: String = "image/png",
+        timeoutMs: Int = 90_000,
+        temperature: Float = 0.2f,
+    ): Result<String> =
+        withContext(Dispatchers.IO) {
+            val cfg =
+                Cfg(
+                    url = normalizeUrl(BambooPrefs.aiBaseUrl),
+                    model = BambooPrefs.aiModel,
+                    key = BambooPrefs.aiApiKey,
+                    temp = temperature,
+                    maxTokens = 0,
+                    timeoutMs = timeoutMs,
+                )
+            if (cfg.url.isEmpty()) return@withContext Result.failure(AiError("还没填 AI 接口地址"))
+            if (cfg.model.isEmpty()) return@withContext Result.failure(AiError("还没填模型名"))
+            if (image.isEmpty()) return@withContext Result.failure(AiError("没有可发送的图片"))
+
+            val dataUrl = "data:" + mime + ";base64," + Base64.encodeToString(image, Base64.NO_WRAP)
+            fun payload(limit: Int?): String =
+                buildJsonObject {
+                    put("model", cfg.model)
+                    put("temperature", cfg.temp)
+                    put("stream", false)
+                    if (limit != null) put("max_tokens", limit)
+                    put(
+                        "messages",
+                        buildJsonArray {
+                            add(
+                                buildJsonObject {
+                                    put("role", "user")
+                                    put(
+                                        "content",
+                                        buildJsonArray {
+                                            add(
+                                                buildJsonObject {
+                                                    put("type", "text")
+                                                    put("text", prompt)
+                                                },
+                                            )
+                                            add(
+                                                buildJsonObject {
+                                                    put("type", "image_url")
+                                                    put(
+                                                        "image_url",
+                                                        buildJsonObject { put("url", dataUrl) },
+                                                    )
+                                                },
+                                            )
+                                        },
+                                    )
+                                },
+                            )
+                        },
+                    )
+                }.toString()
+
+            fun post(body: String): Pair<Int, String> {
+                val builder =
+                    Request
+                        .Builder()
+                        .url(cfg.url)
+                        .post(body.toRequestBody("application/json; charset=utf-8".toMediaType()))
+                        .header("Accept", "application/json")
+                if (cfg.key.isNotEmpty()) builder.header("Authorization", "Bearer " + cfg.key)
+                val call = client.newBuilder().readTimeout(cfg.timeoutMs.toLong(), TimeUnit.MILLISECONDS).build().newCall(builder.build())
+                return call.execute().use { it.code to (it.body?.string().orEmpty()) }
+            }
+
+            try {
+                val first = post(payload(null))
+                if (first.first !in 200..299) {
+                    Timber.w("ai vision http %d: %s", first.first, first.second.take(200))
+                    return@withContext Result.failure(AiError("接口返回 " + first.first))
+                }
+                var text = extractContent(first.second)
+                if (text.isNullOrBlank() && finishReason(first.second) == "length") {
+                    // 推理把 token 吃光了：带一个大上限重试一次
+                    val second = post(payload(8000))
+                    if (second.first !in 200..299) {
+                        return@withContext Result.failure(AiError("接口返回 " + second.first))
+                    }
+                    text = extractContent(second.second)
+                }
+                if (text.isNullOrBlank()) Result.failure(AiError("接口返回里没有内容")) else Result.success(text.trim())
+            } catch (e: Throwable) {
+                Timber.w(e, "ai vision failed")
+                Result.failure(AiError(e.message ?: e.javaClass.simpleName))
+            }
+        }
+
+    private fun finishReason(body: String): String? {
+        val root = runCatching { json.parseToJsonElement(body) }.getOrNull() ?: return null
+        val first = ((root as? JsonObject)?.get("choices") as? JsonArray)?.firstOrNull() as? JsonObject ?: return null
+        return (first["finish_reason"] as? JsonPrimitive)?.contentOrNullSafe()
+    }
 
     /** 从 `choices[0].message.content`（或 `choices[0].text`）里取正文。 */
     private fun extractContent(body: String): String? {
