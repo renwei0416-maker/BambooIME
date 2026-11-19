@@ -1398,6 +1398,9 @@ open class PreeditUi(
          * 以前会退回「整屏宽」，于是按更宽的量换行，行尾越过控件右边界被裁掉。
          */
         private var measuredW = 0
+
+        /** 上次记录的宽度，只用于让宽度日志不刷屏。 */
+        private var lastWidth = -1
         private var lastBounds = ""
 
         /** 视图被清空过（隐藏时），回来要按 snapshot 重画一次。 */
@@ -2185,8 +2188,21 @@ open class PreeditUi(
             widthMeasureSpec: Int,
             heightMeasureSpec: Int,
         ) {
-            val w = MeasureSpec.getSize(widthMeasureSpec)
+            val specW = MeasureSpec.getSize(widthMeasureSpec)
+            val screenW = runCatching { resources.displayMetrics.widthPixels }.getOrDefault(specW)
+            // 宽度夹到屏幕宽：父布局给的宽度比屏幕还宽时，块会整段右移出屏，
+            // 内部留白与行尾裁剪都落在屏幕外，调多少都看不出来。
+            val w = if (specW > screenW) screenW else specW
             measuredW = w
+            if (w != lastWidth) {
+                lastWidth = w
+                val pw = runCatching { (parent as? View)?.width ?: -1 }.getOrDefault(-1)
+                BambooLog.tips.d(
+                    "tips",
+                    "width gl spec=" + specW + " screen=" + screenW + " parent=" + pw +
+                        " self=" + w + " " + idTag,
+                )
+            }
             val wSpec = MeasureSpec.makeMeasureSpec(w, MeasureSpec.EXACTLY)
             // 1) 先按「高度不限」量一遍：正文到底多高
             column.measure(wSpec, MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED))
