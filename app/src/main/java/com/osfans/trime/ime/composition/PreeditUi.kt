@@ -1857,6 +1857,12 @@ open class PreeditUi(
                     downAt = System.currentTimeMillis()
                     moved = false
                     downIndex = hitIndexAt(ev.rawY)
+                    BambooLog.tips.d(
+                        "tips",
+                        "gl down rawY=" + ev.rawY.toInt() + " idx=" + downIndex +
+                            " scrollY=" + scroller.scrollY + " childH=" + column.height +
+                            " viewH=" + scroller.height + " scrollerKids=" + scroller.childCount,
+                    )
                 }
 
                 MotionEvent.ACTION_MOVE -> {
@@ -1875,6 +1881,15 @@ open class PreeditUi(
 
             }
             val handled = super.dispatchTouchEvent(ev)
+            if (ev.actionMasked == MotionEvent.ACTION_UP) {
+                // 诊断抬手：handled=false 说明没有子 View 消费，moved=true 时兜底会被跳过。
+                BambooLog.tips.d(
+                    "tips",
+                    "gl up handled=" + handled + " moved=" + moved +
+                        " dy=" + (ev.rawY - downRawY).toInt() + " idx=" + downIndex +
+                        " scrollY=" + scroller.scrollY,
+                )
+            }
             // 子 View（按钮、词块）没有消费这次抬手时兜底：按 DOWN 记下的条目展开。
             if (ev.actionMasked == MotionEvent.ACTION_UP && !handled && !moved) {
                 val quick = System.currentTimeMillis() - downAt < 600L
