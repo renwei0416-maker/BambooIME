@@ -128,3 +128,19 @@
   或仿青简 `.qj`（字符串 arena + 定长表 + 文件内哈希索引），常驻内存≈0。
 - 候选注入点在 `core/Rime.kt:472` 的 `CandidateListMessage` 分支：方案自带 comment 优先，空则填译词；加开关。
 - 估计 2–3 天（不含「点译词直接上屏英文」，那项要 ClickableSpan，另加半天）。
+
+## 6. 外语学习：点词上屏后编码行被清空（用户 2026-11-19 决定先记着、暂不改）
+
+- 现象：点提示块里的英文词后，编码行立刻变空；此时退格删的是编辑器正文，删不到编码。
+- 直接原因（已定位，不是引擎设计）：`PreeditUi.commitPayload()` 第一行就是 `clearComposition()`，
+  它调用 librime 的 `clear_composition` 再 `emitResponse()` 推一次空组合，编码行随即清空。
+  引擎本身不会因为 `InputConnection.commitText()` 结束组合。
+- 当初这么写的原因：上屏「不是引擎产出的文字」（英文词 / AI 文本 / 表情 / 剪贴板）之前必须先收尾组合，
+  否则编辑器里的 composing 区还挂着，会出现下划线残留、光标错位、连续两次提交重复上屏。
+- 若将来要改，候选做法（按优先级）：
+  1. 直接不清组合，只 `service.commitText(payload)`，让引擎组合留着；风险是候选列表不刷新、
+     下一次上屏可能把整段组合再提交一次，需要真机验证。
+  2. 不清组合但把 `input` 标记为「已消费」，让编码行继续显示、退格仍走引擎。
+  3. 提交后用 `simulateKeySequence` 重放原输入（等于「清了再喂回来」，会多触发一轮候选，最不优雅）。
+- 相关位置：`ime/composition/PreeditUi.kt` 的 `commitPayload()`（外语学习与文曲星各一份）、
+  `core/Rime.kt` 的 `clearComposition()`。

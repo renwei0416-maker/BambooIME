@@ -1145,7 +1145,11 @@ open class PreeditUi(
          */
         private val headerRow = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
+            // 按钮整体靠右，右侧留白由容器 padding 给。
+            // 用子控件的 rightMargin 时，一旦「可用宽度」算得比控件实际宽，
+            // 按钮就会被顶出右边界，表现为右圆角被裁掉。
+            gravity = Gravity.CENTER_VERTICAL or Gravity.END
+            setPadding(0, 0, ctx.dp(HEADER_PAD_END_DP), 0)
         }
         // 由 TipsView 复制而来，`wenquxing` 固定为 false。
         // 两块提示各自一份代码：改这边不会影响另一边。
@@ -1386,6 +1390,14 @@ open class PreeditUi(
 
         /** 上一次测出的高度，只用来避免日志刷屏。 */
         private var lastMeasured = -1
+
+        /**
+         * 本次测量得到的宽度。
+         *
+         * 流式排版发生在测量之前，那时 `width`/`measuredWidth` 还是 0，
+         * 以前会退回「整屏宽」，于是按更宽的量换行，行尾越过控件右边界被裁掉。
+         */
+        private var measuredW = 0
         private var lastBounds = ""
 
         /** 视图被清空过（隐藏时），回来要按 snapshot 重画一次。 */
@@ -1407,7 +1419,7 @@ open class PreeditUi(
                 BambooLog.tips.d("tips", "commitAll click undo=" + undoLength + " " + idTag)
                 onCommitAllClick()
             }
-            // header 行：[弹性空白][全部上屏][6dp][收起][右 8dp]
+            // header 行：[弹性空白][全部上屏][6dp][收起]，右侧留白见 headerRow 的 paddingEnd
             headerRow.addView(
                 View(ctx),
                 LinearLayout.LayoutParams(0, 1, 1f),
@@ -1422,15 +1434,13 @@ open class PreeditUi(
             )
             headerRow.addView(
                 collapseButton,
-                LinearLayout.LayoutParams(ctx.dp(COLLAPSE_W_DP), ctx.dp(COLLAPSE_H_DP)).apply {
-                    rightMargin = ctx.dp(8)
-                },
+                LinearLayout.LayoutParams(ctx.dp(COLLAPSE_W_DP), ctx.dp(COLLAPSE_H_DP)),
             )
             addView(
                 headerRow,
                 LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
-                    ctx.dp(COLLAPSE_H_DP) + ctx.dp(4),
+                    ctx.dp(COLLAPSE_H_DP + HEADER_EXTRA_DP),
                 ),
             )
             // 滚动区占满 header 以下的全部高度。
@@ -1497,7 +1507,8 @@ open class PreeditUi(
          */
         private fun expandedAvailWidth(): Int {
             val w =
-                width.takeIf { it > 0 } ?: measuredWidth.takeIf { it > 0 }
+                measuredW.takeIf { it > 0 } ?: width.takeIf { it > 0 }
+                    ?: measuredWidth.takeIf { it > 0 }
                     ?: runCatching { ctx.resources.displayMetrics.widthPixels }.getOrDefault(1080)
             val used = paddingLeft + paddingRight + column.paddingLeft + column.paddingRight +
                 sidePadPx() * 2
@@ -1506,7 +1517,7 @@ open class PreeditUi(
 
         private fun entryAvailWidth(): Int {
             val w =
-                measuredWidth.takeIf { it > 0 }
+                measuredW.takeIf { it > 0 } ?: measuredWidth.takeIf { it > 0 }
                     ?: runCatching { ctx.resources.displayMetrics.widthPixels }.getOrDefault(1080)
             val used = paddingLeft + paddingRight + column.paddingLeft + column.paddingRight +
                 sidePadPx() * 2 + arrowBoxPx() + arrowEndExtraPx()
@@ -2175,6 +2186,7 @@ open class PreeditUi(
             heightMeasureSpec: Int,
         ) {
             val w = MeasureSpec.getSize(widthMeasureSpec)
+            measuredW = w
             val wSpec = MeasureSpec.makeMeasureSpec(w, MeasureSpec.EXACTLY)
             // 1) 先按「高度不限」量一遍：正文到底多高
             column.measure(wSpec, MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED))
@@ -2207,7 +2219,7 @@ open class PreeditUi(
                     val want = if (count == 0) contentH + padV else sum + padV
                     if (contentH + padV <= want) contentH + padV else want
                 }.coerceAtLeast(1)
-            val headerH = if (expandedIndex >= 0) ctx.dp(COLLAPSE_H_DP) + ctx.dp(4) else 0
+            val headerH = if (expandedIndex >= 0) ctx.dp(COLLAPSE_H_DP + HEADER_EXTRA_DP) else 0
             headerRow.measure(
                 wSpec,
                 MeasureSpec.makeMeasureSpec(headerH.coerceAtLeast(1), MeasureSpec.EXACTLY),
@@ -2365,12 +2377,16 @@ open class PreeditUi(
         private const val COUNT_SCALE = 0.78f
         /** 展开小图标的相对字号（比正文大一点，才看得清是实心三角）。 */
         private const val BADGE_SCALE = 0.88f
-        /** 展开态高度占屏高的比例：文曲星 28%、外语学习 18%。 */
+        /** 展开态高度占屏高的比例：文曲星 28%、外语学习 17%。 */
         private const val EXPAND_RATIO_WQ = 0.28f
-        private const val EXPAND_RATIO_GL = 0.14f
+        private const val EXPAND_RATIO_GL = 0.17f
         private const val MAX_ROWS = 6
         private const val MAX_EXPAND_ROWS = 8
         private const val BUTTON_BG_ALPHA = 40
+        /** header 行右侧留白（「收起」按钮与右边界之间）。 */
+        private const val HEADER_PAD_END_DP = 10
+        /** header 行高度 = 按钮高 + 这个值（决定首行正文离按钮行多远）。 */
+        private const val HEADER_EXTRA_DP = 6
 
         /** 三角和提示块底色的最低对比度，低于这个就退回文字色，避免箭头看不见。 */
         private const val MIN_MARK_CONTRAST = 2.0
