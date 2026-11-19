@@ -1337,7 +1337,10 @@ open class PreeditUi(
                 BambooLog.tips.d("tips", "collapseBtn click")
                 collapse()
             }
-            commitAllButton.setOnClickListener { onCommitAllClick() }
+            commitAllButton.setOnClickListener {
+                BambooLog.tips.d("tips", "commitAll click undo=" + undoLength)
+                onCommitAllClick()
+            }
         }
 
         private fun scalePct(): Int =
@@ -1834,7 +1837,9 @@ open class PreeditUi(
                     ctx.dp(theme.preedit.horizontalPadding),
                     ctx.dp(2),
                 )
-                isClickable = true
+                // 不自己消费点击：让点击冒泡到行容器（行容器才有 activate 监听）。
+                // 否则点正文没反应、只有点行尾空白（三角那一列）才能展开。
+                isClickable = false
                 isFocusable = false
             }
 
