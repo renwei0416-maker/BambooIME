@@ -1088,6 +1088,9 @@ open class PreeditUi(
         // 两块提示各自一份代码：改这边不会影响另一边。
         private val wenquxing = false
 
+        /** 点词 / 全部上屏 / 撤回上屏后，下一次 refresh 的清空是被动的，要原地不动。 */
+        private var selfCommitClear = false
+
         private val column =
             LinearLayout(ctx).apply {
                 orientation = LinearLayout.VERTICAL
@@ -1105,6 +1108,29 @@ open class PreeditUi(
             }
 
         /** 展开态：按分词结果把正文排成可点的词块，顺序与原文一致。 */
+        /**
+         * 词块背景：自己 new 一个 GradientDrawable。
+         *
+         * 不用 ColorManager.getDecorDrawable：它返回缓存实例并就地改 cornerRadius，
+         * 多个词块共用同一对象时圆角和状态会互相污染。描边保证任何主题下边界都可见。
+         */
+        private fun tokenCellDrawable(colorKey: String): GradientDrawable {
+            val radius = ctx.dp(theme.generalStyle.roundCorner.toFloat()).toFloat()
+            return GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = radius
+                setColor(
+                    runCatching { ColorManager.getColor(colorKey) }
+                        .getOrDefault(android.graphics.Color.TRANSPARENT),
+                )
+                setStroke(
+                    ctx.dp(1),
+                    runCatching { ColorManager.getColor("border_color") }
+                        .getOrDefault(android.graphics.Color.GRAY) and 0x66FFFFFF,
+                )
+            }
+        }
+
         private fun makeTokenDetail(item: TipEntry): View {
             val avail = entryAvailWidth()
             val paint = textPaint()
@@ -1161,7 +1187,7 @@ open class PreeditUi(
                         text = token
                         textSize = bodyTextSize()
                         typeface = FontManager.getTypeface()
-                        setPadding(ctx.dp(6), ctx.dp(3), ctx.dp(6), ctx.dp(3))
+                        setPadding(ctx.dp(4), ctx.dp(2), ctx.dp(4), ctx.dp(2))
                         setTextColor(
                             ColorStateList(
                                 arrayOf(
@@ -1178,17 +1204,11 @@ open class PreeditUi(
                             StateListDrawable().apply {
                                 addState(
                                     intArrayOf(-android.R.attr.state_pressed),
-                                    ColorManager.getDecorDrawable(
-                                        "key_back_color",
-                                        cornerRadius = ctx.dp(theme.generalStyle.roundCorner),
-                                    ),
+                                    tokenCellDrawable("key_back_color"),
                                 )
                                 addState(
                                     intArrayOf(android.R.attr.state_pressed),
-                                    ColorManager.getDecorDrawable(
-                                        "hilited_key_back_color",
-                                        cornerRadius = ctx.dp(theme.generalStyle.roundCorner),
-                                    ),
+                                    tokenCellDrawable("hilited_key_back_color"),
                                 )
                             }
                         clipToOutline = true
@@ -1201,13 +1221,14 @@ open class PreeditUi(
                         ViewGroup.LayoutParams.WRAP_CONTENT,
                         ViewGroup.LayoutParams.WRAP_CONTENT,
                     ).apply {
+                        // 横向合计 5dp：左右各 2dp 外边距 + 累加时补 1dp。
                         leftMargin = ctx.dp(2)
                         rightMargin = ctx.dp(2)
-                        topMargin = ctx.dp(2)
-                        bottomMargin = ctx.dp(2)
+                        topMargin = ctx.dp(1)
+                        bottomMargin = ctx.dp(1)
                     },
                 )
-                used += w + ctx.dp(4)
+                used += w + ctx.dp(1)
             }
             flush()
             return root
@@ -1440,7 +1461,12 @@ open class PreeditUi(
          */
         fun refresh(active: Boolean, clear: Boolean = false) {
             // 展开态自持：点词上屏会清空组合，此时不允许刷新把整块收掉。
-            if (expandedIndex >= 0 && (active || !clear)) return
+            // 只豁免“刚刚由自己提交”的那一次清空；换编辑框、退出外语学习、删空编码
+            // 都会走到下面的常规分支，该收就收。标记用一次即复位。
+            if (selfCommitClear) {
+                selfCommitClear = false
+                if (expandedIndex >= 0) return
+            }
             if (!active) {
                 // 「真的没有候选了」和「只是窗口暂时不可见」必须分开：
                 // 前者要连指纹一起清（否则重新打回同样的编码会命中淡出的旧指纹，
@@ -1793,6 +1819,12 @@ open class PreeditUi(
                     // 收起：按钮矩形命中，或落在展开态顶部那一行 —— 任一即可。
                     // 不看按压时长，也不要求手指完全不动（此前就是被这两条筛掉的）。
                     if (expandedIndex >= 0 && !moved) {
+                        // 两颗浮动按钮盖在首行词块上方，必须先判它们，否则点「收起」会命中
+                        // 下层的词块并被当成“点词上屏”。
+                        if (hitCloseButton(ev.rawX, ev.rawY)) {
+                            collapse()
+                            return true
+                        }
                         if (hitCommitAllButton(ev.rawX, ev.rawY)) {
                             onCommitAllClick()
                             return true
@@ -1804,9 +1836,7 @@ open class PreeditUi(
                             return true
                         }
                     }
-                    if (expandedIndex >= 0 &&
-                        hitCollapseButton(ev.rawX, ev.rawY)
-                    ) {
+                    if (false) {
                         BambooLog.tips.d(
                             "tips",
                             "tap collapseBtn rawX=" + ev.rawX.toInt() +
@@ -1924,6 +1954,9 @@ open class PreeditUi(
             return rawX >= loc[0] - pad && rawX <= loc[0] + commitAllButton.width + pad &&
                 rawY >= loc[1] - pad && rawY <= loc[1] + commitAllButton.height + pad
         }
+
+        /** 收起按钮的命中区（含 8dp 外扩），用于在词块判定之前拦下这一下。 */
+        private fun hitCloseButton(rawX: Float, rawY: Float): Boolean = hitCollapseButton(rawX, rawY)
 
         private fun hitCollapseButton(rawX: Float, rawY: Float): Boolean {
             if (collapseButton.visibility != View.VISIBLE) return false
