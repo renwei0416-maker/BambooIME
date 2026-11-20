@@ -24,6 +24,8 @@ import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.content.FileProvider
+import com.osfans.trime.actions.bamboo.BambooActions
+
 import com.osfans.trime.BuildConfig
 import com.osfans.trime.actions.ocr.OcrWindow
 import com.osfans.trime.actions.ocr.OcrRecognizer
@@ -59,12 +61,16 @@ class ShotActivity : Activity() {
     private lateinit var mask: View
     private lateinit var resultBox: LinearLayout
     private lateinit var resultText: TextView
+    /** 结果面板的「上屏 / 撤回上屏」按钮与状态。 */
+    private var commitChip: TextView? = null
+    private var committed = false
+
     private lateinit var busyBox: LinearLayout
     /** 菜单打开时的全屏拦截层：吃掉所有触摸，避免穿透到下面的选区。 */
     private lateinit var shield: View
 
     /** 第一层固定项；有启用的 AI 动作时末尾再加「更多」。 */
-    private val baseItems = listOf("取消", "全屏", "识字", "保存", "复制", "退出")
+    private val baseItems = listOf("取消", "全屏", "识字", "保存", "复制", "分享", "退出")
 
     /** 当前层：0＝固定项，1+＝AI 动作层。 */
     private var fanLayer = 0
@@ -345,8 +351,13 @@ class ShotActivity : Activity() {
         val bar = LinearLayout(this)
         bar.orientation = LinearLayout.HORIZONTAL
         bar.gravity = Gravity.END
+        val commit = actionChip("上屏")
+        commitChip = commit
+        commit.setOnClickListener {
+            if (committed) revertResult() else commitResult()
+        }
         val share = actionChip("分享")
-        share.setOnClickListener { shareImage() }
+        share.setOnClickListener { shareText() }
         val copy = actionChip("复制")
         copy.setOnClickListener {
             val cm = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
@@ -357,6 +368,7 @@ class ShotActivity : Activity() {
         close.setOnClickListener { hideResult() }
         val cLp = LinearLayout.LayoutParams(WRAP, WRAP)
         cLp.rightMargin = dp(10)
+        bar.addView(commit, cLp)
         bar.addView(share, cLp)
         bar.addView(copy, cLp)
         bar.addView(close, WRAPLP())
@@ -414,6 +426,7 @@ class ShotActivity : Activity() {
             "识字" -> doOcr()
             "保存" -> saveImage()
             "复制" -> copyImage()
+            "分享" -> shareImage()
             EXIT -> {
                 // 退出截图模块：不保存、不问，直接回原来的 App
                 closeMenu()
@@ -549,6 +562,63 @@ class ShotActivity : Activity() {
      * 分享当前选框里的图片：先落到 cache 目录，再用 FileProvider 授权给其它 App（微信 / 相册 / 邮件等都收）。
      * 与「复制」不同，这里不走剪贴板，直接走系统分享面板。
      */
+    /** 分享 AI 返回的文字（不是截图）。 */
+    private fun shareText() {
+        val text = resultText.text?.toString().orEmpty()
+        if (text.isEmpty()) return
+        runCatching {
+            val send = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_TEXT, text)
+            }
+            startActivity(Intent.createChooser(send, "分享文字"))
+        }.onFailure {
+            Toast.makeText(this, "分享失败：" + (it.message ?: ""), Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /**
+     * 把结果文字上屏到下面的编辑区。
+     * 走 [TrimeInputMethodService.commitText] 这个唯一记账漏斗，所以会自动进「回退」账本。
+     */
+    private fun commitResult() {
+        val text = resultText.text?.toString().orEmpty()
+        if (text.isEmpty()) return
+        val svc = TrimeInputMethodService.current
+        if (svc == null) {
+            val cm = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
+            cm.setPrimaryClip(ClipData.newPlainText("BambooIME", text))
+            Toast.makeText(this, "输入法不在前台，已复制到剪贴板", Toast.LENGTH_SHORT).show()
+            return
+        }
+        runCatching { svc.commitText(text) }.onFailure {
+            Toast.makeText(this, "上屏失败：" + (it.message ?: ""), Toast.LENGTH_SHORT).show()
+            return
+        }
+        committed = true
+        commitChip?.text = "撤回上屏"
+        Toast.makeText(this, "已上屏，可用「撤回上屏」或键盘回退撤销", Toast.LENGTH_SHORT).show()
+    }
+
+    /** 撤回刚上屏的文字：复用 qq/ 回退的同一套逻辑（按实际删除量扣账）。 */
+    private fun revertResult() {
+        val svc = TrimeInputMethodService.current
+        if (svc == null) {
+            Toast.makeText(this, "输入法不在前台，无法撤回", Toast.LENGTH_SHORT).show()
+            return
+        }
+        scope.launch {
+            val n = runCatching { BambooActions.revertLast(svc) }.getOrDefault(0)
+            if (n > 0) {
+                committed = false
+                commitChip?.text = "上屏"
+                Toast.makeText(this@ShotActivity, "已撤回上屏", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this@ShotActivity, "撤回失败，请用键盘回退", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
     private fun shareImage() {
         val bmp = currentCrop() ?: return
         runCatching {

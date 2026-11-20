@@ -564,6 +564,9 @@ object BambooActions {
      * 删掉**最近一笔**上屏（对齐原版 `fire_delete`：只取栈顶那一笔剩下的字数，
      * 受 max_backspaces 截断，删完按实际删除量扣账）。
      */
+    /** 供外部（如截图结果面板的「撤回上屏」）调用：撤回最近一次上屏并按实际删除量扣账。 */
+    suspend fun revertLast(service: TrimeInputMethodService): Int = revert(service)
+
     private suspend fun revert(service: TrimeInputMethodService): Int {
         val left = RevertLedger.lastCodePoints()
         BambooLog.ai.d(
