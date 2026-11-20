@@ -894,13 +894,24 @@ class ThemeStyleFragment : Fragment() {
                             }
                         }
                     }
-                val colorRowView = colorRow(title, parseColor(scheme.colors[key]), subtitle) { picked ->
-                    val colors = LinkedHashMap(scheme.colors)
-                    colors[key] = "0x" + String.format("%08x", picked)
-                    replaceScheme(scheme.copy(colors = colors))
-                    renderTab(Tabs.COLORS)
-                    refreshPreview()
-                }
+                val colorRowView = colorRow(
+                    title = title,
+                    color = parseColor(scheme.colors[key]),
+                    subtitle = subtitle,
+                    onPick = { picked ->
+                        val colors = LinkedHashMap(scheme.colors)
+                        colors[key] = "0x" + String.format("%08x", picked)
+                        replaceScheme(scheme.copy(colors = colors))
+                        renderTab(Tabs.COLORS)
+                        refreshPreview()
+                    },
+                    onReset = {
+                        resetColorField(key)
+                        renderTab(Tabs.COLORS)
+                        refreshPreview()
+                    },
+                    bulkField = key.takeIf { it in bulkKeyFields },
+                )
                 content.addView(colorRowView, rowParams())
                 if (key == highlightColorKey) {
                     colorRowView.setBackgroundColor(0x33E8C87A)
@@ -941,13 +952,23 @@ class ThemeStyleFragment : Fragment() {
                         null
                     }
                 content.addView(
-                    colorRow(customColorLabel(key), parseColor(scheme.colors[key]), subtitle) { picked ->
-                        val colors = LinkedHashMap(scheme.colors)
-                        colors[key] = "0x" + String.format("%08x", picked)
-                        replaceScheme(scheme.copy(colors = colors))
-                        renderTab(Tabs.COLORS)
-                        refreshPreview()
-                    },
+                    colorRow(
+                        title = customColorLabel(key),
+                        color = parseColor(scheme.colors[key]),
+                        subtitle = subtitle,
+                        onPick = { picked ->
+                            val colors = LinkedHashMap(scheme.colors)
+                            colors[key] = "0x" + String.format("%08x", picked)
+                            replaceScheme(scheme.copy(colors = colors))
+                            renderTab(Tabs.COLORS)
+                            refreshPreview()
+                        },
+                        onReset = {
+                            resetColorField(key)
+                            renderTab(Tabs.COLORS)
+                            refreshPreview()
+                        },
+                    ),
                 )
             }
         }
@@ -1264,7 +1285,23 @@ class ThemeStyleFragment : Fragment() {
         else -> if (key.startsWith("zmu_")) "字母 ${key.removePrefix("zmu_").uppercase()} 底色" else key
     }
 
-    private fun colorRow(title: String, color: Int?, subtitle: String? = null, onPick: (Int) -> Unit): View {
+    /**
+     * 颜色行。
+     *
+     * 参数顺序注意：[onPick] 必须留在最后——现有调用大量使用尾随 lambda
+     * `colorRow(title, color) { picked -> ... }`，尾随 lambda 只会绑定到最后一个参数。
+     * [onReset] / [bulkField] 为 null 时不画任何额外按钮，行为与加这俩参数之前完全一致。
+     */
+    private fun colorRow(
+        title: String,
+        color: Int?,
+        subtitle: String? = null,
+        /** 非 null 时行尾出现 ↺：把这一个颜色键恢复成当前主题里的原值。 */
+        onReset: (() -> Unit)? = null,
+        /** 非 null 时行首出现 ▤：把这个颜色一次写进一批键（只有键级字段才支持）。 */
+        bulkField: String? = null,
+        onPick: (Int) -> Unit,
+    ): View {
         val line = LinearLayout(requireContext()).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -1306,6 +1343,22 @@ class ThemeStyleFragment : Fragment() {
                 setStroke(dp(1), 0x44FFFFFF)
             }
         }
+        if (bulkField != null) {
+            line.addView(
+                TextView(requireContext()).apply {
+                    text = "▤"
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+                    setTextColor(accentColor)
+                    gravity = Gravity.CENTER
+                    setPadding(0, 0, dp(10), 0)
+                    setOnClickListener { bulkColorDialog(bulkField, title) }
+                },
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                ),
+            )
+        }
         line.addView(nameBox)
         line.addView(
             value,
@@ -1315,6 +1368,27 @@ class ThemeStyleFragment : Fragment() {
             ),
         )
         line.addView(swatch, LinearLayout.LayoutParams(dp(30), dp(30)))
+        if (onReset != null) {
+            line.addView(
+                TextView(requireContext()).apply {
+                    text = "↺"
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+                    setTextColor(subColor)
+                    gravity = Gravity.CENTER
+                    setPadding(dp(10), 0, 0, 0)
+                    setOnClickListener {
+                        pushUndo()
+                        onReset()
+                        dirty = true
+                        updateActionState()
+                    }
+                },
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                ),
+            )
+        }
         line.setOnClickListener {
             ColorPickerDialog.show(requireContext(), title, color ?: 0xFF000000.toInt()) { picked ->
                 pushUndo()
@@ -1328,6 +1402,87 @@ class ThemeStyleFragment : Fragment() {
             addView(line, rowParams())
             addView(divider())
         }
+    }
+
+    /** 能直接写进单个键的配色字段；只有这些键的配色行才显示 ▤。 */
+    private val bulkKeyFields =
+        setOf("key_back_color", "key_text_color", "key_symbol_color", "hilited_key_back_color")
+
+    /**
+     * 配色页的 ↺：把这个颜色键恢复成**当前主题里的原值**。
+     *
+     * 草稿里的 schemes 是副本、没有「覆盖层」概念，所以不能靠删字段复位，
+     * 必须从 [ThemeManager.activeTheme] 的原配色里把值抄回来；原本没有这个键就删掉，
+     * 让它重新走「没设置时跟谁」的回退链。
+     */
+    private fun resetColorField(key: String) {
+        val scheme = draft.currentScheme() ?: return
+        val orig = ThemeManager.activeTheme.colorSchemes.firstOrNull { it.id == scheme.id }
+        val origValue = orig?.colors?.get(key)
+        val colors = LinkedHashMap(scheme.colors)
+        if (origValue == null) colors.remove(key) else colors[key] = origValue
+        replaceScheme(scheme.copy(colors = colors))
+    }
+
+    /** 配色行左侧 ▤：选范围 → 选颜色 → 一次写进这些键（写的是单键覆盖，不是整套配色）。 */
+    private fun bulkColorDialog(field: String, title: String) {
+        val scopes = arrayOf("本键盘全部键", "本键盘字母键", "本键盘功能键")
+        androidx.appcompat.app.AlertDialog.Builder(requireContext())
+            .setTitle("$title · 批量写入")
+            .setItems(scopes) { _, which ->
+                val scope = when (which) {
+                    1 -> SCOPE_LETTERS
+                    2 -> SCOPE_FUNCS
+                    else -> SCOPE_ALL
+                }
+                val targets = keysInScope(scope)
+                if (targets.isEmpty()) {
+                    toast("这个范围里没有可改的键")
+                    return@setItems
+                }
+                val modes = arrayOf("自定义颜色…", "引用配色里的色键…")
+                androidx.appcompat.app.AlertDialog.Builder(requireContext())
+                    .setTitle("$title · $field")
+                    .setItems(modes) { _, m ->
+                        if (m == 0) {
+                            ColorPickerDialog.show(
+                                requireContext(),
+                                "$title · $field",
+                                0xFF33363B.toInt(),
+                            ) { picked ->
+                                applyBulkKeepColorTab(targets, field, "0x" + String.format("%08x", picked))
+                            }
+                        } else {
+                            val keys = schemeNow()?.colors?.keys?.sorted() ?: emptyList()
+                            if (keys.isEmpty()) {
+                                toast("当前配色没有可引用的色键")
+                                return@setItems
+                            }
+                            androidx.appcompat.app.AlertDialog.Builder(requireContext())
+                                .setTitle("选一个色键")
+                                .setItems(keys.toTypedArray()) { _, i ->
+                                    applyBulkKeepColorTab(targets, field, keys[i])
+                                }
+                                .show()
+                        }
+                    }
+                    .show()
+            }
+            .show()
+    }
+
+    /**
+     * 与按键页的 applyBatch 语义相同，但**留在配色页**（applyBatch 会 renderTab(Tabs.KEY)）。
+     * 不改 applyBatch，避免影响已完成的行为。
+     */
+    private fun applyBulkKeepColorTab(targets: List<KeyPath>, field: String, value: String) {
+        pushUndo()
+        for (p in targets) draft.setField(p, field, JsonPrimitive(value))
+        dirty = true
+        updateActionState()
+        renderTab(Tabs.COLORS)
+        refreshPreview()
+        toast("已写入 ${targets.size} 个键的 $field")
     }
 
     private fun divider(): View = View(requireContext()).apply {

@@ -196,7 +196,10 @@ class KeyAction(
                     isSlideDelete = preset.slideDelete
                     states = preset.states
 
-                    val (keycode, modifiers) = KeyCode.parse(preset.send)
+                    // BambooTip1…6 这类动作名不是 KeyCode 名字：先判前缀，避免 KeyCode.parse
+                    // 打一条 "Unrecognized key" 之后再被文本通道接管（先报错再正确执行 = 纯噪音）。
+                    val (keycode, modifiers) =
+                        if (preset.send.startsWith("Bamboo")) 0 to 0 else KeyCode.parse(preset.send)
                     if (keycode != 0 || modifiers != 0) {
                         code = keycode
                         modifier = modifiers
@@ -205,7 +208,8 @@ class KeyAction(
                     }
                 } else {
                     // match like: { x: "{Control+a}" }
-                    val (keycode, modifiers) = KeyCode.parse(token.token)
+                    val (keycode, modifiers) =
+                        if (token.token.startsWith("Bamboo")) 0 to 0 else KeyCode.parse(token.token)
                     if (keycode != 0 || modifiers != 0) {
                         code = keycode
                         modifier = modifiers
