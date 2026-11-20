@@ -23,11 +23,8 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.core.content.FileProvider
 import com.osfans.trime.BuildConfig
-import com.osfans.trime.actions.bamboo.AiClient
-import com.osfans.trime.actions.bamboo.BambooPrefs
 import com.osfans.trime.actions.ocr.OcrRecognizer
 import com.osfans.trime.util.BambooLog
-import java.io.ByteArrayOutputStream
 import java.io.File
 import kotlin.math.abs
 import kotlin.math.max
@@ -61,7 +58,14 @@ class ShotActivity : Activity() {
     /** 菜单打开时的全屏拦截层：吃掉所有触摸，避免穿透到下面的选区。 */
     private lateinit var shield: View
 
-    private val items = listOf("取消", "全屏", "识字", "问 AI", "保存", "复制", "退出")
+    /** 第一层固定项；有启用的 AI 动作时末尾再加「更多」。 */
+    private val baseItems = listOf("取消", "全屏", "识字", "保存", "复制", "退出")
+
+    /** 当前层：0＝固定项，1+＝AI 动作层。 */
+    private var fanLayer = 0
+
+    /** 当前层实际显示的文字（含「更多」「返回」「退出」）。 */
+    private var layerItems: List<String> = emptyList()
 
     private var menuOpen = false
     private var busy = false
@@ -199,10 +203,7 @@ class ShotActivity : Activity() {
     private fun buildFan() {
         fan = ShotFanMenu(this)
         fan.visibility = View.GONE
-        fan.onSelect = { index ->
-            closeMenu()
-            perform(index)
-        }
+        fan.onSelect = { index -> onPick(index) }
         fan.onDismiss = { closeMenu() }
         root.addView(fan, FrameLayout.LayoutParams(MATCH, MATCH))
     }
@@ -211,7 +212,53 @@ class ShotActivity : Activity() {
     private fun openMenu() {
         menuOpen = true
         ball.opened = true
-        fan.show(ball.x + ball.width / 2f, ball.y + ball.height / 2f, items)
+        showLayer(0)
+    }
+
+    /**
+     * 打开第 [layer] 层。
+     *
+     * 0 层是固定动作（加「更多」），1 层起是 AI 动作（末尾固定「返回」「退出」）。
+     * 每层最多 8 项；扇形菜单自己会按项数缩小半径和项直径，一屏放得下就不分层。
+     */
+    private fun showLayer(layer: Int) {
+        fanLayer = layer
+        val actions = ShotAiPrefs.enabledActions()
+        layerItems =
+            if (layer == 0) {
+                if (actions.isEmpty()) baseItems else baseItems + MORE
+            } else {
+                actions.map { it.name } + listOf(BACK, EXIT)
+            }
+        fan.show(ball.x + ball.width / 2f, ball.y + ball.height / 2f, layerItems)
+    }
+
+    /** 点中某一项：先处理「更多 / 返回 / 退出」这类导航，再按文字分发。 */
+    private fun onPick(index: Int) {
+        val label = layerItems.getOrNull(index) ?: return
+        if (fanLayer == 0) {
+            if (label == MORE) {
+                showLayer(1)
+                return
+            }
+            closeMenu()
+            perform(label)
+            return
+        }
+        when (label) {
+            BACK -> {
+                showLayer(0)
+                return
+            }
+            EXIT -> {
+                closeMenu()
+                finish()
+                return
+            }
+        }
+        val action = ShotAiPrefs.enabledActions().getOrNull(index)
+        closeMenu()
+        action?.let { runAction(it) }
     }
 
     private fun closeMenu() {
@@ -323,22 +370,21 @@ class ShotActivity : Activity() {
 
     // ---------------- 六项动作 ----------------
 
-    private fun perform(index: Int) {
+    private fun perform(label: String) {
         if (busy) return
-        when (index) {
-            0 -> {
+        when (label) {
+            "取消" -> {
                 selector.clearSelection()
                 closeMenu()
                 Toast.makeText(this, "已取消选框", Toast.LENGTH_SHORT).show()
             }
-            1 -> {
+            "全屏" -> {
                 if (selector.isFullSelection()) selector.setDefault() else selector.selectAll()
             }
-            2 -> doOcr()
-            3 -> doAskAi()
-            4 -> saveImage()
-            5 -> copyImage()
-            6 -> {
+            "识字" -> doOcr()
+            "保存" -> saveImage()
+            "复制" -> copyImage()
+            EXIT -> {
                 // 退出截图模块：不保存、不问，直接回原来的 App
                 closeMenu()
                 finish()
@@ -379,23 +425,23 @@ class ShotActivity : Activity() {
         }
     }
 
-    private fun doAskAi() {
-        if (BambooPrefs.aiApiKey.isBlank()) {
-            Toast.makeText(this, "还没填 AI Key，先去「回退与AI」里填一下", Toast.LENGTH_LONG).show()
+    /**
+     * 执行一个 AI 动作：把当前选框里的图画出来，连同该动作的提示词一起发给「视觉 AI」。
+     *
+     * 请求在 IO 线程做（缩图 + 上传 + 等模型），期间显示「处理中…」并挡住触摸。
+     */
+    private fun runAction(action: ShotAiPrefs.Action) {
+        if (ShotAiPrefs.apiKey.isBlank()) {
+            Toast.makeText(this, "还没填「截图 → AI 视觉」的 API Key，先去设置里填一下", Toast.LENGTH_LONG).show()
             return
         }
         val bmp = currentCrop() ?: return
-        val bytes =
-            ByteArrayOutputStream().use { out ->
-                bmp.compress(Bitmap.CompressFormat.PNG, 100, out)
-                out.toByteArray()
-            }
         setBusy(true)
         scope.launch {
-            val r = AiClient.vision(DEFAULT_PROMPT, bytes)
+            val r = withContext(Dispatchers.IO) { ShotVisionClient.ask(action.prompt, bmp) }
             setBusy(false)
             r.fold(
-                onSuccess = { showResult("问 AI", it) },
+                onSuccess = { showResult(action.name, it) },
                 onFailure = { Toast.makeText(this@ShotActivity, it.message ?: "请求失败", Toast.LENGTH_LONG).show() },
             )
         }
@@ -503,7 +549,14 @@ class ShotActivity : Activity() {
         private const val MATCH = FrameLayout.LayoutParams.MATCH_PARENT
         private const val WRAP = FrameLayout.LayoutParams.WRAP_CONTENT
         private const val PREF = "bamboo_shot"
-        private const val DEFAULT_PROMPT =
-            "请看图回答：如果图里有文字，先把文字原样列出来；再用一两句话说明这张图的内容。用简体中文。"
+
+        /** 第一层末尾的「更多」（有启用的 AI 动作时才出现）。 */
+        private const val MORE = "更多"
+
+        /** 第二层末尾的「返回」（回第一层，不退出）。 */
+        private const val BACK = "返回"
+
+        /** 「退出」：关掉截图回原来的 App；两层都有，不允许隐藏。 */
+        private const val EXIT = "退出"
     }
 }

@@ -133,6 +133,9 @@ class MainFragment : PaddingPreferenceFragment() {
                 addPreference("拍照识字", "相机取景、单字模式、实时预览与识别门槛", R.drawable.ic_baseline_photo_camera_24) {
                     findNavController().navigateWithAnim(NavigationRoute.OcrSettings)
                 }
+                addPreference("截图", "截取屏幕任意区域：保存、复制、识字、AI 看图（需先开无障碍截图权限）", R.drawable.ic_baseline_photo_camera_24) {
+                    findNavController().navigateWithAnim(NavigationRoute.ShotSettings)
+                }
                 addPreference("文曲星", "诗词提示：候选/剪贴板/光标前文本命中名句、唐诗宋词时在编码后给出摘要", R.drawable.ic_baseline_book_24) {
                     findNavController().navigateWithAnim(NavigationRoute.Wenquxing)
                 }

@@ -27,6 +27,7 @@ import com.osfans.trime.ui.main.settings.ThemeStyleFragment
 import com.osfans.trime.ui.main.settings.InputStatsFragment
 import com.osfans.trime.ui.main.settings.KeyboardSettingsFragment
 import com.osfans.trime.ui.main.settings.OcrSettingsFragment
+import com.osfans.trime.ui.main.settings.ShotSettingsFragment
 import com.osfans.trime.ui.main.settings.PackageListFragment
 import com.osfans.trime.ui.main.settings.PanelQuickFragment
 import com.osfans.trime.ui.main.settings.ProfileSettingsFragment
@@ -140,6 +141,9 @@ sealed class NavigationRoute : Parcelable {
     @Serializable
     data object License : NavigationRoute()
 
+    @Serializable
+    data object ShotSettings : NavigationRoute()
+
     companion object {
         fun createGraph(controller: NavController) = controller.createGraph(Main) {
             val ctx = controller.context
@@ -198,6 +202,9 @@ sealed class NavigationRoute : Parcelable {
             }
             fragment<OcrSettingsFragment, OcrSettings> {
                 label = "拍照识字"
+            }
+            fragment<ShotSettingsFragment, ShotSettings> {
+                label = "截图"
             }
             fragment<BambooAppearanceFragment, BambooAppearance> {
                 label = "外观"
