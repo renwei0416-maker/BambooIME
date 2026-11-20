@@ -9,6 +9,7 @@ import com.osfans.trime.actions.bamboo.AiPanelWindow
 import com.osfans.trime.util.BambooLog
 import com.osfans.trime.actions.handwriting.HandwritingWindow
 import com.osfans.trime.actions.ocr.OcrWindow
+import com.osfans.trime.actions.shot.ShotCapture
 import com.osfans.trime.actions.wanxiang.KeyPanelWindow
 import com.osfans.trime.actions.ocr.OcrCard
 import com.osfans.trime.actions.wanxiang.SchemaHintCard
@@ -1043,6 +1044,11 @@ class InputView(
     ) {
         updateEnterKeyLabel(info)
         broadcaster.onStartInput(info)
+        // 截图界面点「识字」时把图放在交接位里，窗口一回来就直接进识字面板的相册识图，
+        // 用户看到的是「截图关掉 → 识字面板已经在了」，不用再点一次「拍」。
+        ShotCapture.takePendingOcr()?.let { pending ->
+            OcrWindow.openGalleryWith(pending, fromShotSource = true)
+        }
         if (!restarting) {
             // 刚才停在手写板的话，这里要把它挂回来，而不是无脑切回键盘，
             // 否则切 App / 换输入框手写状态就丢了。

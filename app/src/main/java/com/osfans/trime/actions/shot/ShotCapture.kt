@@ -75,4 +75,13 @@ object ShotCapture {
 
 
     fun takePending(): Bitmap? = pending.also { pending = null }
+
+    /** 截图界面裁好的图，等输入法窗口回来时直接送进识字面板。 */
+    private var pendingOcr: Bitmap? = null
+
+    fun putPendingOcr(bitmap: Bitmap) {
+        pendingOcr = bitmap
+    }
+
+    fun takePendingOcr(): Bitmap? = pendingOcr.also { pendingOcr = null }
 }

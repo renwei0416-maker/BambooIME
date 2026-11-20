@@ -30,13 +30,13 @@ class ShotFanMenu(context: Context) : View(context) {
     private val selectedRadius = dp(28)
     private val ringRadius = dp(132)
 
-    private val fanPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x1F178A7A }
-    private val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE
-        strokeWidth = dp(1).coerceAtLeast(1f)
-        color = 0x33178A7A
-    }
+    private val wedgePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x66B0472A }
     private val itemPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val iconPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+        color = 0xFFFFFFFF.toInt()
+    }
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         textAlign = Paint.Align.CENTER
         textSize = 12f * resources.displayMetrics.scaledDensity
@@ -81,9 +81,13 @@ class ShotFanMenu(context: Context) : View(context) {
     private fun angleOf(index: Int): Float {
         val count = labels.size
         if (count <= 1) return startAngle()
-        val span = 140f
+        // 项数多时把弧开大一点，7 项挤在 140° 里会叠在一起
+        val span = if (count >= 7) 160f else 140f
         return startAngle() + span * index / (count - 1)
     }
+
+    /** 最后一项「退出」用关机图标 + 暗红底。 */
+    private fun isExit(index: Int): Boolean = labels.getOrNull(index) == EXIT_LABEL
 
     private fun centerOf(index: Int): Pair<Float, Float> {
         val rad = Math.toRadians(angleOf(index).toDouble())
@@ -93,28 +97,52 @@ class ShotFanMenu(context: Context) : View(context) {
 
     override fun onDraw(canvas: Canvas) {
         if (labels.isEmpty()) return
-        val first = angleOf(0)
-        val last = angleOf(labels.size - 1)
-        val radius = ringRadius + itemRadius
-        val box = RectF(cx - radius, cy - radius, cx + radius, cy + radius)
 
-        val path = Path().apply {
-            moveTo(cx, cy)
-            arcTo(box, minOf(first, last), abs(last - first), false)
-            close()
+        // 只画「球心 → 当前选中项」之间的一小块楔形，整块扇形会把屏幕糊住
+        if (selected >= 0) {
+            drawWedge(canvas, selected)
         }
-        canvas.drawPath(path, fanPaint)
-        canvas.drawArc(box, minOf(first, last), abs(last - first), false, ringPaint)
 
         for (index in labels.indices) {
             val (ix, iy) = centerOf(index)
             val isSelected = index == selected
-            itemPaint.color = if (isSelected) 0xFF178A7A.toInt() else 0xF7FFFFFF.toInt()
-            canvas.drawCircle(ix, iy, if (isSelected) selectedRadius else itemRadius, itemPaint)
-            textPaint.color = if (isSelected) 0xFFFFFFFF.toInt() else 0xFF23332C.toInt()
-            val baseline = iy - (textPaint.descent() + textPaint.ascent()) / 2f
-            canvas.drawText(labels[index], ix, baseline, textPaint)
+            val radius = if (isSelected) selectedRadius else itemRadius
+            itemPaint.color = when {
+                isExit(index) -> EXIT_COLOR
+                isSelected -> SELECTED_COLOR
+                else -> 0xF7FFFFFF.toInt()
+            }
+            canvas.drawCircle(ix, iy, radius, itemPaint)
+            if (isExit(index)) {
+                drawPowerIcon(canvas, ix, iy, radius)
+            } else {
+                textPaint.color = if (isSelected) 0xFFFFFFFF.toInt() else 0xFF23332C.toInt()
+                val baseline = iy - (textPaint.descent() + textPaint.ascent()) / 2f
+                canvas.drawText(labels[index], ix, baseline, textPaint)
+            }
         }
+    }
+
+    /** 从球心到选中项的一条半透明楔形，跟着手指走。 */
+    private fun drawWedge(canvas: Canvas, index: Int) {
+        val angle = angleOf(index)
+        val half = Math.toDegrees(kotlin.math.asin((itemRadius * 0.9f / ringRadius).toDouble())).toFloat()
+        val radius = ringRadius - itemRadius * 0.9f
+        val box = RectF(cx - radius, cy - radius, cx + radius, cy + radius)
+        val path = Path().apply {
+            moveTo(cx, cy)
+            arcTo(box, angle - half, half * 2f, false)
+            close()
+        }
+        canvas.drawPath(path, wedgePaint)
+    }
+
+    /** 关机图标：大半圈 + 顶部一竖。 */
+    private fun drawPowerIcon(canvas: Canvas, ix: Float, iy: Float, radius: Float) {
+        iconPaint.strokeWidth = radius * 0.14f
+        val r = radius * 0.46f
+        canvas.drawArc(RectF(ix - r, iy - r, ix + r, iy + r), -60f, 300f, false, iconPaint)
+        canvas.drawLine(ix, iy - r * 1.35f, ix, iy - r * 0.15f, iconPaint)
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -160,5 +188,11 @@ class ShotFanMenu(context: Context) : View(context) {
             }
         }
         return if (bestDistance <= itemRadius + dp(16)) best else -1
+    }
+
+    private companion object {
+        const val EXIT_LABEL = "退出"
+        const val SELECTED_COLOR = 0xFFB0472A.toInt()
+        const val EXIT_COLOR = 0xFF8E3B30.toInt()
     }
 }

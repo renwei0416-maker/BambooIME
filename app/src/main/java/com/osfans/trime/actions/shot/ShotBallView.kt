@@ -30,9 +30,10 @@ class ShotBallView(context: Context) : View(context) {
         val cy = height / 2f
         bgPaint.color = if (opened) OPEN_COLOR else CLOSED_COLOR
         canvas.drawCircle(cx, cy, radius, bgPaint)
-        linePaint.strokeWidth = radius * 0.15f
-        val half = radius * 0.44f
-        val gap = radius * 0.32f
+        // 三条横线按 70% 画，避免在 48dp 的球里显得太重
+        linePaint.strokeWidth = radius * 0.105f
+        val half = radius * 0.308f
+        val gap = radius * 0.224f
         for (row in -1..1) {
             val y = cy + row * gap
             canvas.drawLine(cx - half, y, cx + half, y, linePaint)
@@ -41,6 +42,6 @@ class ShotBallView(context: Context) : View(context) {
 
     private companion object {
         const val CLOSED_COLOR = 0xCC000000.toInt()
-        const val OPEN_COLOR = 0xFF178A7A.toInt()
+        const val OPEN_COLOR = 0xFFB0472A.toInt()
     }
 }

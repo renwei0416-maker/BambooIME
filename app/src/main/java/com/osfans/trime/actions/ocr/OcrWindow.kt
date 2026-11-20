@@ -229,8 +229,9 @@ class OcrWindow : BoardWindow.NoBarBoardWindow() {
          *
          * 成功返回 true，调用方可以关掉自己；输入法窗口还没建起来时返回 false，调用方自行退路。
          */
-        fun openGalleryWith(bitmap: Bitmap): Boolean {
+        fun openGalleryWith(bitmap: Bitmap, fromShotSource: Boolean = false): Boolean {
             val manager = BoardWindowManager.current ?: return false
+            fromShot = fromShotSource
             galleryBitmap = bitmap
             galleryActive = true
             galleryRestorePending = false
@@ -298,6 +299,15 @@ class OcrWindow : BoardWindow.NoBarBoardWindow() {
      */
     @Volatile
     private var returnToFrame = false
+
+    /**
+     * 这次识字是不是从「截图」模块送进来的。
+     *
+     * 为真时面板的「返回」「收起」直接结束识字、回键盘，而不是退回「拍照识字」取景——
+     * 因为用户是从截图界面跳过来的，没打算继续拍照。
+     */
+    @Volatile
+    private var fromShot = false
 
     /** 由 [OcrCard.retake] 调用：下一个 onAttached 属于「卡片返回」。 */
     fun markReturnToFrame() {
@@ -2057,6 +2067,7 @@ class OcrWindow : BoardWindow.NoBarBoardWindow() {
      */
     fun resetSession() {
         returnToFrame = false
+        fromShot = false
         // 会话结束：下次进「拍」从头开始，也不再跨 App 保持
         ocrSessionActive = false
         galleryActive = false
@@ -2083,6 +2094,13 @@ class OcrWindow : BoardWindow.NoBarBoardWindow() {
      * 相册是「临时看一眼某张图」的入口，退出去就没必要把图留着。
      */
     private fun onPanelBackPressed() {
+        if (fromShot) {
+            // 从截图进来的：返回就是「结束识字」，直接回键盘，不退回取景
+            BambooLog.ocr.d("ocr", "back from shot: leave ocr")
+            resetSession()
+            leaveToKeyboard()
+            return
+        }
         if (galleryMode) {
             exitGalleryMode(restartCamera = true, clearImage = true)
         } else {

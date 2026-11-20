@@ -26,7 +26,6 @@ import com.osfans.trime.BuildConfig
 import com.osfans.trime.actions.bamboo.AiClient
 import com.osfans.trime.actions.bamboo.BambooPrefs
 import com.osfans.trime.actions.ocr.OcrRecognizer
-import com.osfans.trime.actions.ocr.OcrWindow
 import com.osfans.trime.util.BambooLog
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -62,7 +61,7 @@ class ShotActivity : Activity() {
     /** 菜单打开时的全屏拦截层：吃掉所有触摸，避免穿透到下面的选区。 */
     private lateinit var shield: View
 
-    private val items = listOf("取消", "全屏", "识字", "问 AI", "保存", "复制")
+    private val items = listOf("取消", "全屏", "识字", "问 AI", "保存", "复制", "退出")
 
     private var menuOpen = false
     private var busy = false
@@ -339,6 +338,11 @@ class ShotActivity : Activity() {
             3 -> doAskAi()
             4 -> saveImage()
             5 -> copyImage()
+            6 -> {
+                // 退出截图模块：不保存、不问，直接回原来的 App
+                closeMenu()
+                finish()
+            }
         }
     }
 
@@ -353,8 +357,10 @@ class ShotActivity : Activity() {
     }
 
     /**
-     * 识字：先按需加载识别模型（首次会慢一点），再把裁好的图送到「拍照识字 → 相册识图」界面。
-     * 送不过去（输入法窗口不在了）才退回在截图界面里直接识别。
+     * 识字：先按需加载识别模型（首次会慢一点），把裁好的图放进交接位，然后立刻关掉截图界面。
+     *
+     * 输入法窗口回来时（[InputView.startInput]）会把这张图交给识字面板并直接进相册识图，
+     * 所以用户看到的是「截图界面消失 → 识字面板已经弹出来」。
      */
     private fun doOcr() {
         val bmp = currentCrop() ?: return
@@ -363,24 +369,13 @@ class ShotActivity : Activity() {
             val ready = withContext(Dispatchers.IO) {
                 runCatching { OcrRecognizer.ensureReady(this@ShotActivity) }.getOrDefault(false)
             }
+            setBusy(false)
             if (!ready) {
-                setBusy(false)
                 Toast.makeText(this@ShotActivity, "识字模型加载失败", Toast.LENGTH_SHORT).show()
                 return@launch
             }
-            if (OcrWindow.openGalleryWith(bmp)) {
-                setBusy(false)
-                Toast.makeText(this@ShotActivity, "已送到识字界面", Toast.LENGTH_SHORT).show()
-                finish()
-                return@launch
-            }
-            val text = withContext(Dispatchers.Default) { runCatching { OcrRecognizer.recognize(bmp) }.getOrNull() }
-            setBusy(false)
-            if (text.isNullOrBlank()) {
-                Toast.makeText(this@ShotActivity, "没认出文字", Toast.LENGTH_SHORT).show()
-            } else {
-                showResult("识字结果（" + text.length + " 字）", text)
-            }
+            ShotCapture.putPendingOcr(bmp)
+            finish()
         }
     }
 
