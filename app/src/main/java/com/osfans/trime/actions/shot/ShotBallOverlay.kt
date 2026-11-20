@@ -79,6 +79,10 @@ object ShotBallOverlay {
             val p = view.tag as Point
             lp.x = (p.x + dx).coerceIn(0, maxX)
             lp.y = (p.y + dy).coerceIn(0, maxY)
+            // 必须把新位置写回 tag：否则下一次移动还从旧起点加上这小段位移，位置被反复抵消，
+            // 表现就是「浮球拖不动、只原地抖」。
+            p.x = lp.x
+            p.y = lp.y
             runCatching { w.updateViewLayout(view, lp) }
         }
         view.onDragEnd = {
@@ -88,8 +92,8 @@ object ShotBallOverlay {
             runCatching { w.updateViewLayout(view, lp) }
             ShotBallPrefs.posX = lp.x.toFloat() / maxX
             ShotBallPrefs.posY = lp.y.toFloat() / maxY
-            view.tag = Point(lp.x, lp.y)
             p.x = lp.x
+            p.y = lp.y
         }
 
         runCatching { w.addView(view, lp) }
@@ -146,6 +150,9 @@ object ShotBallOverlay {
                 1 -> closeMenu()
                 2 -> {
                     closeMenu()
+                    // 先把浮球窗口移除再抓屏，否则浮球会被一起截进图里；
+                    // removeView 有一两帧延迟，所以交给 ShotActions 再等一下抓。
+                    hide()
                     ShotActions.start(null)
                 }
             }
@@ -176,7 +183,7 @@ object ShotBallOverlay {
     }
 }
 
-/** 浮球本体：48dp 圆 + 自绘相机图标；按下拖动、松手轻点开关菜单。 */
+/** 浮球本体：48dp 圆 + 自绘裁剪框图标；按下拖动、松手轻点开关菜单。 */
 private class BallView(context: Context) :
     View(context) {
     private val body = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -187,7 +194,6 @@ private class BallView(context: Context) :
             strokeJoin = Paint.Join.ROUND
             color = 0xFFFFFFFF.toInt()
         }
-    private val lens = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFFFFFF.toInt() }
 
     var opened = false
         set(v) {
@@ -210,17 +216,26 @@ private class BallView(context: Context) :
         body.color = if (opened) 0xFFB0472A.toInt() else 0xCC000000.toInt()
         canvas.drawCircle(width / 2f, height / 2f, r, body)
 
-        // 相机：机身圆角矩形 + 顶部小凸起 + 中间镜头
-        val cw = r * 1.02f
-        val ch = r * 0.74f
-        val left = width / 2f - cw / 2f
-        val top = height / 2f - ch / 2f + r * 0.06f
-        icon.strokeWidth = r * 0.10f
-        canvas.drawRoundRect(RectF(left, top, left + cw, top + ch), r * 0.16f, r * 0.16f, icon)
-        canvas.drawLine(left + cw * 0.34f, top, left + cw * 0.44f, top - r * 0.14f, icon)
-        canvas.drawLine(left + cw * 0.44f, top - r * 0.14f, left + cw * 0.62f, top - r * 0.14f, icon)
-        canvas.drawLine(left + cw * 0.62f, top - r * 0.14f, left + cw * 0.70f, top, icon)
-        canvas.drawCircle(width / 2f, top + ch / 2f, r * 0.20f, lens)
+        // 裁剪框：四个角括号（和"截图框选"这个动作对得上）
+        val half = r * 0.52f
+        val arm = r * 0.30f
+        val left = width / 2f - half
+        val top = height / 2f - half
+        val right = width / 2f + half
+        val bottom = height / 2f + half
+        icon.strokeWidth = r * 0.12f
+        // 左上
+        canvas.drawLine(left, top + arm, left, top, icon)
+        canvas.drawLine(left, top, left + arm, top, icon)
+        // 右上
+        canvas.drawLine(right - arm, top, right, top, icon)
+        canvas.drawLine(right, top, right, top + arm, icon)
+        // 右下
+        canvas.drawLine(right, bottom - arm, right, bottom, icon)
+        canvas.drawLine(right, bottom, right - arm, bottom, icon)
+        // 左下
+        canvas.drawLine(left + arm, bottom, left, bottom, icon)
+        canvas.drawLine(left, bottom, left, bottom - arm, icon)
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {

@@ -32,8 +32,10 @@ import kotlin.math.sin
  *
  * 关键行为：
  * - 朝向：球在屏幕右半边就朝左开，在左半边就朝右开，保证整体留在屏幕里。
- * - 放得下优先：项多时自动缩小半径和项直径（半径 88→70dp、直径 32→24dp），
- *   都缩到底还放不下才由调用方分层（[ShotActivity] 负责第二层的「更多」）。
+ * - 固定键距：相邻两项圆心距恒为「项直径 + 8dp」，项少只出来一小段、项多顺着往一侧延长，
+ *   不会像早先那样按角度把整段弧铺满（那就是「项少时散开」）。
+ * - 放得下优先：项多时先加大半径、再加不下才缩小项直径（24dp 下限），
+ *   仍放不下才由调用方分层（[ShotActivity] 负责第二层的「更多」）。
  * - 标签最多 4 个字，字号按圆内可用宽度自动缩，不出圆。
  *
  * 触摸：按下后跟手更新选中项，松手时执行；滑回球心附近算取消。
@@ -59,8 +61,10 @@ class ShotFanMenu(
     private var ringPx = 0f
     private var itemPx = 0f
     private var boostPx = 0f
+    /** 起始角（球在右＝180°，在左＝0°）、单向步进符号、每步角度。 */
     private var startAngle = 0f
-    private var spanAngle = 0f
+    private var stepSign = 1f
+    private var stepAngle = 0f
 
     private val density = resources.displayMetrics.density
     private val scaledDensity = resources.displayMetrics.scaledDensity
@@ -119,40 +123,65 @@ class ShotFanMenu(
      */
     private fun computeLayout() {
         val n = titles.size
-        spanAngle = if (n <= 6) 150f else 190f
-        // 球在右半边朝左开，在左半边朝右开。
+        // 朝屏幕内侧开：球在右半边往左上方长，在左半边往右上方长。
         val openLeft = centerX > width * 0.5f
-        startAngle =
-            if (openLeft) {
-                180f - spanAngle / 2f
-            } else {
-                -spanAngle / 2f
-            }
+        startAngle = if (openLeft) 180f else 0f
+        stepSign = if (openLeft) 1f else -1f
 
-        val step = if (n > 1) Math.toRadians((spanAngle / (n - 1)).toDouble()) else 0.0
-        var ring = dp(88f)
+        // 固定弦长：相邻两项圆心距 = 项直径 + 8dp，**不随项数变化**。
+        // 项多时先加大半径；半径到顶还放不下才缩小项直径（24dp 下限）。
         var itemR = dp(16f)
+        var ring = dp(88f)
+        var step = 0f
         if (n > 1) {
-            // 相邻两项不粘连所需的最小半径：chord = 2*ring*sin(step/2) >= 2*itemR + gap
-            val need = (2 * itemR + dp(3f)) / (2 * sin(step / 2)).toFloat()
-            ring = maxOf(ring, need)
+            var guard = 0
+            while (guard++ < 60) {
+                val chord = 2 * itemR + dp(8f)
+                val ratio = (chord / (2 * ring)).coerceIn(0f, 1f)
+                step = Math.toDegrees((2 * Math.asin(ratio.toDouble()))).toFloat()
+                if (step * (n - 1) <= 232f) break
+                if (ring < dp(120f)) {
+                    ring = (ring * 1.15f).coerceAtMost(dp(120f))
+                } else {
+                    itemR = (itemR - dp(0.5f)).coerceAtLeast(dp(12f))
+                }
+            }
         }
-        // 屏幕边界：球心到四条边最近的距离，留出项半径与 10dp 余量。
-        val maxRing =
-            min(
-                min(centerX, width - centerX),
-                min(centerY, height - centerY),
-            ) - itemR - dp(10f)
-        if (maxRing > dp(40f) && ring > maxRing) ring = maxRing
-        // 半径被压后重新算项半径，避免粘连；下限 12dp（直径 24dp）。
-        if (n > 1) {
-            val chord = 2 * ring * sin(step / 2).toFloat()
-            itemR = min(itemR, (chord - dp(3f)) / 2f)
-        }
-        itemR = itemR.coerceIn(dp(12f), dp(16f))
-        ringPx = ring.coerceAtLeast(dp(44f))
+        ringPx = ring
         itemPx = itemR
-        boostPx = itemPx * 1.26f
+        stepAngle = if (n > 1) step else 0f
+        // 选中项放大 1.2 倍（题注里说的「变大」）
+        boostPx = itemR * 1.20f
+
+        // 竖直方向放不下就翻到另一侧（球被拖到屏幕顶部时用得上）
+        if (!fitsInside()) {
+            stepSign = -stepSign
+            if (!fitsInside()) stepSign = -stepSign
+        }
+    }
+
+    /** 整组圆是否都落在屏幕内（留 8dp 余量）。 */
+    private fun fitsInside(): Boolean {
+        val n = titles.size
+        if (n == 0) return true
+        val margin = dp(8f)
+        var minY = Float.MAX_VALUE
+        var maxY = -Float.MAX_VALUE
+        var minX = Float.MAX_VALUE
+        var maxX = -Float.MAX_VALUE
+        for (i in 0 until n) {
+            val a = Math.toRadians(angleOf(i).toDouble())
+            val x = centerX + ringPx * cos(a).toFloat()
+            val y = centerY + ringPx * sin(a).toFloat()
+            minX = minOf(minX, x)
+            maxX = maxOf(maxX, x)
+            minY = minOf(minY, y)
+            maxY = maxOf(maxY, y)
+        }
+        return minX - itemPx >= margin &&
+            maxX + itemPx <= width - margin &&
+            minY - itemPx >= margin &&
+            maxY + itemPx <= height - margin
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -172,7 +201,7 @@ class ShotFanMenu(
                 when {
                     label == EXIT_LABEL -> EXIT_COLOR
                     picked -> SELECTED_COLOR
-                    else -> 0xF7FFFFFF.toInt()
+                    else -> ITEM_COLOR
                 }
             canvas.drawCircle(cx, cy, r, itemPaint)
             if (label == EXIT_LABEL) {
@@ -249,7 +278,7 @@ class ShotFanMenu(
         if (fit < size) size = fit
         size = size.coerceAtLeast(6.5f * scaledDensity)
         textPaint.textSize = size
-        textPaint.color = if (picked) Color.WHITE else 0xFF2B2B2B.toInt()
+        textPaint.color = if (picked) Color.WHITE else 0xFF12240F.toInt()
         val fm = textPaint.fontMetrics
         val baseline = cy - (fm.ascent + fm.descent) / 2f
         canvas.drawText(label, cx, baseline, textPaint)
@@ -268,11 +297,7 @@ class ShotFanMenu(
         canvas.drawLine(cx, cy - r * 1.15f, cx, cy - r * 0.15f, iconPaint)
     }
 
-    private fun angleOf(index: Int): Float {
-        val n = titles.size
-        if (n <= 1) return startAngle + spanAngle / 2f
-        return startAngle + spanAngle * index / (n - 1)
-    }
+    private fun angleOf(index: Int): Float = startAngle + stepSign * stepAngle * index
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -338,6 +363,9 @@ class ShotFanMenu(
 
     private companion object {
         const val EXIT_LABEL = "退出"
+
+        /** 未选中项：微信图标那个绿。 */
+        const val ITEM_COLOR = 0xFF07C160.toInt()
         const val SELECTED_COLOR = 0xFFB0472A.toInt()
         const val EXIT_COLOR = 0xFF8E3B30.toInt()
     }

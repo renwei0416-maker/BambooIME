@@ -9,8 +9,8 @@ import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Bundle
-import android.os.Looper
 import android.os.Handler
+import android.os.Looper
 import android.provider.MediaStore
 import android.view.Gravity
 import android.view.MotionEvent
@@ -75,6 +75,9 @@ class ShotActivity : Activity() {
     private var menuOpen = false
     private var busy = false
 
+    /** 是否跳去了「识字」面板；是的话退出时别恢复浮球（会压在识字面板上）。 */
+    private var wentToOcr = false
+
     /** 整屏底图：takePending() 会把 ShotCapture 里的引用清掉，这里自己留一份。 */
     private var full: Bitmap? = null
 
@@ -86,6 +89,8 @@ class ShotActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // 截图期间不允许常驻浮球留在画面上：会被一起截进去，也会和菜单球重叠。
+        runCatching { ShotBallOverlay.hide() }
         // 内置动作的提示词升过版，老用户存的是旧文本：进截图界面时同步一次
         ShotAiPrefs.ensureDefaults()
         val bmp = ShotCapture.takePending()
@@ -125,6 +130,14 @@ class ShotActivity : Activity() {
         scope.cancel()
         // 退出即清干净：整屏图、裁好的图都不留到下一次
         ShotCapture.reset()
+        // 退出截图后把常驻浮球挂回来：
+        // - 用户点过「退出」时开关已是 false，不会再出现；
+        // - 去识字的这条路径不恢复，避免浮球压在识字面板上。
+        if (!wentToOcr && ShotBallPrefs.enabled) {
+            Handler(Looper.getMainLooper()).postDelayed({
+                if (ShotBallPrefs.enabled) runCatching { ShotBallOverlay.show() }
+            }, 260L)
+        }
         super.onDestroy()
     }
 
@@ -424,6 +437,7 @@ class ShotActivity : Activity() {
      * 所以用户看到的是「截图界面消失 → 识字面板已经弹出来」。
      */
     private fun doOcr() {
+        wentToOcr = true
         val bmp = currentCrop() ?: return
         setBusy(true)
         scope.launch {

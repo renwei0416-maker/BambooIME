@@ -211,6 +211,11 @@ SPDX-License-Identifier: GPL-3.0-or-later
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- 桌面长按图标的快捷方式必须挂在启动器组件上；我们的启动器是 activity-alias，
+                 挂在 targetActivity(MainActivity) 上系统是找不到的。 -->
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
         </activity-alias>
 
         <!-- All activities must be declared above <activity-alias> tag -->
