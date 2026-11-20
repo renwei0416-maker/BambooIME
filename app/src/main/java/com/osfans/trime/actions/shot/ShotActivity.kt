@@ -76,7 +76,6 @@ class ShotActivity : Activity() {
     private var busy = false
 
     /** 是否跳去了「识字」面板；是的话退出时别恢复浮球（会压在识字面板上）。 */
-    private var wentToOcr = false
 
     /** 整屏底图：takePending() 会把 ShotCapture 里的引用清掉，这里自己留一份。 */
     private var full: Bitmap? = null
@@ -133,7 +132,7 @@ class ShotActivity : Activity() {
         // 退出截图后把常驻浮球挂回来：
         // - 用户点过「退出」时开关已是 false，不会再出现；
         // - 去识字的这条路径不恢复，避免浮球压在识字面板上。
-        if (!wentToOcr && ShotBallPrefs.enabled) {
+        if (ShotBallPrefs.enabled) {
             Handler(Looper.getMainLooper()).postDelayed({
                 if (ShotBallPrefs.enabled) runCatching { ShotBallOverlay.show() }
             }, 260L)
@@ -437,7 +436,6 @@ class ShotActivity : Activity() {
      * 所以用户看到的是「截图界面消失 → 识字面板已经弹出来」。
      */
     private fun doOcr() {
-        wentToOcr = true
         val bmp = currentCrop() ?: return
         setBusy(true)
         scope.launch {

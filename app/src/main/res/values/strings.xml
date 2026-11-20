@@ -640,6 +640,4 @@
     <string name="shot_service_label">截图</string>
     <string name="shot_accessibility_summary">点一下就能截屏，再把选中的部分存图或复制</string>
     <string name="shot_accessibility_desc">苍竹输入法用「截图」功能时需要这项权限：它只调用系统的截屏接口抓取当前画面，不读取屏幕上的文字、不监听按键、不联网。除了截图，其它功能都不依赖它。</string>
-    <string name="shortcut_shot_ball">截图浮球</string>
-    <string name="shortcut_shot_ball_long">打开截图浮球</string>
 </resources>

@@ -88,17 +88,6 @@ SPDX-License-Identifier: GPL-3.0-or-later
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
 
         <!-- 桌面快捷方式「截图浮球」的落点：只开开关，不截屏 -->
-        <activity
-            android:name=".actions.shot.ShotBallShortcutActivity"
-            android:excludeFromRecents="true"
-            android:exported="true"
-            android:theme="@android:style/Theme.Translucent.NoTitleBar">
-            <intent-filter>
-                <action android:name="com.osfans.trime.action.SHOT_BALL" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-        </activity>
-
         <provider
             android:name=".provider.RimeDataProvider"
             android:authorities="${applicationId}.provider"
@@ -126,9 +115,6 @@ SPDX-License-Identifier: GPL-3.0-or-later
             android:exported="true"
             android:launchMode="singleTask"
             android:windowSoftInputMode="adjustResize">
-            <meta-data
-                android:name="android.app.shortcuts"
-                android:resource="@xml/shortcuts" />
         </activity>
 
         <activity
@@ -213,9 +199,6 @@ SPDX-License-Identifier: GPL-3.0-or-later
             </intent-filter>
             <!-- 桌面长按图标的快捷方式必须挂在启动器组件上；我们的启动器是 activity-alias，
                  挂在 targetActivity(MainActivity) 上系统是找不到的。 -->
-            <meta-data
-                android:name="android.app.shortcuts"
-                android:resource="@xml/shortcuts" />
         </activity-alias>
 
         <!-- All activities must be declared above <activity-alias> tag -->
