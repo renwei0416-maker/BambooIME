@@ -73,6 +73,14 @@ class ShotFanMenu(
             style = Paint.Style.FILL
         }
     private val itemPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+
+    /** 圆球的白色描边：深色/同色背景上也能看清球的轮廓。 */
+    private val ringPaint =
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            color = Color.WHITE
+            strokeWidth = 1.2f * density
+        }
     private val textPaint =
         Paint(Paint.ANTI_ALIAS_FLAG).apply {
             textAlign = Paint.Align.CENTER
@@ -107,6 +115,18 @@ class ShotFanMenu(
         invalidate()
     }
 
+    /** 球被拖动时同步圆心，让整组跟着一起移动。 */
+    fun moveTo(
+        cx: Float,
+        cy: Float,
+    ) {
+        if (!isShowing) return
+        centerX = cx
+        centerY = cy
+        computeLayout()
+        invalidate()
+    }
+
     fun hide() {
         isShowing = false
         selected = -1
@@ -122,8 +142,12 @@ class ShotFanMenu(
      */
     private fun computeLayout() {
         val n = titles.size
+        // 浮层窗口（常驻浮球）在 show() 时 View 还没测量，width/height 可能是 0；
+        // 用屏幕尺寸兜底，否则边界判定会把整组误判为“超出屏幕”而把扇形转到球头顶。
+        val availW = if (width > 0) width.toFloat() else resources.displayMetrics.widthPixels.toFloat()
+        val availH = if (height > 0) height.toFloat() else resources.displayMetrics.heightPixels.toFloat()
         // 朝屏幕内侧开：球在右半边往左上方长，在左半边往右上方长。
-        val openLeft = centerX > width * 0.5f
+        val openLeft = centerX > availW * 0.5f
         // 对称轴：球在右半边朝正左（180°），在左半边朝正右（0°）；整组以这条水平轴上下对称
         val axis = if (openLeft) 180f else 0f
 
@@ -156,18 +180,22 @@ class ShotFanMenu(
         val halfSpan = stepAngle * (n - 1) / 2f
         val upSign = if (axis >= 90f) 1f else -1f
         startAngle = axis - halfSpan
-        if (!fitsInside()) {
+        // 只有真正拿到高度（已测量）时才允许“整组上移”，否则宁可不动。
+        if (height > 0 && !fitsInside(availW, availH)) {
             var shift = 0f
             while (shift <= 60f) {
                 shift += 2f
                 startAngle = axis - halfSpan + upSign * shift
-                if (fitsInside()) break
+                if (fitsInside(availW, availH)) break
             }
         }
     }
 
     /** 整组圆是否都落在屏幕内（留 8dp 余量）。 */
-    private fun fitsInside(): Boolean {
+    private fun fitsInside(
+        availW: Float,
+        availH: Float,
+    ): Boolean {
         val n = titles.size
         if (n == 0) return true
         val margin = dp(8f)
@@ -185,9 +213,9 @@ class ShotFanMenu(
             maxY = maxOf(maxY, y)
         }
         return minX - itemPx >= margin &&
-            maxX + itemPx <= width - margin &&
+            maxX + itemPx <= availW - margin &&
             minY - itemPx >= margin &&
-            maxY + itemPx <= height - margin
+            maxY + itemPx <= availH - margin
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -210,6 +238,7 @@ class ShotFanMenu(
                     else -> ITEM_COLOR
                 }
             canvas.drawCircle(cx, cy, r, itemPaint)
+            canvas.drawCircle(cx, cy, r, ringPaint)
             if (label == EXIT_LABEL) {
                 drawPowerIcon(canvas, cx, cy, r * 0.52f)
             } else {
@@ -371,7 +400,7 @@ class ShotFanMenu(
         const val EXIT_LABEL = "退出"
 
         /** 未选中项：微信图标那个绿。 */
-        const val ITEM_COLOR = 0xFF2F4F43.toInt()
+        const val ITEM_COLOR = 0xCC000000.toInt()
         const val SELECTED_COLOR = 0xFFB0472A.toInt()
         const val EXIT_COLOR = 0xFF8E3B30.toInt()
     }

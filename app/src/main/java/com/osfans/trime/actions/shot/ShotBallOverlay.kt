@@ -84,6 +84,8 @@ object ShotBallOverlay {
             p.x = lp.x
             p.y = lp.y
             runCatching { w.updateViewLayout(view, lp) }
+            // 菜单正开着时让整组跟着球一起走，否则扇形会留在原地。
+            fan?.moveTo(lp.x + ballSize / 2f, lp.y + ballSize / 2f)
         }
         view.onDragEnd = {
             val p = view.tag as Point
@@ -94,6 +96,7 @@ object ShotBallOverlay {
             ShotBallPrefs.posY = lp.y.toFloat() / maxY
             p.x = lp.x
             p.y = lp.y
+            fan?.moveTo(lp.x + ballSize / 2f, lp.y + ballSize / 2f)
         }
 
         runCatching { w.addView(view, lp) }
@@ -150,10 +153,13 @@ object ShotBallOverlay {
                 1 -> closeMenu()
                 2 -> {
                     closeMenu()
-                    // 先把浮球窗口移除再抓屏，否则浮球会被一起截进图里；
-                    // removeView 有一两帧延迟，所以交给 ShotActions 再等一下抓。
+                    // 先移除浮球窗口，并等它从画面上真正消失（removeView 有一两帧延迟，
+                    // 立刻抓屏会把浮球和扇形一起截进去）。
                     hide()
-                    ShotActions.start(null)
+                    android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(
+                        { ShotActions.start(null) },
+                        160L,
+                    )
                 }
             }
         }
@@ -164,7 +170,9 @@ object ShotBallOverlay {
         ballView?.opened = true
         val cx = lp.x + ballSize / 2f
         val cy = lp.y + ballSize / 2f
-        menu.show(cx, cy, listOf(LABEL_EXIT, LABEL_BACK, LABEL_SHOT))
+        // 必须等 host 布局完成再 show：否则 View 的 width/height 还是 0，
+        // 边界判定会把整组误判为出屏并把扇形转到球头顶上去。
+        menu.post { menu.show(cx, cy, listOf(LABEL_EXIT, LABEL_BACK, LABEL_SHOT)) }
     }
 
     private fun closeMenu() {
@@ -187,6 +195,14 @@ object ShotBallOverlay {
 private class BallView(context: Context) :
     View(context) {
     private val body = Paint(Paint.ANTI_ALIAS_FLAG)
+
+    /** 白色描边：深色/同色背景上也能看清球的轮廓。 */
+    private val ring =
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            color = 0xFFFFFFFF.toInt()
+            strokeWidth = 1.2f * resources.displayMetrics.density
+        }
     private val icon =
         Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
@@ -215,6 +231,7 @@ private class BallView(context: Context) :
         val r = minOf(width, height) / 2f
         body.color = if (opened) 0xFFB0472A.toInt() else 0xCC000000.toInt()
         canvas.drawCircle(width / 2f, height / 2f, r, body)
+        canvas.drawCircle(width / 2f, height / 2f, r - ring.strokeWidth / 2f, ring)
 
         // 裁剪框：四个角括号（和"截图框选"这个动作对得上）
         val half = r * 0.52f

@@ -7,7 +7,7 @@
     <shortcut
         android:enabled="true"
         android:icon="@mipmap/ic_app_icon"
-        android:shortcutId="shot_ball"
+        android:shortcutId="shot_ball_v2"
         android:shortcutLongLabel="@string/shortcut_shot_ball_long"
         android:shortcutShortLabel="@string/shortcut_shot_ball">
         <intent
