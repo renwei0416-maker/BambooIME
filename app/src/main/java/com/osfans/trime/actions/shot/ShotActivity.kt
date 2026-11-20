@@ -345,6 +345,8 @@ class ShotActivity : Activity() {
         val bar = LinearLayout(this)
         bar.orientation = LinearLayout.HORIZONTAL
         bar.gravity = Gravity.END
+        val share = actionChip("分享")
+        share.setOnClickListener { shareImage() }
         val copy = actionChip("复制")
         copy.setOnClickListener {
             val cm = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
@@ -355,6 +357,7 @@ class ShotActivity : Activity() {
         close.setOnClickListener { hideResult() }
         val cLp = LinearLayout.LayoutParams(WRAP, WRAP)
         cLp.rightMargin = dp(10)
+        bar.addView(share, cLp)
         bar.addView(copy, cLp)
         bar.addView(close, WRAPLP())
         val barLp = LinearLayout.LayoutParams(MATCH, WRAP)
@@ -539,6 +542,28 @@ class ShotActivity : Activity() {
             finish()
         }.onFailure {
             Toast.makeText(this, "复制失败：" + (it.message ?: ""), Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /**
+     * 分享当前选框里的图片：先落到 cache 目录，再用 FileProvider 授权给其它 App（微信 / 相册 / 邮件等都收）。
+     * 与「复制」不同，这里不走剪贴板，直接走系统分享面板。
+     */
+    private fun shareImage() {
+        val bmp = currentCrop() ?: return
+        runCatching {
+            val dir = File(cacheDir, "shot").apply { mkdirs() }
+            val f = File(dir, "share_" + System.currentTimeMillis() + ".png")
+            f.outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            val uri = FileProvider.getUriForFile(this, BuildConfig.APPLICATION_ID + ".fileprovider", f)
+            val send = Intent(Intent.ACTION_SEND).apply {
+                type = "image/png"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(Intent.createChooser(send, "分享图片"))
+        }.onFailure {
+            Toast.makeText(this, "分享失败：" + (it.message ?: ""), Toast.LENGTH_SHORT).show()
         }
     }
 

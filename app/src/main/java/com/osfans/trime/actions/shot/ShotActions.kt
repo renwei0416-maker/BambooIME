@@ -68,9 +68,13 @@ object ShotActions {
     private fun captureFlow(service: TrimeInputMethodService?, ctx: Context) {
         // 收起键盘，让下面的 App 露出完整画面
         runCatching { service?.requestHideSelf(0) }
+        // 常驻浮球（无障碍浮层）也要先撤掉，否则会被一起截进图里。
+        // 浮球里的「截图」入口是它自己收的；键盘面板的「截图」按钮走这里，必须统一处理。
+        runCatching { ShotBallOverlay.hide() }
         val decor = service?.window?.window?.decorView
         if (decor == null) {
-            captureLater(ctx)
+            // 没有键盘窗口时没有可等的下一帧，用主线程延迟保证浮球窗口已经移除
+            Handler(Looper.getMainLooper()).postDelayed({ captureLater(ctx) }, HIDE_DELAY_MS)
         } else {
             decor.postDelayed({ captureLater(ctx) }, HIDE_DELAY_MS)
         }
