@@ -67,7 +67,7 @@ class ShotActivity : Activity() {
     private lateinit var shield: View
 
     /** 第一层固定项；有启用的 AI 动作时末尾再加「更多」。 */
-    private val baseItems = listOf("取消", "全屏", "识字", "保存", "复制", "分享", "退出")
+    private val baseItems = listOf("取消", "全屏", "识字", "保存", "复制", "退出")
 
     /** 当前层：0＝固定项，1+＝AI 动作层。 */
     private var fanLayer = 0
@@ -77,16 +77,6 @@ class ShotActivity : Activity() {
 
     private var menuOpen = false
     private var busy = false
-
-    /**
-     * 刚拉起过系统分享面板。
-     *
-     * 截图模块期间常驻浮球是收起来的（避免被截进图 / 和选框抢触摸），但分享时用户人在别的 App，
-     * 浮球应该照常可见。所以：onPause 时若正在分享 → 把浮球放回来；onResume 回到截图界面 → 再收起。
-     */
-    private var sharing = false
-
-    /** 是否跳去了「识字」面板；是的话退出时别恢复浮球（会压在识字面板上）。 */
 
     /** 整屏底图：takePending() 会把 ShotCapture 里的引用清掉，这里自己留一份。 */
     private var full: Bitmap? = null
@@ -134,21 +124,6 @@ class ShotActivity : Activity() {
         selector.onSelectionChanged = { rect ->
             BambooLog.shot.d("sel", "bitmap=" + rect.toShortString())
         }
-    }
-
-    override fun onPause() {
-        super.onPause()
-        // 正在分享：用户此时在看系统分享面板或别的 App，把常驻浮球放回来
-        if (sharing) {
-            sharing = false
-            if (ShotBallPrefs.enabled) runCatching { ShotBallOverlay.show() }
-        }
-    }
-
-    override fun onResume() {
-        super.onResume()
-        // 回到截图界面就再收起来（截图模块期间不显示浮球）
-        runCatching { ShotBallOverlay.hide() }
     }
 
     override fun onDestroy() {
@@ -371,8 +346,6 @@ class ShotActivity : Activity() {
         val bar = LinearLayout(this)
         bar.orientation = LinearLayout.HORIZONTAL
         bar.gravity = Gravity.END
-        val share = actionChip("分享")
-        share.setOnClickListener { shareText() }
         val copy = actionChip("复制")
         copy.setOnClickListener {
             val cm = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
@@ -383,7 +356,6 @@ class ShotActivity : Activity() {
         close.setOnClickListener { hideResult() }
         val cLp = LinearLayout.LayoutParams(WRAP, WRAP)
         cLp.rightMargin = dp(10)
-        bar.addView(share, cLp)
         bar.addView(copy, cLp)
         bar.addView(close, WRAPLP())
         val barLp = LinearLayout.LayoutParams(MATCH, WRAP)
@@ -440,7 +412,6 @@ class ShotActivity : Activity() {
             "识字" -> doOcr()
             "保存" -> saveImage()
             "复制" -> copyImage()
-            "分享" -> shareImage()
             EXIT -> {
                 // 退出截图模块：不保存、不问，直接回原来的 App
                 closeMenu()
@@ -569,45 +540,6 @@ class ShotActivity : Activity() {
             finish()
         }.onFailure {
             Toast.makeText(this, "复制失败：" + (it.message ?: ""), Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    /**
-     * 分享当前选框里的图片：先落到 cache 目录，再用 FileProvider 授权给其它 App（微信 / 相册 / 邮件等都收）。
-     * 与「复制」不同，这里不走剪贴板，直接走系统分享面板。
-     */
-    /** 分享 AI 返回的文字（不是截图）。 */
-    private fun shareText() {
-        val text = resultText.text?.toString().orEmpty()
-        if (text.isEmpty()) return
-        runCatching {
-            val send = Intent(Intent.ACTION_SEND).apply {
-                type = "text/plain"
-                putExtra(Intent.EXTRA_TEXT, text)
-            }
-            sharing = true
-            startActivity(Intent.createChooser(send, "分享文字"))
-        }.onFailure {
-            Toast.makeText(this, "分享失败：" + (it.message ?: ""), Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    private fun shareImage() {
-        val bmp = currentCrop() ?: return
-        runCatching {
-            val dir = File(cacheDir, "shot").apply { mkdirs() }
-            val f = File(dir, "share_" + System.currentTimeMillis() + ".png")
-            f.outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
-            val uri = FileProvider.getUriForFile(this, BuildConfig.APPLICATION_ID + ".fileprovider", f)
-            val send = Intent(Intent.ACTION_SEND).apply {
-                type = "image/png"
-                putExtra(Intent.EXTRA_STREAM, uri)
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }
-            sharing = true
-            startActivity(Intent.createChooser(send, "分享图片"))
-        }.onFailure {
-            Toast.makeText(this, "分享失败：" + (it.message ?: ""), Toast.LENGTH_SHORT).show()
         }
     }
 
