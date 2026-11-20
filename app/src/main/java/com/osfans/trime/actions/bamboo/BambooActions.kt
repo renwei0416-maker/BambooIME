@@ -13,6 +13,7 @@ import android.widget.Toast
 import androidx.lifecycle.lifecycleScope
 import com.osfans.trime.actions.glossary.GlossaryDecorator
 import com.osfans.trime.actions.glossary.GlossaryPrefs
+import com.osfans.trime.actions.shot.ShotActions
 import com.osfans.trime.actions.tips.TipBlocks
 import com.osfans.trime.actions.wenquxing.WenquxingPrefs
 import com.osfans.trime.actions.wenquxing.WenquxingTips
@@ -459,6 +460,13 @@ object BambooActions {
                 bar.startVoiceHoldSession()
                 BambooLog.ai.d("voice ai", "token voice ai -> startVoiceHoldSession")
             }.onFailure { Timber.w(it, "bamboo: token voice ai start failed") }
+            return true
+        }
+        if (token == BambooTokens.SHOT) {
+            // 截图是独立模块：和语音一样放在「回退与AI」总开关之前，
+            // 不受 BambooPrefs.enabled 影响；未授权 / 系统版本不够由 ShotActions 自己提示
+            runCatching { ShotActions.start(service) }
+                .onFailure { Timber.w(it, "bamboo: token shot start failed") }
             return true
         }
         if (!BambooPrefs.enabled) return false

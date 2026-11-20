@@ -101,10 +101,19 @@ object BambooTokens {
      */
     const val VOICE_AI = "BambooVoiceAi"
 
+    /**
+     * 打开截图（框选 → 识字 / 保存 / 复制）。
+     *
+     * 截图属于独立模块，不受「回退与AI」总开关影响；真正能否截图取决于
+     * 系统版本（Android 11+）与「截图」无障碍服务是否已开启，
+     * 未开启时由 [com.osfans.trime.actions.shot.ShotActions.start] 弹提示。
+     */
+    const val SHOT = "BambooShot"
+
     val fixed: List<String> =
         listOf(
             REVERT, CLEAR, DELETE_LINE, DELETE_WORD, AI_SEND, AI_CLIP, AI_OFF, AI_PANEL,
-            KEY_PANEL, GLOSSARY, SETTINGS, QUOTE, QUOTE_SINGLE, TIP, VOICE_AI,
+            KEY_PANEL, GLOSSARY, SETTINGS, QUOTE, QUOTE_SINGLE, TIP, VOICE_AI, SHOT,
         ) + TIP_SLOTS
 
     /** 设置页「动作名一览」用的说明表；与 [fixed] 同源，不会漏项。 */
@@ -125,6 +134,7 @@ object BambooTokens {
             QUOTE_SINGLE to "提交左单引号‘（同上）",
             TIP to "上屏当前高亮那一条的英文（外语学习；没有则不上屏）",
             VOICE_AI to "按住说话（等价 VoiceAssist）；在 AI 模式里时识别结果同时发给该模式",
+            SHOT to "打开截图（框选取字、保存、复制）；需已开启「截图」的无障碍服务",
         ) + TIP_SLOTS.mapIndexed { i, n -> n to "上屏提示块第 ${i + 1} 条（外语学习取英文，文曲星取圈号 ${i + 1}；没有则不上屏）" }
 
     /** 名字 → 说明，与 [fixed] 同源。 */
