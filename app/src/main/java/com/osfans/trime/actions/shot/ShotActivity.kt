@@ -9,6 +9,8 @@ import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Bundle
+import android.os.Looper
+import android.os.Handler
 import android.provider.MediaStore
 import android.view.Gravity
 import android.view.MotionEvent
@@ -23,8 +25,11 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.core.content.FileProvider
 import com.osfans.trime.BuildConfig
+import com.osfans.trime.actions.ocr.OcrWindow
 import com.osfans.trime.actions.ocr.OcrRecognizer
+import com.osfans.trime.ime.core.TrimeInputMethodService
 import com.osfans.trime.util.BambooLog
+import com.osfans.trime.util.forceShowSelf
 import java.io.File
 import kotlin.math.abs
 import kotlin.math.max
@@ -421,7 +426,30 @@ class ShotActivity : Activity() {
                 return@launch
             }
             ShotCapture.putPendingOcr(bmp)
+            val svc = TrimeInputMethodService.current
             finish()
+            if (svc != null) bringUpOcrPanel(svc)
+        }
+    }
+
+    /**
+     * 把输入法叫回来，并让它直接把识字面板打开。
+     *
+     * 只把图放进交接位、等用户点编辑区是不够的——截图界面关掉后输入法窗口未必会自动回来。
+     * 所以这里主动 `forceShowSelf()`，再在几次重试里把图交给 [OcrWindow]：
+     * 输入法窗口刚回来时 `BoardWindowManager.current` 可能还没就绪，第一次挂不上就等一下再来。
+     */
+    private fun bringUpOcrPanel(service: TrimeInputMethodService) {
+        val handler = Handler(Looper.getMainLooper())
+        var done = false
+        for (delay in longArrayOf(200L, 700L, 1500L, 2600L)) {
+            handler.postDelayed({
+                if (done) return@postDelayed
+                runCatching { service.forceShowSelf() }
+                val pending = ShotCapture.takePendingOcr() ?: return@postDelayed
+                done = OcrWindow.openGalleryWith(pending, fromShotSource = true)
+                if (!done) ShotCapture.putPendingOcr(pending)
+            }, delay)
         }
     }
 

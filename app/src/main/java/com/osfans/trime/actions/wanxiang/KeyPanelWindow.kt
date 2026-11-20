@@ -314,6 +314,15 @@ class KeyPanelWindow : BoardWindow.NoBarBoardWindow() {
                 },
             )
         }
+        // 末尾不足 4 个时补占位，保证每格都是 1/4 宽 —— 否则最后一行只有一个格子会被拉成整行宽
+        repeat(COLUMNS - cells.size) {
+            row.addView(
+                View(context),
+                LinearLayout.LayoutParams(0, dp(58), 1f).apply {
+                    setMargins(dp(2), dp(2), dp(2), dp(2))
+                },
+            )
+        }
         box.addView(row, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
     }
 

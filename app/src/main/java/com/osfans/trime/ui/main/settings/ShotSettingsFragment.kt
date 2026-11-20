@@ -30,7 +30,9 @@ import com.osfans.trime.ui.common.rebuildPreferencesKeepingScroll
  *    因为看图必须用支持视觉的模型，和文本那套经常不是同一个。
  * 3. AI 动作：每个动作＝扇形菜单上的一项（名称最多 4 字 + 提示词），可增可改可停用可删。
  *
- * 所有值都存在 [ShotAiPrefs] 里（独立 SharedPreferences `bamboo_shot_ai`），改完立即生效。
+ * 注意：`PreferenceCategory(context)` 建出来时还没有 `PreferenceManager`，
+ * 必须先 `screen.addPreference(category)` 挂到屏幕上，再往里加子项，
+ * 否则 `addPreference` 会抛 NPE（`getNextId()` on a null reference）。
  */
 class ShotSettingsFragment : PaddingPreferenceFragment() {
     override fun onCreatePreferences(
@@ -42,168 +44,185 @@ class ShotSettingsFragment : PaddingPreferenceFragment() {
 
     private fun buildScreen() {
         val ctx = requireContext()
-        preferenceScreen = preferenceManager.createPreferenceScreen(ctx).apply {
-            addPreference(permissionCategory(ctx))
-            addPreference(visionCategory(ctx))
-            addPreference(actionsCategory(ctx))
-            addPreference(hintCategory(ctx))
-        }
+        preferenceScreen =
+            preferenceManager.createPreferenceScreen(ctx).apply {
+                addCategory(ctx, "权限与状态") { fillPermission(ctx, it) }
+                addCategory(ctx, "AI 视觉（截图问图用）") { fillVision(ctx, it) }
+                addCategory(ctx, "AI 动作") { fillActions(ctx, it) }
+                addCategory(ctx, "说明") { fillHints(ctx, it) }
+            }
+    }
+
+    /** 先挂到屏幕上（此时才有 PreferenceManager），再填子项。 */
+    private fun PreferenceScreen.addCategory(
+        context: Context,
+        title: String,
+        fill: (PreferenceCategory) -> Unit,
+    ) {
+        val category = PreferenceCategory(context).apply { this.title = title }
+        addPreference(category)
+        fill(category)
     }
 
     // ---------------- 权限与状态 ----------------
 
-    private fun permissionCategory(context: Context): PreferenceCategory =
-        PreferenceCategory(context).apply {
-            title = "权限与状态"
-            addPreference(
-                Preference(context).apply {
-                    title = "无障碍截图权限"
-                    summary =
-                        if (isShotServiceEnabled(context)) {
-                            "已开启，可以直接截图"
-                        } else {
-                            "未开启。点这里去「设置 → 辅助功能 → 无障碍 → 已下载的服务 → BambooIME」里打开「截图」"
-                        }
-                    isIconSpaceReserved = false
-                    setOnPreferenceClickListener {
-                        runCatching {
-                            context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-                        }.onFailure {
-                            Toast.makeText(context, "打不开系统无障碍设置", Toast.LENGTH_SHORT).show()
-                        }
-                        true
+    private fun fillPermission(
+        context: Context,
+        category: PreferenceCategory,
+    ) {
+        category.addPreference(
+            row(context, "无障碍截图权限") {
+                summary =
+                    if (isShotServiceEnabled(context)) {
+                        "已开启，可以直接截图"
+                    } else {
+                        "未开启。点这里去「设置 → 辅助功能 → 无障碍 → 已下载的服务 → BambooIME」里打开「截图」"
                     }
-                },
-            )
-        }
+                setOnPreferenceClickListener {
+                    runCatching {
+                        context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                    }.onFailure {
+                        Toast.makeText(context, "打不开系统无障碍设置", Toast.LENGTH_SHORT).show()
+                    }
+                    true
+                }
+            },
+        )
+    }
 
     // ---------------- AI 视觉配置 ----------------
 
-    private fun visionCategory(context: Context): PreferenceCategory =
-        PreferenceCategory(context).apply {
-            title = "AI 视觉（截图问图用）"
-            addPreference(
-                Preference(context).apply {
-                    title = "接口地址"
-                    summary = ShotAiPrefs.baseUrl
-                    isIconSpaceReserved = false
-                    setOnPreferenceClickListener {
-                        editTextDialog(context, "接口地址", "OpenAI 兼容的 /chat/completions 地址", ShotAiPrefs.baseUrl) {
-                            ShotAiPrefs.baseUrl = it
-                            rebuildScreen()
-                        }
-                        true
-                    }
-                },
-            )
-            addPreference(
-                Preference(context).apply {
-                    title = "模型"
-                    summary = ShotAiPrefs.model + "（必须支持看图）"
-                    isIconSpaceReserved = false
-                    setOnPreferenceClickListener {
-                        editTextDialog(context, "模型", "例如 deepseek-flash / gpt-4o-mini", ShotAiPrefs.model) {
-                            ShotAiPrefs.model = it
-                            rebuildScreen()
-                        }
-                        true
-                    }
-                },
-            )
-            addPreference(
-                Preference(context).apply {
-                    title = "API Key"
-                    val has = ShotAiPrefs.apiKey.isNotBlank()
-                    summary = if (has) "已设置（加密保存在本机），点这里修改" else "未设置，点这里填写"
-                    isIconSpaceReserved = false
-                    setOnPreferenceClickListener {
-                        editTextDialog(context, "API Key", "只保存在本机（Android Keystore 加密）", "") {
-                            ShotAiPrefs.apiKey = it
-                            rebuildScreen()
-                        }
-                        true
-                    }
-                },
-            )
-            addPreference(
-                Preference(context).apply {
-                    title = "清除 API Key"
-                    summary = "换机或怀疑泄露时点这里"
-                    isIconSpaceReserved = false
-                    setOnPreferenceClickListener {
-                        ShotAiPrefs.apiKey = ""
-                        Toast.makeText(context, "已清除", Toast.LENGTH_SHORT).show()
+    private fun fillVision(
+        context: Context,
+        category: PreferenceCategory,
+    ) {
+        category.addPreference(
+            row(context, "接口地址") {
+                summary = ShotAiPrefs.baseUrl
+                setOnPreferenceClickListener {
+                    editTextDialog(context, "接口地址", "OpenAI 兼容的 /chat/completions 地址", ShotAiPrefs.baseUrl) {
+                        ShotAiPrefs.baseUrl = it
                         rebuildScreen()
-                        true
                     }
-                },
-            )
-        }
+                    true
+                }
+            },
+        )
+        category.addPreference(
+            row(context, "模型") {
+                summary = ShotAiPrefs.model + "（必须支持看图）"
+                setOnPreferenceClickListener {
+                    editTextDialog(context, "模型", "例如 deepseek-flash / gpt-4o-mini", ShotAiPrefs.model) {
+                        ShotAiPrefs.model = it
+                        rebuildScreen()
+                    }
+                    true
+                }
+            },
+        )
+        category.addPreference(
+            row(context, "API Key") {
+                summary =
+                    if (ShotAiPrefs.apiKey.isNotBlank()) {
+                        "已设置（加密保存在本机），点这里修改"
+                    } else {
+                        "未设置，点这里填写"
+                    }
+                setOnPreferenceClickListener {
+                    editTextDialog(context, "API Key", "只保存在本机（Android Keystore 加密）", "") {
+                        ShotAiPrefs.apiKey = it
+                        rebuildScreen()
+                    }
+                    true
+                }
+            },
+        )
+        category.addPreference(
+            row(context, "清除 API Key") {
+                summary = "换机或怀疑泄露时点这里"
+                setOnPreferenceClickListener {
+                    ShotAiPrefs.apiKey = ""
+                    Toast.makeText(context, "已清除", Toast.LENGTH_SHORT).show()
+                    rebuildScreen()
+                    true
+                }
+            },
+        )
+    }
 
     // ---------------- AI 动作 ----------------
 
-    private fun actionsCategory(context: Context): PreferenceCategory =
-        PreferenceCategory(context).apply {
-            title = "AI 动作"
-            addPreference(
-                Preference(context).apply {
-                    title = "动作就是扇形菜单上的按钮"
-                    summary = "名称最多 4 个字，字号会自动缩；停用的动作不会出现在菜单里"
-                    isIconSpaceReserved = false
-                    isSelectable = false
-                },
-            )
-            ShotAiPrefs.actions.forEach { a ->
-                addPreference(
-                    Preference(context).apply {
-                        title = a.name + if (a.enabled) "" else "（已停用）"
-                        summary = a.prompt.replace("\n", " ").take(60)
-                        isIconSpaceReserved = false
-                        setOnPreferenceClickListener {
-                            actionDialog(context, a.id)
-                            true
-                        }
-                    },
-                )
-            }
-            addPreference(
-                Preference(context).apply {
-                    title = "＋ 新增动作"
-                    isIconSpaceReserved = false
+    private fun fillActions(
+        context: Context,
+        category: PreferenceCategory,
+    ) {
+        category.addPreference(
+            row(context, "动作就是扇形菜单上的按钮") {
+                summary = "名称最多 4 个字，字号会自动缩；停用的动作不会出现在菜单里"
+                isSelectable = false
+            },
+        )
+        ShotAiPrefs.actions.forEach { a ->
+            category.addPreference(
+                row(context, a.name + if (a.enabled) "" else "（已停用）") {
+                    summary = a.prompt.replace("\n", " ").take(60)
                     setOnPreferenceClickListener {
-                        addActionDialog(context)
-                        true
-                    }
-                },
-            )
-            addPreference(
-                Preference(context).apply {
-                    title = "恢复内置动作"
-                    summary = "恢复成「问 AI」「翻译」两条"
-                    isIconSpaceReserved = false
-                    setOnPreferenceClickListener {
-                        ShotAiPrefs.resetActions()
-                        rebuildScreen()
+                        actionDialog(context, a.id)
                         true
                     }
                 },
             )
         }
+        category.addPreference(
+            row(context, "＋ 新增动作") {
+                setOnPreferenceClickListener {
+                    addActionDialog(context)
+                    true
+                }
+            },
+        )
+        category.addPreference(
+            row(context, "恢复内置动作") {
+                summary = "恢复成「问 AI」「翻译」两条"
+                setOnPreferenceClickListener {
+                    ShotAiPrefs.resetActions()
+                    rebuildScreen()
+                    true
+                }
+            },
+        )
+    }
 
-    private fun hintCategory(context: Context): PreferenceCategory =
-        PreferenceCategory(context).apply {
-            title = "说明"
-            addPreference(
-                Preference(context).apply {
-                    title = "菜单项多了会自动缩小"
-                    summary = "扇形半径和圆的大小会先自动缩小保证一屏放得下；超过容量才会出现「更多」分页"
-                    isIconSpaceReserved = false
-                    isSelectable = false
-                },
-            )
+    private fun fillHints(
+        context: Context,
+        category: PreferenceCategory,
+    ) {
+        category.addPreference(
+            row(context, "菜单项多了会自动缩小") {
+                summary = "扇形半径和圆的大小会先自动缩小保证一屏放得下；超过容量才会出现「更多」分页"
+                isSelectable = false
+            },
+        )
+        category.addPreference(
+            row(context, "识字与 AI 动作的图从哪里来") {
+                summary = "都是当前选框里的那一块；没选框时点它们会先提示你拖一个框"
+                isSelectable = false
+            },
+        )
+    }
+
+    // ---------------- 小工具 ----------------
+
+    private fun row(
+        context: Context,
+        title: String,
+        block: Preference.() -> Unit = {},
+    ): Preference =
+        Preference(context).apply {
+            this.title = title
+            isIconSpaceReserved = false
+            block()
         }
-
-    // ---------------- 对话框 ----------------
 
     private fun actionDialog(
         context: Context,
@@ -276,11 +295,11 @@ class ShotSettingsFragment : PaddingPreferenceFragment() {
                     inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
                     minLines = 3
                 }
-                setPadding(dp(20), dp(8), dp(20), dp(8))
             }
         val wrap =
             LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
+                setPadding(dp(20), dp(8), dp(20), 0)
                 addView(input)
             }
         AlertDialog
@@ -306,9 +325,5 @@ class ShotSettingsFragment : PaddingPreferenceFragment() {
                 Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
             ).orEmpty()
         return enabled.contains("ShotService")
-    }
-
-    private companion object {
-        private const val TAG = "ShotSettings"
     }
 }
