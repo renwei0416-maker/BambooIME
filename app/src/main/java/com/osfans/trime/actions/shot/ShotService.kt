@@ -26,6 +26,8 @@ class ShotService : AccessibilityService() {
         super.onServiceConnected()
         instance = this
         Timber.d("shot: accessibility service connected")
+        // 用户开过「截图浮球」就顺手把它挂回来（进程重启/系统回收后浮球会跟着服务一起没）
+        if (ShotBallPrefs.enabled) ShotBallOverlay.show()
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) = Unit
@@ -33,12 +35,14 @@ class ShotService : AccessibilityService() {
     override fun onInterrupt() = Unit
 
     override fun onUnbind(intent: android.content.Intent?): Boolean {
+        ShotBallOverlay.hide()
         if (instance === this) instance = null
         Timber.d("shot: accessibility service unbound")
         return super.onUnbind(intent)
     }
 
     override fun onDestroy() {
+        ShotBallOverlay.hide()
         if (instance === this) instance = null
         super.onDestroy()
     }

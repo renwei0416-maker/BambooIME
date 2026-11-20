@@ -18,6 +18,8 @@ import androidx.preference.Preference
 import androidx.preference.PreferenceCategory
 import androidx.preference.PreferenceScreen
 import com.osfans.trime.actions.shot.ShotAiPrefs
+import com.osfans.trime.actions.shot.ShotBallOverlay
+import com.osfans.trime.actions.shot.ShotBallPrefs
 import com.osfans.trime.ui.common.PaddingPreferenceFragment
 import com.osfans.trime.ui.common.rebuildPreferencesKeepingScroll
 
@@ -84,6 +86,39 @@ class ShotSettingsFragment : PaddingPreferenceFragment() {
                     }.onFailure {
                         Toast.makeText(context, "打不开系统无障碍设置", Toast.LENGTH_SHORT).show()
                     }
+                    true
+                }
+            },
+        )
+
+        // 浮球是独立功能：没权限时置灰，点它只去开权限，不悄悄改开关状态
+        category.addPreference(
+            row(context, "截图浮球") {
+                val granted = isShotServiceEnabled(context)
+                summary =
+                    if (!granted) {
+                        "需要先开启无障碍权限（截图和截图浮球用的是同一个权限）"
+                    } else if (ShotBallPrefs.enabled) {
+                        "已开启：桌面右下有一个浮球，点它可随时截图"
+                    } else {
+                        "关（默认）。打开后桌面会出现一个浮球，没有输入框时也能截图"
+                    }
+                isEnabled = granted
+                setOnPreferenceClickListener {
+                    if (ShotBallPrefs.enabled) {
+                        ShotBallPrefs.enabled = false
+                        ShotBallOverlay.hide()
+                        Toast.makeText(context, "截图浮球已关闭", Toast.LENGTH_SHORT).show()
+                    } else {
+                        ShotBallPrefs.enabled = true
+                        ShotBallOverlay.show()
+                        if (ShotBallOverlay.isShowing) {
+                            Toast.makeText(context, "截图浮球已开启", Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(context, "浮球要等无障碍服务连上才会出现，稍等一下", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                    rebuildScreen()
                     true
                 }
             },

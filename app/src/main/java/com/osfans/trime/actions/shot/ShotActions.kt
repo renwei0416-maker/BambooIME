@@ -25,10 +25,9 @@ object ShotActions {
     private const val HIDE_DELAY_MS = 300L
 
     fun start(service: TrimeInputMethodService?) {
-        val ctx: Context = service ?: run {
-            BambooLog.shot.d("start", "no service")
-            return
-        }
+        // service 为 null 表示不是从键盘进来的（例如桌面「截图浮球」），此时没有键盘要收，
+        // 直接用应用上下文抓屏即可。
+        val ctx: Context = service ?: com.osfans.trime.TrimeApplication.getInstance()
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
             Toast.makeText(ctx, "系统版本过低，截图需要 Android 11 及以上", Toast.LENGTH_LONG).show()
             return

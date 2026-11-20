@@ -35,6 +35,9 @@ import com.osfans.trime.data.theme.ColorManager
 import com.osfans.trime.daemon.RimeDaemon
 import com.osfans.trime.ime.clipboard.ClipboardWindow
 import com.osfans.trime.actions.shot.ShotActions
+import com.osfans.trime.actions.shot.ShotBallOverlay
+import com.osfans.trime.actions.shot.ShotBallPrefs
+import com.osfans.trime.actions.shot.ShotService
 import com.osfans.trime.ime.core.TrimeInputMethodService
 import com.osfans.trime.ime.keyboard.KeyboardWindow
 import com.osfans.trime.ime.window.BoardWindow
@@ -289,6 +292,7 @@ class KeyPanelWindow : BoardWindow.NoBarBoardWindow() {
                 Cell("aai", "功能模式", "", "cmd_robot", Kind.ACTION, "ai"),
                 Cell("aclip", "剪贴板", "", "cmd_clipboard_text", Kind.ACTION, "clipboard"),
                 Cell("ashot", "截图", "", "cmd_monitor_screenshot", Kind.ACTION, "shot"),
+                Cell("ashotball", "截图浮球", if (ShotBallPrefs.enabled) "已开启" else "", "cmd_monitor_screenshot", Kind.ACTION, "shot_ball"),
             )
 
         // 每行最多 4 个：多了自动换行，绝不挤成 5 个一行
@@ -438,6 +442,19 @@ class KeyPanelWindow : BoardWindow.NoBarBoardWindow() {
                     "ocr" -> windowManager.attachWindow(OcrWindow.instance)
                     "ai" -> windowManager.attachWindow(AiPanelWindow.instance)
                     "clipboard" -> windowManager.attachWindow(ClipboardWindow())
+                    "shot_ball" -> {
+                        val ctx = service ?: return
+                        if (!ShotService.isGranted(ctx)) {
+                            toast("截图浮球需要无障碍权限：设置 → 辅助功能 → 无障碍 → 已下载的服务 → BambooIME → 打开「截图」")
+                            ShotActions.openAccessibilitySettings(ctx)
+                            return
+                        }
+                        val want = !ShotBallPrefs.enabled
+                        ShotBallPrefs.enabled = want
+                        if (want) ShotBallOverlay.show() else ShotBallOverlay.hide()
+                        toast(if (want) "截图浮球已开启" else "截图浮球已关闭")
+                        rebuild()
+                    }
                     "shot" -> {
                         // 截图是独立功能：先离开面板并收起键盘，由 ShotActions 负责抓屏与显示框选界面
                         leaveToKeyboard()

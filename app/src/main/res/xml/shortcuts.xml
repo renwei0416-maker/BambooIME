@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  桌面长按图标的快捷方式：只开「截图浮球」开关，不直接截屏。
+  用自定义 action 而不是 targetPackage/targetClass，debug 包的 applicationId 有 .debug 后缀也不会失配。
+-->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:enabled="true"
+        android:icon="@mipmap/ic_app_icon"
+        android:shortcutId="shot_ball"
+        android:shortcutLongLabel="@string/shortcut_shot_ball_long"
+        android:shortcutShortLabel="@string/shortcut_shot_ball">
+        <intent
+            android:action="com.osfans.trime.action.SHOT_BALL"
+            android:targetClass="com.osfans.trime.actions.shot.ShotBallShortcutActivity"
+            android:targetPackage="${applicationId}" />
+    </shortcut>
+</shortcuts>
