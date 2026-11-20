@@ -18,17 +18,17 @@ import android.view.WindowManager
 import android.widget.FrameLayout
 
 /**
- * 桌面常驻的「截图浮球」。
- *
- * 独立于 [ShotActivity] 里那个菜单球：这里是无障碍浮层，没有输入框也能用。
- * 点开只有三项（自下而上）：退出 / 返回 / 截图；「退出」会顺手关掉设置里的开关。
- */
-/**
  * 视觉半径占窗口半径的比例。1f 太扎眼；2/3 就是 48dp 的窗口里画 32dp 的圆（触摸热区仍是 48dp）。
  * 放在文件顶层，`ShotBallOverlay` 和它内部的 `BallView` 都能直接用。
  */
 private const val DRAW_SCALE = 2f / 3f
 
+/**
+ * 桌面常驻的「截图浮球」。
+ *
+ * 独立于 [ShotActivity] 里那个菜单球：这里是无障碍浮层，没有输入框也能用。
+ * 点开只有三项（自下而上）：退出 / 返回 / 截图；「退出」会顺手关掉设置里的开关。
+ */
 object ShotBallOverlay {
     private fun dp(v: Int): Float = v * densityOf()
     private fun densityOf(): Float =
