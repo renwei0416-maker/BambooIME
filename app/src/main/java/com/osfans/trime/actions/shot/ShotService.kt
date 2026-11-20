@@ -6,6 +6,9 @@
 package com.osfans.trime.actions.shot
 
 import android.accessibilityservice.AccessibilityService
+import android.content.ComponentName
+import android.content.Context
+import android.provider.Settings
 import android.view.accessibility.AccessibilityEvent
 import timber.log.Timber
 
@@ -45,7 +48,22 @@ class ShotService : AccessibilityService() {
         var instance: ShotService? = null
             private set
 
-        /** 授权状态；没开就是 false，截图入口据此提示用户去开。 */
+        /** 服务实例是否已经连上（真正能调 takeScreenshot 的前提）。 */
         fun isReady(): Boolean = instance != null
+
+        /**
+         * 系统设置里是否已经勾选了本服务。
+         *
+         * 为什么要和 [isReady] 分开：无障碍服务实例由系统绑定，进程被杀或系统回收后会短暂断开，
+         * 此时权限明明还开着，只看 [instance] 会误报「没开权限」（实测报过一次就再也进不去截图）。
+         */
+        fun isGranted(context: Context): Boolean {
+            val enabled =
+                runCatching {
+                    Settings.Secure.getString(context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
+                }.getOrNull() ?: return false
+            val me = ComponentName(context, ShotService::class.java).flattenToString()
+            return enabled.split(':').any { it.equals(me, ignoreCase = true) }
+        }
     }
 }

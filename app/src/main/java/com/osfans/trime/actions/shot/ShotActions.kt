@@ -7,6 +7,9 @@ package com.osfans.trime.actions.shot
 
 import android.content.Context
 import android.content.Intent
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.widget.Toast
 import com.osfans.trime.ime.core.TrimeInputMethodService
@@ -26,12 +29,44 @@ object ShotActions {
             BambooLog.shot.d("start", "no service")
             return
         }
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            Toast.makeText(ctx, "系统版本过低，截图需要 Android 11 及以上", Toast.LENGTH_LONG).show()
+            return
+        }
         if (!ShotCapture.isReady()) {
-            BambooLog.shot.d("start", "not ready: sdk or service")
-            Toast.makeText(ctx, "请先开启「截图」权限（无障碍）", Toast.LENGTH_LONG).show()
+            // 权限开着但服务实例还没连上（进程刚重启、系统回收过）：先等一下重试，别直接说「没权限」
+            if (ShotService.isGranted(ctx)) {
+                BambooLog.shot.d("start", "granted but not connected, retry")
+                retryStart(service, ctx, 0)
+            } else {
+                BambooLog.shot.d("start", "not granted")
+                Toast.makeText(ctx, "请先开启「截图」权限（无障碍）", Toast.LENGTH_LONG).show()
+                openAccessibilitySettings(ctx)
+            }
+            return
+        }
+        captureFlow(service, ctx)
+    }
+
+    /** 已授权但服务未连上时，最多重试两次；仍不行再引导用户去无障碍页重开一次。 */
+    private fun retryStart(service: TrimeInputMethodService?, ctx: Context, attempt: Int) {
+        if (ShotCapture.isReady()) {
+            captureFlow(service, ctx)
+            return
+        }
+        if (attempt >= 2) {
+            Toast.makeText(
+                ctx,
+                "截图服务没就绪：请到「设置 → 辅助功能 → 无障碍」把「截图」关一下再打开",
+                Toast.LENGTH_LONG,
+            ).show()
             openAccessibilitySettings(ctx)
             return
         }
+        Handler(Looper.getMainLooper()).postDelayed({ retryStart(service, ctx, attempt + 1) }, 500L)
+    }
+
+    private fun captureFlow(service: TrimeInputMethodService?, ctx: Context) {
         // 收起键盘，让下面的 App 露出完整画面
         runCatching { service?.requestHideSelf(0) }
         val decor = service?.window?.window?.decorView

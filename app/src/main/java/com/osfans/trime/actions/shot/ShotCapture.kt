@@ -84,4 +84,15 @@ object ShotCapture {
     }
 
     fun takePendingOcr(): Bitmap? = pendingOcr.also { pendingOcr = null }
+
+    /**
+     * 清空所有交接中的位图。
+     *
+     * 截图界面每次退出（不管是保存、复制、退出还是被系统回收）都会调这里：
+     * 上一次的整屏图、裁好的图都不该留到下一次，否则体积大、还可能被下一次误用。
+     */
+    fun reset() {
+        pending = null
+        pendingOcr = null
+    }
 }

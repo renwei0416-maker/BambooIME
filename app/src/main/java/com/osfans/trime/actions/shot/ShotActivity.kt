@@ -121,6 +121,8 @@ class ShotActivity : Activity() {
 
     override fun onDestroy() {
         scope.cancel()
+        // 退出即清干净：整屏图、裁好的图都不留到下一次
+        ShotCapture.reset()
         super.onDestroy()
     }
 
@@ -133,8 +135,9 @@ class ShotActivity : Activity() {
         val lp = FrameLayout.LayoutParams(dp(BALL_DP), dp(BALL_DP), Gravity.TOP or Gravity.START)
         root.addView(ball, lp)
         ball.post {
-            ball.x = prefsX((root.width - dp(BALL_DP) - dp(18)).toFloat())
-            ball.y = prefsY((root.height - dp(BALL_DP) - dp(90)).toFloat())
+            // 每次进入都回到默认位置（右下角），不记忆上一次拖到哪
+            ball.x = (root.width - dp(BALL_DP) - dp(18)).toFloat()
+            ball.y = (root.height - dp(BALL_DP) - dp(90)).toFloat()
             clampBall()
         }
         ball.setOnTouchListener { v, e ->
@@ -186,21 +189,6 @@ class ShotActivity : Activity() {
         val targetX = if (toLeft) margin else (root.width - ball.width - margin).coerceAtLeast(0f)
         clampBall()
         ball.animate().x(targetX).setDuration(160L).start()
-        savePrefs(targetX, ball.y)
-    }
-
-    private fun prefsX(fallback: Float): Float {
-        val v = getSharedPreferences(PREF, MODE_PRIVATE).getFloat("ballX", -1f)
-        return if (v >= 0f && v <= max(0f, root.width.toFloat())) v else fallback
-    }
-
-    private fun prefsY(fallback: Float): Float {
-        val v = getSharedPreferences(PREF, MODE_PRIVATE).getFloat("ballY", -1f)
-        return if (v >= 0f) v else fallback
-    }
-
-    private fun savePrefs(x: Float, y: Float) {
-        getSharedPreferences(PREF, MODE_PRIVATE).edit().putFloat("ballX", x).putFloat("ballY", y).apply()
     }
 
     // ---------------- 菜单 ----------------
