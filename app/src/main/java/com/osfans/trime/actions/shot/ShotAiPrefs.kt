@@ -26,6 +26,10 @@ object ShotAiPrefs {
     private const val K_API_KEY = "api_key"
     private const val K_ACTIONS = "actions"
 
+    /** 内置动作的版本号。改动内置提示词后 +1，老用户升级时会被强制覆盖一次。 */
+    private const val K_DEFAULTS_VERSION = "defaults_version"
+    private const val DEFAULTS_VERSION = 2
+
     const val DEFAULT_BASE_URL = "https://api.deepseek.com/v1/chat/completions"
     const val DEFAULT_MODEL = "deepseek-flash"
 
@@ -42,12 +46,36 @@ object ShotAiPrefs {
             TrimeApplication.getInstance()
                 .getSharedPreferences(FILE, android.content.Context.MODE_PRIVATE)
 
-    /** 一次内置两条，用户可改可删可新增。 */
+    /** 排序即菜单顺序：「问 AI」固定排第一。 */
     private fun defaultActions(): List<Action> =
         listOf(
-            Action("builtin_ask", "问 AI", "看看这张图，用中文简要说明里面有什么、在讲什么。", true),
-            Action("builtin_translate", "翻译", "把图片里的文字翻译成中文，只输出译文，保留原有换行。", true),
+            Action(
+                "builtin_ask",
+                "问 AI",
+                "看看这张图，用中文简要说明里面有什么、在讲什么。如果是文字，且是问题就回复问题。",
+                true,
+            ),
+            Action(
+                "builtin_translate",
+                "翻译",
+                "图片里的文字如果是外文就翻译成中文，只输出译文，保留原有换行。" +
+                    "如果是中文就翻译成英文，保留格式和换行。哪怕文字是问题也只翻译而不是回答问题。",
+                true,
+            ),
         )
+
+    /**
+     * 内置动作升级检查。
+     *
+     * 改了内置提示词后，老用户的 `bamboo_shot_ai` 里还存着旧文本，只改默认值不会生效；
+     * 这里按版本号**强制覆盖一次**（用户自己新增的动作也会一并清掉，回到内置两条），
+     * 之后版本号不再变化，就不再动用户的数据。
+     */
+    fun ensureDefaults() {
+        val v = prefs.getInt(K_DEFAULTS_VERSION, 0)
+        if (v >= DEFAULTS_VERSION) return
+        prefs.edit().remove(K_ACTIONS).putInt(K_DEFAULTS_VERSION, DEFAULTS_VERSION).apply()
+    }
 
     var baseUrl: String
         get() = prefs.getString(K_BASE_URL, DEFAULT_BASE_URL).orEmpty().ifBlank { DEFAULT_BASE_URL }

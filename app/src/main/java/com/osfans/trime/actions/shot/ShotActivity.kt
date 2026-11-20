@@ -86,6 +86,8 @@ class ShotActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // 内置动作的提示词升过版，老用户存的是旧文本：进截图界面时同步一次
+        ShotAiPrefs.ensureDefaults()
         val bmp = ShotCapture.takePending()
         if (bmp == null) {
             Toast.makeText(this, "没有可用的截图", Toast.LENGTH_SHORT).show()
@@ -135,9 +137,10 @@ class ShotActivity : Activity() {
         val lp = FrameLayout.LayoutParams(dp(BALL_DP), dp(BALL_DP), Gravity.TOP or Gravity.START)
         root.addView(ball, lp)
         ball.post {
-            // 每次进入都回到默认位置（右下角），不记忆上一次拖到哪
+            // 每次进入都回到默认位置（不记忆上一次拖到哪）。
+            // 纵向取屏幕下三分之一处：球在底部时扇形会有一截伸出屏幕，放这里刚好整段都在屏内。
             ball.x = (root.width - dp(BALL_DP) - dp(18)).toFloat()
-            ball.y = (root.height - dp(BALL_DP) - dp(90)).toFloat()
+            ball.y = (root.height * 2f / 3f - dp(BALL_DP) / 2f)
             clampBall()
         }
         ball.setOnTouchListener { v, e ->

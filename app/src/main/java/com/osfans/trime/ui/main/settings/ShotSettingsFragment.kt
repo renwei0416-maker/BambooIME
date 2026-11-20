@@ -293,7 +293,7 @@ class ShotSettingsFragment : PaddingPreferenceFragment() {
                 setSingleLine(!multiline)
                 if (multiline) {
                     inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
-                    minLines = 3
+                    minLines = 4
                 }
             }
         val wrap =

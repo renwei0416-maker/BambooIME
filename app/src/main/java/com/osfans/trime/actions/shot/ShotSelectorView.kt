@@ -48,7 +48,7 @@ class ShotSelectorView(context: Context) : View(context) {
 
     private val handleR = dp(11)
     private val hitSlop = dp(26)
-    private val minSize = dp(48)
+    private val minSize = dp(24)
 
     private val modeNone = 0
     private val modeNew = 1
@@ -210,27 +210,40 @@ class ShotSelectorView(context: Context) : View(context) {
                 }
 
                 if (hasSel) {
-                    val c = dp(24)
-                    if (Math.abs(event.x - sel.left) < c && Math.abs(event.y - sel.top) < c) {
-                        mode = modeCorner; corner = 0
-                    } else if (Math.abs(event.x - sel.right) < c && Math.abs(event.y - sel.top) < c) {
-                        mode = modeCorner; corner = 1
-                    } else if (Math.abs(event.x - sel.right) < c && Math.abs(event.y - sel.bottom) < c) {
-                        mode = modeCorner; corner = 2
-                    } else if (Math.abs(event.x - sel.left) < c && Math.abs(event.y - sel.bottom) < c) {
-                        mode = modeCorner; corner = 3
-                    } else {
-                        val mx = (sel.left + sel.right) / 2f
-                        val my = (sel.top + sel.bottom) / 2f
-                        if (Math.abs(event.x - sel.left) < hitSlop && Math.abs(event.y - my) < c) {
+                    // 命中半径随选框一起缩：框到最小时，固定的 24dp 角点 + 26dp 边条会把整个框吃满，
+                    // 「框内平移」永远轮不到（用户实测：缩到最小后横竖都拖不动）。这里改成按短边折算，
+                    // 并且已经到最小尺寸的那一轴不再接受缩放命中，直接把中间让给平移。
+                    val c = minOf(dp(24), sel.width() / 4f, sel.height() / 4f).coerceAtLeast(dp(8))
+                    val atMinW = sel.width() <= minSize + dp(2)
+                    val atMinH = sel.height() <= minSize + dp(2)
+                    val mx = (sel.left + sel.right) / 2f
+                    val my = (sel.top + sel.bottom) / 2f
+                    when {
+                        Math.abs(event.x - sel.left) < c && Math.abs(event.y - sel.top) < c -> {
+                            mode = modeCorner; corner = 0
+                        }
+                        Math.abs(event.x - sel.right) < c && Math.abs(event.y - sel.top) < c -> {
+                            mode = modeCorner; corner = 1
+                        }
+                        Math.abs(event.x - sel.right) < c && Math.abs(event.y - sel.bottom) < c -> {
+                            mode = modeCorner; corner = 2
+                        }
+                        Math.abs(event.x - sel.left) < c && Math.abs(event.y - sel.bottom) < c -> {
+                            mode = modeCorner; corner = 3
+                        }
+                        !atMinW && Math.abs(event.x - sel.left) < c && Math.abs(event.y - my) < c -> {
                             mode = modeEdge; edge = 0
-                        } else if (Math.abs(event.y - sel.top) < hitSlop && Math.abs(event.x - mx) < c) {
+                        }
+                        !atMinH && Math.abs(event.y - sel.top) < c && Math.abs(event.x - mx) < c -> {
                             mode = modeEdge; edge = 1
-                        } else if (Math.abs(event.x - sel.right) < hitSlop && Math.abs(event.y - my) < c) {
+                        }
+                        !atMinW && Math.abs(event.x - sel.right) < c && Math.abs(event.y - my) < c -> {
                             mode = modeEdge; edge = 2
-                        } else if (Math.abs(event.y - sel.bottom) < hitSlop && Math.abs(event.x - mx) < c) {
+                        }
+                        !atMinH && Math.abs(event.y - sel.bottom) < c && Math.abs(event.x - mx) < c -> {
                             mode = modeEdge; edge = 3
-                        } else if (sel.contains(event.x, event.y)) {
+                        }
+                        sel.contains(event.x, event.y) -> {
                             mode = modePan
                         }
                     }
