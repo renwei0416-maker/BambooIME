@@ -61,9 +61,6 @@ class ShotActivity : Activity() {
     private lateinit var mask: View
     private lateinit var resultBox: LinearLayout
     private lateinit var resultText: TextView
-    /** 结果面板的「上屏 / 撤回上屏」按钮与状态。 */
-    private var commitChip: TextView? = null
-    private var committed = false
 
     private lateinit var busyBox: LinearLayout
     /** 菜单打开时的全屏拦截层：吃掉所有触摸，避免穿透到下面的选区。 */
@@ -80,6 +77,14 @@ class ShotActivity : Activity() {
 
     private var menuOpen = false
     private var busy = false
+
+    /**
+     * 刚拉起过系统分享面板。
+     *
+     * 截图模块期间常驻浮球是收起来的（避免被截进图 / 和选框抢触摸），但分享时用户人在别的 App，
+     * 浮球应该照常可见。所以：onPause 时若正在分享 → 把浮球放回来；onResume 回到截图界面 → 再收起。
+     */
+    private var sharing = false
 
     /** 是否跳去了「识字」面板；是的话退出时别恢复浮球（会压在识字面板上）。 */
 
@@ -129,6 +134,21 @@ class ShotActivity : Activity() {
         selector.onSelectionChanged = { rect ->
             BambooLog.shot.d("sel", "bitmap=" + rect.toShortString())
         }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        // 正在分享：用户此时在看系统分享面板或别的 App，把常驻浮球放回来
+        if (sharing) {
+            sharing = false
+            if (ShotBallPrefs.enabled) runCatching { ShotBallOverlay.show() }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // 回到截图界面就再收起来（截图模块期间不显示浮球）
+        runCatching { ShotBallOverlay.hide() }
     }
 
     override fun onDestroy() {
@@ -351,11 +371,6 @@ class ShotActivity : Activity() {
         val bar = LinearLayout(this)
         bar.orientation = LinearLayout.HORIZONTAL
         bar.gravity = Gravity.END
-        val commit = actionChip("上屏")
-        commitChip = commit
-        commit.setOnClickListener {
-            if (committed) revertResult() else commitResult()
-        }
         val share = actionChip("分享")
         share.setOnClickListener { shareText() }
         val copy = actionChip("复制")
@@ -368,7 +383,6 @@ class ShotActivity : Activity() {
         close.setOnClickListener { hideResult() }
         val cLp = LinearLayout.LayoutParams(WRAP, WRAP)
         cLp.rightMargin = dp(10)
-        bar.addView(commit, cLp)
         bar.addView(share, cLp)
         bar.addView(copy, cLp)
         bar.addView(close, WRAPLP())
@@ -571,51 +585,10 @@ class ShotActivity : Activity() {
                 type = "text/plain"
                 putExtra(Intent.EXTRA_TEXT, text)
             }
+            sharing = true
             startActivity(Intent.createChooser(send, "分享文字"))
         }.onFailure {
             Toast.makeText(this, "分享失败：" + (it.message ?: ""), Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    /**
-     * 把结果文字上屏到下面的编辑区。
-     * 走 [TrimeInputMethodService.commitText] 这个唯一记账漏斗，所以会自动进「回退」账本。
-     */
-    private fun commitResult() {
-        val text = resultText.text?.toString().orEmpty()
-        if (text.isEmpty()) return
-        val svc = TrimeInputMethodService.current
-        if (svc == null) {
-            val cm = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
-            cm.setPrimaryClip(ClipData.newPlainText("BambooIME", text))
-            Toast.makeText(this, "输入法不在前台，已复制到剪贴板", Toast.LENGTH_SHORT).show()
-            return
-        }
-        runCatching { svc.commitText(text) }.onFailure {
-            Toast.makeText(this, "上屏失败：" + (it.message ?: ""), Toast.LENGTH_SHORT).show()
-            return
-        }
-        committed = true
-        commitChip?.text = "撤回上屏"
-        Toast.makeText(this, "已上屏，可用「撤回上屏」或键盘回退撤销", Toast.LENGTH_SHORT).show()
-    }
-
-    /** 撤回刚上屏的文字：复用 qq/ 回退的同一套逻辑（按实际删除量扣账）。 */
-    private fun revertResult() {
-        val svc = TrimeInputMethodService.current
-        if (svc == null) {
-            Toast.makeText(this, "输入法不在前台，无法撤回", Toast.LENGTH_SHORT).show()
-            return
-        }
-        scope.launch {
-            val n = runCatching { BambooActions.revertLast(svc) }.getOrDefault(0)
-            if (n > 0) {
-                committed = false
-                commitChip?.text = "上屏"
-                Toast.makeText(this@ShotActivity, "已撤回上屏", Toast.LENGTH_SHORT).show()
-            } else {
-                Toast.makeText(this@ShotActivity, "撤回失败，请用键盘回退", Toast.LENGTH_SHORT).show()
-            }
         }
     }
 
@@ -631,6 +604,7 @@ class ShotActivity : Activity() {
                 putExtra(Intent.EXTRA_STREAM, uri)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
+            sharing = true
             startActivity(Intent.createChooser(send, "分享图片"))
         }.onFailure {
             Toast.makeText(this, "分享失败：" + (it.message ?: ""), Toast.LENGTH_SHORT).show()
