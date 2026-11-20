@@ -230,3 +230,66 @@
 - b) 这批键里最小的那个值（更符合「批量」语义，但要现算）。
 
 建议 a)。等用户确认后再做。
+## 12. 拼音智能纠错（2026-11-20 评估，用户定「先记着、暂不做」）
+
+要点：给误输入纠错，覆盖 **全拼 / 双拼 / 双拼+辅助码**；只做「追加候选（suggest）」，
+不做自动上屏；误纠率优先于召回率。设计稿见
+`BambooIME\docs\proposals\拼音智能纠错-设计方案-20261120.md`（833 行，非 git 仓库内）。
+该稿是按 LyraIME 上游视角写的，落地时以我们自己的代码为准（我们是其下游）。
+
+### 12.1 我们这边已核实的基建（省大力气）
+
+- `app/src/main/jni/librime-plugins/` 已含 `librime-lua` / `lua-utf8` → **Lua 方案可行，不必改 librime 核心**。
+- `wanxiang.schema.yaml` 已挂 7 个 `lua_processor@*` / 9 个 `lua_translator@*` / 多个 `lua_filter@*`。
+- `lua/wanxiang/librime.lua`（765 行）已把 `Context` / `Segment` / `Segmentation` / `Candidate`
+  的 Lua API 做了完整注解封装，不用从零摸。
+- 双拼不是独立方案，而是同方案内换 algebra 段落：
+  `wanxiang.schema.yaml:249-251` → `speller/algebra/__patch: - wanxiang_algebra:/base/全拼`；
+  `wanxiang_algebra.yaml`（3,562 行，`xform/` 2,446、`derive/` 570）里是多套双拼映射；
+  `lua/wanxiang/set_schema.lua:46-61` 列了 `/flypy` `/mspy` `/zrm` `/sogou` `/ziguang` `/gbpy` `/ltsp` `/sdpy` `/dnsp` `/wxsp`。
+  → 当前是哪套双拼，可用 `env.engine.schema.config:get_string("speller/algebra/@last")`
+  或读我们生成的 `wanxiang.custom.yaml` 得知。
+- 万象自带 `dicts/cuoyin.dict.yaml`（206 条「错音错字对照表」，`词\t拼音\t权重\t说明`），
+  由 `wanxiang.dict.yaml:19` 挂进主词库；但它解决的是**读音错**，不是邻键误触。
+
+### 12.2 需要先验证的三件事（文档里的判断要校准）
+
+1. `translator/enable_correction` 是 **librime `script_translator` 官方选项**，不是万象自创；
+   Base 里被注释（`wanxiang.schema.yaml:135`），T9 里 `false`（`wanxiang_t9.schema.yaml:110`）。
+   先开它测误纠率与性能——若已能覆盖六成，工作量直接砍半。
+2. 注意区分三种「错」：**读音错（cuoyin 表）/ 模糊音 / 邻键误触**。本模块只做第三种。
+3. 我们 app 侧**没有「双拼方案」设置项**（`WanxiangCustom.kt` grep `双拼` 零命中），
+   做双拼纠错时要顺手补一个，顺便当「当前方案」的稳定来源。
+
+### 12.3 关键未知（决定架构）
+
+Lua 能否用 `Component.Translator(env.engine, "wanxiang", "translator")` + `query(code, segment)`
+对**任意修正码**查询？
+- 能 → 算法只生成 ≤48 个修正码，验证/词组/词频全交万象 translator，双拼与辅码自动正确；
+- 不能 → 退化「离线错拼映射表」（Top 3 万词 × 1 次邻键 ≈ 18 万条 ≈ 3–5 MB，长尾纠不出）。
+
+### 12.4 若开工：Phase 0 四个探针（半天、只读不改行为）
+
+1. 临时开 `enable_correction: true`，测 `mihao` / `nihap` / 双拼误触串的命中与误纠；
+2. 临时 Lua filter 打印 `schema_id`、`context.input`（**原始按键串还是转换后**）、`ascii_mode`、algebra 段名；
+3. 试 `Component.Translator` 任意码查询；
+4. 候选流插入「假候选」的最小闭环：能显示/能上屏/不污染 composing/退格与光标正常。
+   产出 `docs/TYPO-CORRECTION-AUDIT.md`。
+
+### 12.5 落点（全部在我们仓库，不碰 `theme/`、不改上游 yaml）
+
+- 新增 `app/src/main/schema-assets/wanxiang-base/lua/wandao/`：
+  `typo_keyboard.lua` / `typo_distance.lua` / `typo_pinyin.lua` / `typo_scheme.lua` /
+  `typo_query.lua` / `typo_filter.lua`；
+- 在 `filters:` 里插 `- lua_filter@*wandao.typo`（位置：`context_reorder` 之后、
+  `super_comment_preedit` 之前，让纠错候选也能吃到注释），走 `WanxiangCustom.kt` 生成 patch；
+- 设置页加：总开关（默认关）/ suggest|auto / 强度 / 是否纠双拼 /（Pro）是否纠辅码。
+
+### 12.6 难度与红线
+
+- 全拼 suggest 3–5 天；双拼 +3–4 天；辅码（仅 Pro）+5–8 天；触摸坐标 1–2 天（建议后置）。
+  MVP（全拼+双拼）约 1–1.5 周，加测试/设置/文档 2–3 天。
+- 红线：默认只 suggest；**原生候选一个不删、顺序不动**；**不改 `composing` 输入串**；
+  Lua 里必须 cache（key = `input + schema + 选项位`），编辑 ≤1/2、生成码 ≤48、纠错候选 ≤5，超时即放弃。
+- 待定 4 项：只 Base 还是含 Pro 辅码；是否 auto；纠错候选是否在注释里打「纠错」标记；是否用触摸坐标。
+
