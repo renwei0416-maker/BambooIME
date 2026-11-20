@@ -217,6 +217,23 @@ class ShotActivity : Activity() {
      * 0 层是固定动作（加「更多」），1 层起是 AI 动作（末尾固定「返回」「退出」）。
      * 每层最多 8 项；扇形菜单自己会按项数缩小半径和项直径，一屏放得下就不分层。
      */
+    /**
+     * 菜单下标映射回真实动作。
+     *
+     * 第二层把 `动作 + 返回 + 退出` 整表倒序显示，所以下标不能直接当动作列表下标：
+     * 最前面两个是「退出」「返回」，后面才是倒着排的动作（最后一个下标对应第一个动作）。
+     */
+    private fun actionAt(index: Int): ShotAiPrefs.Action? {
+        if (fanLayer == 0) return null
+        val actions = ShotAiPrefs.enabledActions()
+        if (actions.isEmpty()) return null
+        val list = layerItems
+        if (index !in list.indices) return null
+        val pos = index - (list.size - actions.size)
+        if (pos < 0 || pos >= actions.size) return null
+        return actions[actions.size - 1 - pos]
+    }
+
     private fun showLayer(layer: Int) {
         fanLayer = layer
         val actions = ShotAiPrefs.enabledActions()
@@ -224,7 +241,9 @@ class ShotActivity : Activity() {
             if (layer == 0) {
                 if (actions.isEmpty()) baseItems else baseItems + MORE
             } else {
-                actions.map { it.name } + listOf(BACK, EXIT)
+                // 扇形是「从下往上」编号的（第 0 项落在最下方），所以第二层整表倒序：
+                // 显示上自下而上变成 退出 / 返回 / 新增… / 翻译 / 问 AI —— 问 AI 落在最上面。
+                (actions.map { it.name } + listOf(BACK, EXIT)).asReversed()
             }
         fan.show(ball.x + ball.width / 2f, ball.y + ball.height / 2f, layerItems)
     }
@@ -252,7 +271,7 @@ class ShotActivity : Activity() {
                 return
             }
         }
-        val action = ShotAiPrefs.enabledActions().getOrNull(index)
+        val action = actionAt(index)
         closeMenu()
         action?.let { runAction(it) }
     }

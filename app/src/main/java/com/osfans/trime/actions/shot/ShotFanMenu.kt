@@ -183,45 +183,52 @@ class ShotFanMenu(
         }
     }
 
-    /** 从球心到第 [index] 项的楔形：径向渐变 + 末端反向弧贴住圆。 */
+    /**
+     * 从球心到第 [index] 项的楔形。
+     *
+     * 几何是「球心 → 项圆的两条切线 → 项圆近侧圆弧 → 回球心」：
+     * 设 α = asin(r / R)（r 为放大后的项半径、R 为环半径），两条切点相对项心朝外方向 ±(90° - α)。
+     * 这样直边正好与项圆相切、远端弧就是项圆自己的近侧弧，边缘完全贴合 —— 早先按「相邻项角度差」
+     * 画会宽出 3dp 且反向弧接不上（被 close 拉成横切面），看起来就是“扇形没对准圆球”。
+     */
     private fun drawWedge(
         canvas: Canvas,
         index: Int,
     ) {
-        val n = titles.size
-        val stepDeg = if (n > 1) spanAngle / (n - 1) else spanAngle
-        val a0 = angleOf(index) - stepDeg / 2f
-        val a1 = angleOf(index) + stepDeg / 2f
-        val outer = ringPx - itemPx * 0.9f
-        if (outer <= 0f) return
+        val ring = ringPx
+        val r = boostPx
+        if (ring <= r + 1f) return
+        val alpha = Math.asin((r / ring).toDouble().coerceIn(-1.0, 1.0))
+        val beta = Math.PI / 2 - alpha
+        val a = Math.toRadians(angleOf(index).toDouble())
+        val icx = centerX + ring * cos(a).toFloat()
+        val icy = centerY + ring * sin(a).toFloat()
+
+        val t1 = (a + beta).toFloat()
+        val t2 = (a - beta).toFloat()
+        val p1x = icx + r * cos(t1.toDouble()).toFloat()
+        val p1y = icy + r * sin(t1.toDouble()).toFloat()
+
+        val path = wedgePath
+        path.reset()
+        path.moveTo(centerX, centerY)
+        path.lineTo(p1x, p1y)
+        tmpRect.set(icx - r, icy - r, icx + r, icy + r)
+        // 从 t1 沿项圆近侧弧扫到 t2（经过朝外的 a 方向），sweep 为负
+        val startDeg = Math.toDegrees(t1.toDouble()).toFloat()
+        val sweepDeg = -Math.toDegrees((t1 - t2).toDouble()).toFloat()
+        path.arcTo(tmpRect, startDeg, sweepDeg, false)
+        path.close()
 
         wedgePaint.shader =
             RadialGradient(
                 centerX,
                 centerY,
-                ringPx,
+                ring,
                 intArrayOf(0x88B0472A.toInt(), 0x00B0472A),
                 floatArrayOf(0f, 1f),
                 Shader.TileMode.CLAMP,
             )
-
-        val path = wedgePath
-        path.reset()
-        path.moveTo(centerX, centerY)
-        path.lineTo(
-            centerX + outer * cos(Math.toRadians(a0.toDouble())).toFloat(),
-            centerY + outer * sin(Math.toRadians(a0.toDouble())).toFloat(),
-        )
-        tmpRect.set(centerX - outer, centerY - outer, centerX + outer, centerY + outer)
-        path.arcTo(tmpRect, a0, a1 - a0, false)
-        // 末端：以项心为圆心、半径略大于项的圆弧反向切回来，形成内凹。
-        val itemA = Math.toRadians(angleOf(index).toDouble())
-        val icx = centerX + ringPx * cos(itemA).toFloat()
-        val icy = centerY + ringPx * sin(itemA).toFloat()
-        val arcR = itemPx * 1.12f
-        tmpRect.set(icx - arcR, icy - arcR, icx + arcR, icy + arcR)
-        path.arcTo(tmpRect, a1 + 180f, -(a1 - a0), false)
-        path.close()
         canvas.drawPath(path, wedgePaint)
         wedgePaint.shader = null
     }
