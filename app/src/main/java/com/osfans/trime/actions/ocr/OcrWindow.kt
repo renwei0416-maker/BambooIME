@@ -224,6 +224,21 @@ class OcrWindow : BoardWindow.NoBarBoardWindow() {
         @Volatile
         var isPanelVisible: Boolean = false
 
+        /**
+         * 把外部传进来的一张图直接送进「相册识图」界面（截图模块的「识字」用）。
+         *
+         * 成功返回 true，调用方可以关掉自己；输入法窗口还没建起来时返回 false，调用方自行退路。
+         */
+        fun openGalleryWith(bitmap: Bitmap): Boolean {
+            val manager = BoardWindowManager.current ?: return false
+            galleryBitmap = bitmap
+            galleryActive = true
+            galleryRestorePending = false
+            galleryMatrix = null
+            gallerySingle = false
+            return runCatching { manager.attachWindow(instance) }.isSuccess
+        }
+
         /** 主题里用的固定动作名。 */
         /** 相册图片解码上限（长边像素）：再大对模型没帮助，只会吃内存。 */
         private const val MAX_GALLERY_SIDE = 2000

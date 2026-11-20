@@ -26,6 +26,7 @@ import com.osfans.trime.BuildConfig
 import com.osfans.trime.actions.bamboo.AiClient
 import com.osfans.trime.actions.bamboo.BambooPrefs
 import com.osfans.trime.actions.ocr.OcrRecognizer
+import com.osfans.trime.actions.ocr.OcrWindow
 import com.osfans.trime.util.BambooLog
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -52,8 +53,8 @@ class ShotActivity : Activity() {
     private lateinit var root: FrameLayout
     private lateinit var selector: ShotSelectorView
     private lateinit var hint: TextView
-    private lateinit var ball: TextView
-    private lateinit var menu: LinearLayout
+    private lateinit var ball: ShotBallView
+    private lateinit var fan: ShotFanMenu
     private lateinit var mask: View
     private lateinit var resultBox: LinearLayout
     private lateinit var resultText: TextView
@@ -62,16 +63,12 @@ class ShotActivity : Activity() {
     private lateinit var shield: View
 
     private val items = listOf("取消", "全屏", "识字", "问 AI", "保存", "复制")
-    private var itemViews = ArrayList<TextView>()
 
     private var menuOpen = false
-    private var selected = -1
     private var busy = false
 
     /** 整屏底图：takePending() 会把 ShotCapture 里的引用清掉，这里自己留一份。 */
     private var full: Bitmap? = null
-    private var itemH = 0
-    private var panelTop = 0
 
     private var ballDownRawX = 0f
     private var ballDownRawY = 0f
@@ -100,7 +97,7 @@ class ShotActivity : Activity() {
         root.addView(hint, hintLp)
         hint.postDelayed({ fadeOut(hint, 1200L) }, 200L)
 
-        buildMenu()
+        buildFan()
         buildBall()
         buildBusy()
         buildResult()
@@ -121,23 +118,15 @@ class ShotActivity : Activity() {
 
     // ---------------- 菜单球 ----------------
 
-    private val ITEM_DP = 54
-    private val GAP_DP = 8
-
     private fun buildBall() {
-        ball = TextView(this)
-        ball.text = "菜单"
-        ball.setTextColor(0xFF23332C.toInt())
-        ball.textSize = 13f
-        ball.gravity = Gravity.CENTER
-        ball.background = round(0xF8FFFFFF.toInt(), dp(30).toFloat())
+        ball = ShotBallView(this)
         ball.elevation = dp(10).toFloat()
         ball.isClickable = true
-        val lp = FrameLayout.LayoutParams(dp(60), dp(60), Gravity.TOP or Gravity.START)
+        val lp = FrameLayout.LayoutParams(dp(BALL_DP), dp(BALL_DP), Gravity.TOP or Gravity.START)
         root.addView(ball, lp)
         ball.post {
-            ball.x = prefsX((root.width - dp(60) - dp(18)).toFloat())
-            ball.y = prefsY((root.height - dp(60) - dp(90)).toFloat())
+            ball.x = prefsX((root.width - dp(BALL_DP) - dp(18)).toFloat())
+            ball.y = prefsY((root.height - dp(BALL_DP) - dp(90)).toFloat())
             clampBall()
         }
         ball.setOnTouchListener { v, e ->
@@ -208,103 +197,28 @@ class ShotActivity : Activity() {
 
     // ---------------- 菜单 ----------------
 
-    private fun buildMenu() {
-        // 拦截层先加（在选区之上、菜单与球之下），菜单打开时吃掉所有触摸
-        shield = View(this)
-        shield.setBackgroundColor(Color.TRANSPARENT)
-        shield.isClickable = true
-        shield.visibility = View.GONE
-        root.addView(shield, FrameLayout.LayoutParams(MATCH, MATCH))
-        shield.setOnTouchListener { _, e ->
-            when (e.actionMasked) {
-                MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
-                    updateSelectedByY(e.rawY)
-                    true
-                }
-                MotionEvent.ACTION_UP -> {
-                    val hit = selected
-                    if (hit >= 0) perform(hit) else closeMenu()
-                    true
-                }
-                else -> true
-            }
+    private fun buildFan() {
+        fan = ShotFanMenu(this)
+        fan.visibility = View.GONE
+        fan.onSelect = { index ->
+            closeMenu()
+            perform(index)
         }
-
-        itemH = dp(ITEM_DP)
-        menu = LinearLayout(this)
-        menu.orientation = LinearLayout.VERTICAL
-        menu.visibility = View.GONE
-        for (label in items) {
-            val t = TextView(this)
-            t.text = label
-            t.setTextColor(0xFF23332C.toInt())
-            t.textSize = 13f
-            t.gravity = Gravity.CENTER
-            t.background = round(0xF8FFFFFF.toInt(), dp(ITEM_DP / 2).toFloat())
-            t.elevation = dp(4).toFloat()
-            val lp = LinearLayout.LayoutParams(dp(ITEM_DP), dp(ITEM_DP))
-            lp.bottomMargin = dp(GAP_DP)
-            menu.addView(t, lp)
-            itemViews.add(t)
-        }
-        val lp = FrameLayout.LayoutParams(WRAP, WRAP, Gravity.TOP or Gravity.START)
-        root.addView(menu, lp)
+        fan.onDismiss = { closeMenu() }
+        root.addView(fan, FrameLayout.LayoutParams(MATCH, MATCH))
     }
 
-    /** 菜单贴球的正上方弹出，水平方向以球心对齐。 */
+    /** 扇形菜单以球心为中心散开，球在左半边就朝右开，反之朝左开。 */
     private fun openMenu() {
         menuOpen = true
-        selected = -1
-        val panelH = dp(ITEM_DP) * items.size + dp(GAP_DP) * (items.size - 1)
-        val left = (ball.x + ball.width / 2f - dp(ITEM_DP) / 2f)
-            .coerceIn(dp(8).toFloat(), (root.width - dp(ITEM_DP) - dp(8)).coerceAtLeast(0).toFloat())
-        val top = (ball.y - dp(GAP_DP) - panelH).coerceAtLeast(dp(40).toFloat())
-        menu.x = left
-        menu.y = top
-        menu.visibility = View.VISIBLE
-        menu.alpha = 0f
-        menu.scaleX = 0.88f
-        menu.scaleY = 0.88f
-        menu.pivotY = panelH.toFloat()
-        menu.pivotX = dp(ITEM_DP) / 2f
-        menu.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(150L).start()
-        panelTop = top.toInt()
-        shield.visibility = View.VISIBLE
-        refreshItems()
-        ball.text = "×"
+        ball.opened = true
+        fan.show(ball.x + ball.width / 2f, ball.y + ball.height / 2f, items)
     }
 
     private fun closeMenu() {
         menuOpen = false
-        menu.animate().alpha(0f).scaleX(0.9f).scaleY(0.9f).setDuration(120L)
-            .withEndAction { menu.visibility = View.GONE }.start()
-        shield.visibility = View.GONE
-        ball.text = "菜单"
-        selected = -1
-        refreshItems()
-    }
-
-    private fun updateSelectedByY(rawY: Float) {
-        val step = dp(ITEM_DP + GAP_DP)
-        if (step <= 0) return
-        val idx = ((rawY - panelTop) / step).toInt()
-        val clamped = if (idx < 0 || idx >= items.size) -1 else idx
-        if (clamped == selected) return
-        selected = clamped
-        refreshItems()
-    }
-
-    private fun refreshItems() {
-        for (i in itemViews.indices) {
-            val t = itemViews[i]
-            val on = i == selected
-            t.textSize = if (on) 15f else 13f
-            t.alpha = if (selected < 0) 1f else if (on) 1f else 0.5f
-            t.setTextColor(if (on) Color.WHITE else 0xFF23332C.toInt())
-            t.background = round(if (on) 0xFF4FA46A.toInt() else 0xF8FFFFFF.toInt(), dp(ITEM_DP / 2).toFloat())
-            t.scaleX = if (on) 1.12f else 1f
-            t.scaleY = if (on) 1.12f else 1f
-        }
+        ball.opened = false
+        fan.hide()
     }
 
     // ---------------- 忙碌 / 结果 ----------------
@@ -438,14 +352,28 @@ class ShotActivity : Activity() {
         return runCatching { Bitmap.createBitmap(src, rect.left, rect.top, rect.width(), rect.height()) }.getOrNull()
     }
 
+    /**
+     * 识字：先按需加载识别模型（首次会慢一点），再把裁好的图送到「拍照识字 → 相册识图」界面。
+     * 送不过去（输入法窗口不在了）才退回在截图界面里直接识别。
+     */
     private fun doOcr() {
         val bmp = currentCrop() ?: return
-        if (!OcrRecognizer.isReady()) {
-            Toast.makeText(this, "识字模型还没加载过，先用一次「拍照识字」再来", Toast.LENGTH_LONG).show()
-            return
-        }
         setBusy(true)
         scope.launch {
+            val ready = withContext(Dispatchers.IO) {
+                runCatching { OcrRecognizer.ensureReady(this@ShotActivity) }.getOrDefault(false)
+            }
+            if (!ready) {
+                setBusy(false)
+                Toast.makeText(this@ShotActivity, "识字模型加载失败", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            if (OcrWindow.openGalleryWith(bmp)) {
+                setBusy(false)
+                Toast.makeText(this@ShotActivity, "已送到识字界面", Toast.LENGTH_SHORT).show()
+                finish()
+                return@launch
+            }
             val text = withContext(Dispatchers.Default) { runCatching { OcrRecognizer.recognize(bmp) }.getOrNull() }
             setBusy(false)
             if (text.isNullOrBlank()) {
@@ -575,6 +503,8 @@ class ShotActivity : Activity() {
     private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
 
     companion object {
+        /** 菜单球直径：比默认的 60dp 小一圈，不挡内容。 */
+        private const val BALL_DP = 48
         private const val MATCH = FrameLayout.LayoutParams.MATCH_PARENT
         private const val WRAP = FrameLayout.LayoutParams.WRAP_CONTENT
         private const val PREF = "bamboo_shot"
