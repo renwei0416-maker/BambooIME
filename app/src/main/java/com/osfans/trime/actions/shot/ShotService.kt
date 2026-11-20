@@ -6,15 +6,11 @@
 package com.osfans.trime.actions.shot
 
 import android.accessibilityservice.AccessibilityService
-import android.app.KeyguardManager
-import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.provider.Settings
 import android.view.accessibility.AccessibilityEvent
-import androidx.core.content.ContextCompat
 import timber.log.Timber
 
 /**
@@ -27,67 +23,19 @@ import timber.log.Timber
  * 用户在系统设置里手动开启后，本服务随系统常驻；关掉授权就相当于关掉截图功能（其余功能不受影响）。
  */
 class ShotService : AccessibilityService() {
-    /** 灭屏/解锁广播；只在服务连接期间注册。 */
-    private var screenReceiver: BroadcastReceiver? = null
-
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
         Timber.d("shot: accessibility service connected")
-        registerScreenReceiver()
         // 用户开过「截图浮球」就顺手把它挂回来（进程重启/系统回收后浮球会跟着服务一起没）
-        // 但锁屏状态下不要挂：无障碍浮层默认会画在锁屏上，用户明确要求「锁屏不显示」
-        if (ShotBallPrefs.enabled && !isLocked()) ShotBallOverlay.show()
+        if (ShotBallPrefs.enabled) ShotBallOverlay.show()
     }
-
-    /**
-     * 锁屏时收起浮球、解锁后再放回来。
-     *
-     * 无障碍浮层（TYPE_ACCESSIBILITY_OVERLAY）默认在锁屏上也绘制，这是系统行为；
-     * 只能自己监听灭屏/解锁广播来藏。用 [ContextCompat.registerReceiver] 是为了兼容
-     * Android 13 的 RECEIVER_NOT_EXPORTED 要求（这些是系统广播，不走导出）。
-     */
-    private fun registerScreenReceiver() {
-        if (screenReceiver != null) return
-        val r =
-            object : BroadcastReceiver() {
-                override fun onReceive(context: Context?, intent: Intent?) {
-                    when (intent?.action) {
-                        Intent.ACTION_SCREEN_OFF -> ShotBallOverlay.hide()
-                        Intent.ACTION_SCREEN_ON, Intent.ACTION_USER_PRESENT -> {
-                            if (ShotBallPrefs.enabled && !isLocked()) ShotBallOverlay.show()
-                        }
-                    }
-                }
-            }
-        val filter =
-            IntentFilter().apply {
-                addAction(Intent.ACTION_SCREEN_OFF)
-                addAction(Intent.ACTION_SCREEN_ON)
-                addAction(Intent.ACTION_USER_PRESENT)
-            }
-        runCatching { ContextCompat.registerReceiver(this, r, filter, ContextCompat.RECEIVER_NOT_EXPORTED) }
-            .onSuccess { screenReceiver = r }
-            .onFailure { Timber.w(it, "shot: register screen receiver failed") }
-    }
-
-    private fun unregisterScreenReceiver() {
-        val r = screenReceiver ?: return
-        runCatching { unregisterReceiver(r) }
-        screenReceiver = null
-    }
-
-    private fun isLocked(): Boolean =
-        runCatching {
-            (getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager).isKeyguardLocked
-        }.getOrDefault(false)
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) = Unit
 
     override fun onInterrupt() = Unit
 
     override fun onUnbind(intent: android.content.Intent?): Boolean {
-        unregisterScreenReceiver()
         ShotBallOverlay.hide()
         if (instance === this) instance = null
         Timber.d("shot: accessibility service unbound")
@@ -95,7 +43,6 @@ class ShotService : AccessibilityService() {
     }
 
     override fun onDestroy() {
-        unregisterScreenReceiver()
         ShotBallOverlay.hide()
         if (instance === this) instance = null
         super.onDestroy()

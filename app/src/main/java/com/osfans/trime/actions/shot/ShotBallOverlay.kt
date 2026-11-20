@@ -23,12 +23,19 @@ import android.widget.FrameLayout
  * 独立于 [ShotActivity] 里那个菜单球：这里是无障碍浮层，没有输入框也能用。
  * 点开只有三项（自下而上）：退出 / 返回 / 截图；「退出」会顺手关掉设置里的开关。
  */
+/**
+ * 视觉半径占窗口半径的比例。1f 太扎眼；2/3 就是 48dp 的窗口里画 32dp 的圆（触摸热区仍是 48dp）。
+ * 放在文件顶层，`ShotBallOverlay` 和它内部的 `BallView` 都能直接用。
+ */
+private const val DRAW_SCALE = 2f / 3f
+
 object ShotBallOverlay {
     private fun dp(v: Int): Float = v * densityOf()
     private fun densityOf(): Float =
         com.osfans.trime.TrimeApplication.getInstance().resources.displayMetrics.density
 
     private const val BALL_DP = 48
+
     private const val LABEL_EXIT = "退出"
     private const val LABEL_BACK = "返回"
     private const val LABEL_SHOT = "截图"
@@ -228,7 +235,9 @@ private class BallView(context: Context) :
     private var moved = false
 
     override fun onDraw(canvas: Canvas) {
-        val r = minOf(width, height) / 2f
+        // 触摸热区仍是整个窗口（48dp，好点中），只把看得见的圆缩到 2/3（32dp）：
+        // 锁屏 / 桌面上不扎眼，又不牺牲点击命中率。圆、白描边、裁剪框图标都跟着 r 一起缩。
+        val r = minOf(width, height) / 2f * DRAW_SCALE
         body.color = if (opened) 0xFFB0472A.toInt() else 0xCC000000.toInt()
         canvas.drawCircle(width / 2f, height / 2f, r, body)
         canvas.drawCircle(width / 2f, height / 2f, r - ring.strokeWidth / 2f, ring)
