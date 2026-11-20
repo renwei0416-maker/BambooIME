@@ -1496,6 +1496,15 @@ class ThemeStyleFragment : Fragment() {
         setBackgroundColor(dividerColor)
     }
 
+    /**
+     * 每个滑块「第一次渲染时的值」= 当前主题里的原值，键是「页签|标题」。
+     *
+     * 这样 58 个滑块调用点一个都不用改、也不用反射猜字段名；只要某行在页面上
+     * 渲染过一次，原点就固定，之后怎么拖都能退回去。换草稿（切主题/重新加载）即清空。
+     */
+    private val sliderOrigin = HashMap<String, Float>()
+    private var sliderOriginForDraft: ThemeDraft? = null
+
     private fun sliderRow(
         title: String,
         value: Float,
@@ -1559,6 +1568,39 @@ class ThemeStyleFragment : Fragment() {
         wrap.addView(
             bar,
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(26)),
+        )
+
+        // ↺：回到这个滑块第一次渲染时的值（＝打开编辑器时的主题原值）。
+        if (sliderOriginForDraft !== draft) {
+            sliderOrigin.clear()
+            sliderOriginForDraft = draft
+        }
+        val origin = sliderOrigin.getOrPut("$tab|$title") { value }
+        head.addView(
+            TextView(requireContext()).apply {
+                text = "↺"
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+                setTextColor(subColor)
+                gravity = Gravity.CENTER
+                setPadding(dp(10), 0, 0, 0)
+                setOnClickListener {
+                    val cur = min + bar.progress * step
+                    if (kotlin.math.abs(cur - origin) < step / 2f) {
+                        toast("已经是原值")
+                        return@setOnClickListener
+                    }
+                    pushUndo()
+                    bar.progress = (((origin - min) / step).toInt()).coerceIn(0, steps)
+                    valView.text = fmt(origin) + unit
+                    onChange(origin)
+                    dirty = true
+                    updateActionState()
+                }
+            },
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+            ),
         )
         return LinearLayout(requireContext()).apply {
             orientation = LinearLayout.VERTICAL
