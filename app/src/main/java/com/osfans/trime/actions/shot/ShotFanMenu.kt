@@ -63,7 +63,6 @@ class ShotFanMenu(
     private var boostPx = 0f
     /** 起始角（球在右＝180°，在左＝0°）、单向步进符号、每步角度。 */
     private var startAngle = 0f
-    private var stepSign = 1f
     private var stepAngle = 0f
 
     private val density = resources.displayMetrics.density
@@ -125,8 +124,8 @@ class ShotFanMenu(
         val n = titles.size
         // 朝屏幕内侧开：球在右半边往左上方长，在左半边往右上方长。
         val openLeft = centerX > width * 0.5f
-        startAngle = if (openLeft) 180f else 0f
-        stepSign = if (openLeft) 1f else -1f
+        // 对称轴：球在右半边朝正左（180°），在左半边朝正右（0°）；整组以这条水平轴上下对称
+        val axis = if (openLeft) 180f else 0f
 
         // 固定弦长：相邻两项圆心距 = 项直径 + 8dp，**不随项数变化**。
         // 项多时先加大半径；半径到顶还放不下才缩小项直径（24dp 下限）。
@@ -153,10 +152,17 @@ class ShotFanMenu(
         // 选中项放大 1.2 倍（题注里说的「变大」）
         boostPx = itemR * 1.20f
 
-        // 竖直方向放不下就翻到另一侧（球被拖到屏幕顶部时用得上）
+        // 先按对称轴摆放；最底下那一项会超出屏幕时，把整组沿弧整体上移（仍然保持对称）
+        val halfSpan = stepAngle * (n - 1) / 2f
+        val upSign = if (axis >= 90f) 1f else -1f
+        startAngle = axis - halfSpan
         if (!fitsInside()) {
-            stepSign = -stepSign
-            if (!fitsInside()) stepSign = -stepSign
+            var shift = 0f
+            while (shift <= 60f) {
+                shift += 2f
+                startAngle = axis - halfSpan + upSign * shift
+                if (fitsInside()) break
+            }
         }
     }
 
@@ -278,7 +284,7 @@ class ShotFanMenu(
         if (fit < size) size = fit
         size = size.coerceAtLeast(6.5f * scaledDensity)
         textPaint.textSize = size
-        textPaint.color = if (picked) Color.WHITE else 0xFF12240F.toInt()
+        textPaint.color = Color.WHITE
         val fm = textPaint.fontMetrics
         val baseline = cy - (fm.ascent + fm.descent) / 2f
         canvas.drawText(label, cx, baseline, textPaint)
@@ -297,7 +303,7 @@ class ShotFanMenu(
         canvas.drawLine(cx, cy - r * 1.15f, cx, cy - r * 0.15f, iconPaint)
     }
 
-    private fun angleOf(index: Int): Float = startAngle + stepSign * stepAngle * index
+    private fun angleOf(index: Int): Float = startAngle + stepAngle * index
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -365,7 +371,7 @@ class ShotFanMenu(
         const val EXIT_LABEL = "退出"
 
         /** 未选中项：微信图标那个绿。 */
-        const val ITEM_COLOR = 0xFF07C160.toInt()
+        const val ITEM_COLOR = 0xFF2F4F43.toInt()
         const val SELECTED_COLOR = 0xFFB0472A.toInt()
         const val EXIT_COLOR = 0xFF8E3B30.toInt()
     }
