@@ -44,6 +44,25 @@ object GlossaryStore {
     /** 这个包是不是随 App 内置的（内置包在设置页里不可删除）。 */
     fun isBuiltin(file: File): Boolean = file.name == BUNDLED_EN
 
+    /** 安装时记下的语言码；列表里给每个包打标签用，免得每次重新打开词库。 */
+    private fun langSidecar(pack: File) = File(dir, "${pack.name}.lang")
+
+    private fun rememberLang(pack: File, code: Int) {
+        runCatching { langSidecar(pack).writeText(code.toString()) }
+    }
+
+    /**
+     * 一个包属于哪门语言：优先读安装时记下的码，其次试着打开词库读头。
+     * 两样都读不到就返回 null（列表里标「无法识别」，不影响加载）。
+     */
+    fun langTagOf(file: File): Int? {
+        val side = langSidecar(file)
+        if (side.isFile) {
+            runCatching { side.readText().trim().toInt() }.getOrNull()?.let { return it }
+        }
+        return langOf(file)
+    }
+
     /**
      * 内置英文词库：**首次启动**从 assets 拷一份到私有目录，之后不再管。
      *
@@ -150,7 +169,10 @@ object GlossaryStore {
 
     fun delete(file: File): Boolean {
         val ok = runCatching { file.delete() }.getOrDefault(false)
-        if (ok) reload()
+        if (ok) {
+            runCatching { langSidecar(file).delete() }
+            reload()
+        }
         return ok
     }
 
@@ -160,6 +182,7 @@ object GlossaryStore {
         if (src.absolutePath == target.absolutePath) {
             val probe = runCatching { GlossaryPack.open(src) }.getOrNull()
                 ?: return "文件不是有效的 .bge 词库包"
+            rememberLang(src, probe.lang)
             probe.close()
             reload()
             return null
@@ -193,6 +216,7 @@ object GlossaryStore {
                 return "无法写入 ${target.name}"
             }
             val lang = runCatching { GlossaryPack.open(target)?.use { it.lang } }.getOrNull()
+            if (lang != null) rememberLang(target, lang)
             Log.i(TAG, "installed ${target.name} (lang=$lang)")
             reload()
             null

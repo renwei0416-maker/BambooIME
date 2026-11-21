@@ -84,10 +84,7 @@ class GlossaryFragment : PaddingPreferenceFragment() {
                         GlossaryStore.reload()
                         rebuildScreen()
                         // 切过去这门语言若还没有词包，明确说一句；有包就什么都不弹
-                        val want = GlossaryPrefs.langCodeOf(GlossaryPrefs.lang)
-                        val hasPack = GlossaryStore.installedFiles()
-                            .any { runCatching { GlossaryStore.langOf(it) }.getOrNull() == want }
-                        if (!hasPack) {
+                        if (GlossaryStore.packCount() == 0) {
                             val name = if (GlossaryPrefs.lang == GlossaryPrefs.LANG_JA) "日语" else "英语"
                             AlertDialog.Builder(requireContext())
                                 .setTitle("${name}词包还没下载")
@@ -293,13 +290,11 @@ class GlossaryFragment : PaddingPreferenceFragment() {
                     val files = GlossaryStore.installedFiles()
                     val currentLangCode = GlossaryPrefs.langCodeOf(GlossaryPrefs.lang)
                     val langName = if (GlossaryPrefs.lang == GlossaryPrefs.LANG_JA) "日语" else "英语"
-                    val loadedForCurrent = files.count {
-                        runCatching { GlossaryStore.langOf(it) }.getOrNull() == currentLangCode
-                    }
-                    // 当前语言状态：永远显示这一行；没装就直说没装，不显示「0 个包」让人发懵
-                    if (loadedForCurrent > 0) {
+                    // 唯一事实源：reload() 后的 packs 已经按当前语言过滤过了
+                    val loadedNow = GlossaryStore.packCount()
+                    if (loadedNow > 0) {
                         addRow(
-                            "当前语言：${langName} · 已加载 ${GlossaryStore.packCount()} 个包 / " +
+                            "当前语言：${langName} · 已加载 ${loadedNow} 个包 / " +
                                 "${GlossaryStore.entryCount()} 个词",
                             "多个同语言包会同时查询，结果合并显示",
                         )
@@ -310,7 +305,7 @@ class GlossaryFragment : PaddingPreferenceFragment() {
                         )
                     }
                     files.forEach { f ->
-                        val packLang = runCatching { GlossaryStore.langOf(f) }.getOrNull()
+                        val packLang = runCatching { GlossaryStore.langTagOf(f) }.getOrNull()
                         val builtin = GlossaryStore.isBuiltin(f)
                         val tag = when {
                             builtin -> "内置 · 不可删除"
