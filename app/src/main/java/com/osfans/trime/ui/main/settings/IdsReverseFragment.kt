@@ -32,6 +32,7 @@ import com.osfans.trime.util.toast
 import com.osfans.trime.ui.common.BambooSwitch
 import com.osfans.trime.ui.common.PaddingPreferenceFragment
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -131,6 +132,18 @@ class IdsReverseFragment : PaddingPreferenceFragment() {
                     isSelectable = false
                 },
             )
+
+            if (IdsPrefs.deployCheck.isNotBlank()) {
+                addPreference(
+                    BambooClick(requireContext()).apply {
+                        key = "ids_deploy_status"
+                        title = "上次部署自检"
+                        summary = IdsPrefs.deployCheck
+                        isIconSpaceReserved = false
+                        isSelectable = false
+                    },
+                )
+            }
 
             addPreference(
                 BambooClick(requireContext()).apply {
@@ -642,6 +655,32 @@ class IdsReverseFragment : PaddingPreferenceFragment() {
             SchemaPackageManager.setActivePackageId(target)
             runCatching { RimeDaemon.restartRime(fullCheck = false) }
                 .onFailure { requireContext().toast("部署失败：${it.message ?: it.javaClass.simpleName}") }
+            refreshScreen()
+            selfCheckDeploy(target)
+        }
+    }
+
+    /**
+     * 部署完成后回读 `build/<schema>.schema.yaml`，确认 patch 真的合并进去了。
+     *
+     * 以前只能靠「打字试试」判断，部署失败时会静默保留旧产物；把这一步的结果写到
+     * [IdsPrefs.deployCheck] 并显示在设置页，出问题一眼就能看出来。
+     */
+    private fun selfCheckDeploy(pkgId: String) {
+        lifecycleScope.launch {
+            delay(3000)
+            val file = WanxiangCustom.deployedArtifact(pkgId)
+            val text = withContext(Dispatchers.IO) {
+                if (file.isFile) runCatching { file.readText() }.getOrNull() else null
+            }
+            IdsPrefs.deployCheck = when {
+                text == null ->
+                    "没找到部署产物：${file.absolutePath}（部署可能没跑完）"
+                text.contains("ids_reverse") ->
+                    "已合并：${file.name} 里有 ids_reverse"
+                else ->
+                    "未合并：${file.name} 里没有 ids_reverse（部署失败或 patch 语法被拒）"
+            }
             refreshScreen()
         }
     }

@@ -60,6 +60,11 @@ object IdsPrefs {
         get() = sp.getInt("max_results", 60)
         set(v) { sp.edit().putInt("max_results", v).apply() }
 
+    /** 上次「应用并部署」的自检结果（部署产物里有没有 `ids_reverse`），空 = 还没跑过。 */
+    var deployCheck: String
+        get() = sp.getString("deploy_check", "").orEmpty()
+        set(v) { sp.edit().putString("deploy_check", v).apply() }
+
     var showPinyin: Boolean
         get() = sp.getBoolean("show_pinyin", true)
         set(v) { sp.edit().putBoolean("show_pinyin", v).apply() }

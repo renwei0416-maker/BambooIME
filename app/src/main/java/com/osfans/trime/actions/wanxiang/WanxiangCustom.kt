@@ -269,7 +269,10 @@ object WanxiangCustom {
     private val IDS_ENGINE_LINES = listOf(
         "  engine/processors/@before 0: ids_reverse_processor",
         "  engine/segmentors/@before 0: ids_reverse_segmentor",
-        "  engine/translators/+: ids_reverse_translator",
+        // translators 是**列表**，`/+` 只接受列表追加；写成标量会让 librime 打
+        // "trying to append string to non scalar" 并让整个 patch 失败（部署中断）。
+        "  engine/translators/+:",
+        "    - ids_reverse_translator",
         "  engine/filters/@before 0: ids_reverse_filter",
     )
 
@@ -277,15 +280,27 @@ object WanxiangCustom {
         "engine/processors/@before 0:",
         "engine/segmentors/@before 0:",
         "engine/translators/+:",
+        "- ids_reverse_translator",
         "engine/filters/@before 0:",
     )
+
+    /**
+     * 部署产物：`<包目录>/build/<schema_id>.schema.yaml`。设置页拿它做「有没有真的合并进去」自检。
+     */
+    fun deployedArtifact(pkgId: String): File =
+        File(
+            SchemaPackStore.dir(pkgId),
+            "build/${if (pkgId == SchemaPackStore.PRO_ID) SCHEMA_PRO_26 else SCHEMA_BASE_26}.schema.yaml",
+        )
 
     /** 把 `ids_reverse:` 这一段拼出来（缩进两格，与 `menu/page_size` 同级）。 */
     private fun appendIdsSection(ids: IdsConfig, sink: (String) -> Unit) {
         sink("  ids_reverse:")
         sink("    data_file: \"${ids.dataFile}\"")
         sink("    search_prefix: ${ids.searchPrefix}")
+        sink("    search_tag: ids_reverse_search")
         sink("    hybrid_prefix: ${ids.hybridPrefix}")
+        sink("    hybrid_tag: ids_reverse_hybrid")
         sink("    max_results: ${ids.maxResults}")
         sink("    shuangpin_scheme: ${ids.shuangpinScheme}")
         sink("    show_pinyin: ${ids.showPinyin}")
