@@ -1,4 +1,4 @@
-﻿/*
+/*
  * SPDX-FileCopyrightText: 2015 - 2025 Rime community
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
@@ -1220,7 +1220,10 @@ open class PreeditUi(
                     gravity = Gravity.CENTER_VERTICAL
                 }
             var used = 0
-            val cellPadH = ctx.dp(4) * 2 + ctx.dp(2) * 2
+            // 展开态里每个词块的外框就是可点范围，块与块、行与行之间留一点空气，避免误触
+            var rowsAdded = 0
+            val cellPadH = ctx.dp(5) * 2 + ctx.dp(2) * 2
+            val rowGapPx = ctx.dp(3)
 
             fun flush() {
                 if (row.childCount > 0) {
@@ -1229,8 +1232,11 @@ open class PreeditUi(
                         LinearLayout.LayoutParams(
                             ViewGroup.LayoutParams.MATCH_PARENT,
                             ViewGroup.LayoutParams.WRAP_CONTENT,
-                        ),
+                        ).apply {
+                            if (rowsAdded > 0) topMargin = rowGapPx
+                        },
                     )
+                    rowsAdded++
                 }
                 row =
                     LinearLayout(ctx).apply {
@@ -1270,7 +1276,7 @@ open class PreeditUi(
                         text = display
                         textSize = bodyTextSize()
                         typeface = FontManager.getTypeface()
-                        setPadding(ctx.dp(4), ctx.dp(1), ctx.dp(4), ctx.dp(1))
+                        setPadding(ctx.dp(5), ctx.dp(2), ctx.dp(5), ctx.dp(2))
                         includeFontPadding = false
                         setLineSpacing(0f, 1f)
                         setTextColor(
