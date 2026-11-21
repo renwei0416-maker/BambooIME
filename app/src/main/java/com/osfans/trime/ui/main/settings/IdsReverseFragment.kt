@@ -67,14 +67,13 @@ class IdsReverseFragment : PaddingPreferenceFragment() {
                         }.getOrDefault(false)
                     }
                 requireContext().toast(
-                    if (ok) "导入成功：${IdsDataManager.installedSize() / 1024 / 1024} MB" else "导入失败：文件大小不符（应为 29.0 MB）",
+                    if (ok) {
+                        "已导入（${IdsDataManager.installedSize() / 1024 / 1024} MB），可以打开开关使用反查了"
+                    } else {
+                        "导入失败：文件大小不符（应为 29.0 MB）"
+                    },
                 )
-                if (ok && !IdsPrefs.enabled) {
-                    IdsPrefs.enabled = true
-                    requireContext().toast("已自动开启部件反查")
-                }
                 refreshScreen()
-                if (ok) syncAndDeploy()
             }
         }
 
@@ -604,14 +603,13 @@ class IdsReverseFragment : PaddingPreferenceFragment() {
                     }
                 }.onSuccess {
                     progress.dismiss()
-                    requireContext().toast("下载完成：${IdsDataManager.installedSize() / 1024 / 1024} MB")
-                    if (!IdsPrefs.enabled) {
-                        // 数据装好、开关却是关的，最容易让人以为「开了却不生效」：这里补上。
-                        IdsPrefs.enabled = true
-                        requireContext().toast("已自动开启部件反查")
-                    }
+                    // 下载只负责下载：不动开关、不写 patch、不部署。
+                    // 若在这里顺手把开关置 true，会出现「值=true 而控件外观仍是关」的双源，
+                    // 用户以为没开又点一下 → 值变 false → 刚写进去的 patch 被摘掉。
+                    requireContext().toast(
+                        "已下载（${IdsDataManager.installedSize() / 1024 / 1024} MB），可以打开开关使用反查了",
+                    )
                     refreshScreen()
-                    syncAndDeploy()
                 }.onFailure {
                     progress.dismiss()
                     val msg = it.message ?: it.javaClass.simpleName
