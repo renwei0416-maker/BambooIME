@@ -109,6 +109,13 @@ class TrimeApplication : Application() {
                             t: Throwable?,
                         ) {
                             if (priority < Log.INFO) return
+                            // 正式包里不输出开发期的诊断流水（下载测速、词库安装等）。
+                            if (message.startsWith("glossary:") ||
+                                message.startsWith("Glossary mirror:") ||
+                                message.startsWith("Voice model")
+                            ) {
+                                return
+                            }
                             if (t != null) {
                                 Log.println(
                                     priority,
