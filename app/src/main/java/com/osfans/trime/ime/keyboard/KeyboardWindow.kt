@@ -390,6 +390,19 @@ class KeyboardWindow :
             }
         var final = dot.ifEmpty { smartMatchKeyboard() }
 
+        // 主题里的「返回」键大多写死回主题默认键盘（26 键）。用户在「键盘与方案」里选过
+        // 别的布局（例如 18 键）时，从数字 / 符号面板返回不能悄悄把他换回默认布局。
+        // keyboardSourceMap 记着「当前这个面板是从哪个键盘进来的」，此时以用户的选择为准。
+        val sourceKeyboard = keyboardSourceMap[currentKeyboardId]
+        if (
+            !sourceKeyboard.isNullOrEmpty() &&
+            sourceKeyboard != final &&
+            final == smartMatchKeyboard() &&
+            presetKeyboardIds.contains(sourceKeyboard)
+        ) {
+            final = sourceKeyboard
+        }
+
         // 记忆最终键盘ID（排除横屏键盘）
         if (final != currentKeyboardId) {
             internalPrefs.initializeKeyboardId.setValue(final)
