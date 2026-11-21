@@ -38,6 +38,7 @@ import com.osfans.trime.ime.bar.InputBarDelegate
 import com.osfans.trime.ime.dependency.InputDependencyManager
 import org.kodein.di.instance
 import com.osfans.trime.data.theme.ColorManager
+import com.osfans.trime.data.theme.ThemeManager
 import com.osfans.trime.ime.keyboard.Key
 import com.osfans.trime.ime.keyboard.KeyboardWindow
 import com.osfans.trime.daemon.RimeDaemon
@@ -71,7 +72,8 @@ import timber.log.Timber
  */
 class HandwritingWindow : BoardWindow.BarBoardWindow() {
     // 要顶栏（← 返回键盘）；没有这层时主题那颗齿轮会留在原位，用户会以为返回不了。
-    override val title: String = "手写板"
+    /** 顶栏标题由 [onCreateBarView] 自绘（要随面板切换变化），这里留空避免重复显示。 */
+    override val title: String = ""
     /**
      * 不能用 `by di.instance()` 把这些缓存住。
      *
@@ -221,6 +223,9 @@ class HandwritingWindow : BoardWindow.BarBoardWindow() {
     private var panelOnlyPage = -1
     // 从 token 打开符号面板时，紧跟着会有两次 ensureModel()（buildView + onAttached）；
     // 用一次性计数把它们跳掉，之后真正进手写板仍会正常加载模型。
+    /** 顶栏自绘标题（手写板 / 符号面板 随面板开合切换）。 */
+    private var barTitle: TextView? = null
+
     private var pendingPanelOnlyBuilds = 0
 
         private const val TAG_SPACE = "bamboo_space"
@@ -972,6 +977,7 @@ class HandwritingWindow : BoardWindow.BarBoardWindow() {
         currentGroup = 0
         panelOpen = true
         panelOrigin = origin
+        syncBarTitle()
         panelOpenedBy = openedBy
         currentPage = page
         rebuildPanelTabs()
@@ -991,6 +997,7 @@ class HandwritingWindow : BoardWindow.BarBoardWindow() {
         hideGroupPopup()
         panelOpen = false
         panel.visibility = View.GONE
+        syncBarTitle()
         refreshToolButtons()
     }
 
@@ -1024,6 +1031,27 @@ class HandwritingWindow : BoardWindow.BarBoardWindow() {
         } else {
             symbolButton?.setContent("符号", ToolIcons.SYMBOL)
         }
+    }
+
+    override fun onCreateBarView(): View? {
+        val theme = ThemeManager.activeTheme
+        val tv =
+            TextView(service).apply {
+                typeface = Typeface.defaultFromStyle(Typeface.BOLD)
+                gravity = Gravity.CENTER_VERTICAL
+                textSize = theme.generalStyle.fonts.candidate_size
+                setTextColor(ColorManager.getColor("key_text_color"))
+                text = barTitleText()
+            }
+        barTitle = tv
+        return tv
+    }
+
+    private fun barTitleText(): String = if (panelOpen) "符号面板" else "手写板"
+
+    /** 面板开合后刷新顶栏标题；自绘的 View 在我们手里，不需要任何外部刷新入口。 */
+    private fun syncBarTitle() {
+        barTitle?.text = barTitleText()
     }
 
     /**
@@ -1859,7 +1887,15 @@ class HandwritingWindow : BoardWindow.BarBoardWindow() {
         BambooLog.hw.d("life", "onAttached active=$active")
         isBoardVisible = true
         IdleReclaimer.touch("handwriting")
-        ensureModel()
+        // 只有真的要显示手写画布时才加载模型；「只开数字/符号面板」那一次跳过。
+        // 这里按状态判断（面板是否已开、是否登记了 panel-only），不再依赖调用次数计数——
+        // 顶栏改版后 attach 链路变长，计数很容易被吃错，表现为进手写板一直「模型未就绪」。
+        if (panelOpen || panelOnlyPage != -1) {
+            BambooLog.hw.d("model", "skip load on attach: panelOpen=$panelOpen page=$panelOnlyPage")
+        } else {
+            pendingPanelOnlyBuilds = 0
+            ensureModel()
+        }
     }
 
     override fun onDetached() {
