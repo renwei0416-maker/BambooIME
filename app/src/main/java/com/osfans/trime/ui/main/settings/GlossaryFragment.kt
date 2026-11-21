@@ -364,9 +364,21 @@ class GlossaryFragment : PaddingPreferenceFragment() {
     // ---- 动作 ----
 
     private fun confirmDownload() {
+        val custom =
+            if (GlossaryPrefs.downloadPack == GlossaryPrefs.PACK_CUSTOM) {
+                GlossaryPrefs.customDownloadUrl
+            } else {
+                ""
+            }
+        val message = if (custom.isNotBlank()) {
+            "将从下面的地址下载词库：\n\n$custom"
+        } else {
+            "会自动选最快的源下载（GitHub / CNB 国内镜像），失败自动换另一个。\n\n" +
+                "日语词库约 16 MB，请留着 Wi-Fi。"
+        }
         AlertDialog.Builder(requireContext())
             .setTitle("下载语言包")
-            .setMessage("将从下面的地址下载词库：\n\n${GlossaryPrefs.downloadUrl}")
+            .setMessage(message)
             .setNegativeButton(R.string.cancel, null)
             .setPositiveButton("下载") { _, _ -> startDownload() }
             .show()
@@ -380,14 +392,23 @@ class GlossaryFragment : PaddingPreferenceFragment() {
                 .setCancelable(false)
                 .setNegativeButton(R.string.cancel, null)
                 .show()
+        val custom =
+            if (GlossaryPrefs.downloadPack == GlossaryPrefs.PACK_CUSTOM) {
+                GlossaryPrefs.customDownloadUrl
+            } else {
+                ""
+            }
         lifecycleScope.launch {
             val err =
-                withContext(Dispatchers.IO) {
-                    GlossaryDownloader.download(GlossaryPrefs.downloadUrl) { done, total ->
+                GlossaryDownloader.downloadAuto(
+                    lang = GlossaryPrefs.lang,
+                    customUrl = custom,
+                    onProgress = { done, total ->
                         val text = if (total > 0) "${done * 100 / total}%" else "${done / 1024} KB"
                         dialog.setMessage(text)
-                    }
-                }
+                    },
+                    onAttempt = { label -> dialog.setTitle("正在下载（$label）") },
+                )
             dialog.dismiss()
             if (!isAdded) return@launch
             if (err == null) {

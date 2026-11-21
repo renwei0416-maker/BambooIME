@@ -38,9 +38,23 @@ object GlossaryPrefs {
     const val DEFAULT_DOWNLOAD_URL_JA =
         "https://github.com/renwei0416-maker/BambooIME/releases/download/glossary-ja-v1/glossary-ja-v1.bge"
 
+    const val DEFAULT_DOWNLOAD_URL_JA_CNB =
+        "https://cnb.cool/renwei.co/BambooIME/-/releases/download/glossary-ja-v1/glossary-ja-v1.bge"
+
+    const val DEFAULT_DOWNLOAD_URL_CNB =
+        "https://cnb.cool/renwei.co/BambooIME/-/releases/download/glossary-en-v1/glossary-en-cedict-1.0.bge"
+
     /** 当前语言对应的默认下载地址。 */
     fun defaultDownloadUrlFor(lang: String): String =
         if (lang == LANG_JA) DEFAULT_DOWNLOAD_URL_JA else DEFAULT_DOWNLOAD_URL
+
+    /** GitHub 源（上游发布资产）。 */
+    fun githubUrlFor(lang: String): String =
+        if (lang == LANG_JA) DEFAULT_DOWNLOAD_URL_JA else DEFAULT_DOWNLOAD_URL
+
+    /** CNB 国内镜像源，与 GitHub 同一份文件。 */
+    fun cnbUrlFor(lang: String): String =
+        if (lang == LANG_JA) DEFAULT_DOWNLOAD_URL_JA_CNB else DEFAULT_DOWNLOAD_URL_CNB
 
     const val DEFAULT_DOWNLOAD_URL =
         "https://github.com/renwei0416-maker/BambooIME/releases/download/glossary-en-v1/glossary-en-cedict-1.0.bge"

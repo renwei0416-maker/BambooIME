@@ -80,7 +80,32 @@ object GlossaryDownloader {
         }
     }
 
-    /** 协程友好的包装：进度回调会被切回主线程。 */
+    /**
+     * 自动选源下载：先测速，再按顺序试，失败自动换下一个源。
+     *
+     * @param lang 目标语言（决定 GitHub / CNB 的具体文件）
+     * @param customUrl 用户自填的镜像地址；非空时只用它，不自动换源
+     * @param onAttempt 每次开始试某个源时回调它的显示名（供 UI 显示「正在从 CNB 下载」）
+     * @return 失败原因；全部成功时返回 `null`
+     */
+    suspend fun downloadAuto(
+        lang: String,
+        customUrl: String,
+        onProgress: (done: Long, total: Long) -> Unit,
+        onAttempt: (label: String) -> Unit,
+    ): String? {
+        var last: String? = null
+        for (candidate in GlossaryMirror.orderedCandidates(lang, customUrl)) {
+            onAttempt(candidate.label)
+            val err = withContext(Dispatchers.IO) { download(candidate.url, onProgress) }
+            if (err == null) return null
+            last = err
+            Timber.w("glossary: %s 源失败，换下一个：%s", candidate.label, err)
+        }
+        return last ?: "没有可用的下载源"
+    }
+
+
     suspend fun downloadAsync(
         url: String,
         onProgress: (Float?) -> Unit,
