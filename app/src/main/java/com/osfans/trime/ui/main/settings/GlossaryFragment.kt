@@ -83,6 +83,18 @@ class GlossaryFragment : PaddingPreferenceFragment() {
                         GlossaryPrefs.lang = if (idx == 1) GlossaryPrefs.LANG_JA else GlossaryPrefs.LANG_EN
                         GlossaryStore.reload()
                         rebuildScreen()
+                        // 切过去这门语言若还没有词包，明确说一句；有包就什么都不弹
+                        val want = GlossaryPrefs.langCodeOf(GlossaryPrefs.lang)
+                        val hasPack = GlossaryStore.installedFiles()
+                            .any { runCatching { GlossaryStore.langOf(it) }.getOrNull() == want }
+                        if (!hasPack) {
+                            val name = if (GlossaryPrefs.lang == GlossaryPrefs.LANG_JA) "日语" else "英语"
+                            AlertDialog.Builder(requireContext())
+                                .setTitle("${name}词包还没下载")
+                                .setMessage("点下面「下载外文词包」装好后，候选下才会显示${name}译词。")
+                                .setPositiveButton(R.string.ok, null)
+                                .show()
+                        }
                     }
                 }
 
@@ -279,24 +291,41 @@ class GlossaryFragment : PaddingPreferenceFragment() {
 
                 addCategory("语言包", "全量中文→英文约 11.5 万词、18.7 万义项，8 MB") {
                     val files = GlossaryStore.installedFiles()
-                    if (files.isEmpty()) {
-                        addRow("还没有安装语言包", "点下面「下载」或「从文件导入」，装好后候选才有英文")
+                    val currentLangCode = GlossaryPrefs.langCodeOf(GlossaryPrefs.lang)
+                    val langName = if (GlossaryPrefs.lang == GlossaryPrefs.LANG_JA) "日语" else "英语"
+                    val loadedForCurrent = files.count {
+                        runCatching { GlossaryStore.langOf(it) }.getOrNull() == currentLangCode
+                    }
+                    // 当前语言状态：永远显示这一行；没装就直说没装，不显示「0 个包」让人发懵
+                    if (loadedForCurrent > 0) {
+                        addRow(
+                            "当前语言：${langName} · 已加载 ${GlossaryStore.packCount()} 个包 / " +
+                                "${GlossaryStore.entryCount()} 个词",
+                            "多个同语言包会同时查询，结果合并显示",
+                        )
                     } else {
-                        val currentLangCode = GlossaryPrefs.langCodeOf(GlossaryPrefs.lang)
-                        files.forEach { f ->
-                            val packLang = runCatching { GlossaryPack.open(f)?.use { it.lang } }.getOrNull()
-                            val tag = when (packLang) {
-                                null -> "无法识别"
-                                currentLangCode -> "当前语言 · 已加载"
-                                else -> "其它语言 · 切过去才加载"
-                            }
-                            addRow(
-                                f.name,
-                                "${"%.1f".format(f.length() / 1024.0 / 1024.0)} MB · $tag · 点击可删除",
-                            ) {
+                        addRow(
+                            "当前语言：${langName} · 还没有词包",
+                            "点下面「下载」或「从文件导入」，装好后候选下才会显示${langName}译词",
+                        )
+                    }
+                    files.forEach { f ->
+                        val packLang = runCatching { GlossaryStore.langOf(f) }.getOrNull()
+                        val builtin = GlossaryStore.isBuiltin(f)
+                        val tag = when {
+                            builtin -> "内置 · 不可删除"
+                            packLang == null -> "无法识别"
+                            packLang == currentLangCode -> "当前语言 · 已加载"
+                            else -> "其它语言 · 切过去才加载"
+                        }
+                        val head = "${"%.1f".format(f.length() / 1024.0 / 1024.0)} MB · $tag"
+                        if (builtin) {
+                            addRow(f.name, head)
+                        } else {
+                            addRow(f.name, "$head · 点击可删除") {
                                 AlertDialog.Builder(requireContext())
                                     .setTitle("删除语言包")
-                                    .setMessage("删除 ${f.name} 后，这一份词库的英文就不显示了。") 
+                                    .setMessage("删除 ${f.name} 后，这一份词库的${langName}就不显示了。")
                                     .setNegativeButton(R.string.cancel, null)
                                     .setPositiveButton("删除") { _, _ ->
                                         GlossaryStore.delete(f)
@@ -304,10 +333,6 @@ class GlossaryFragment : PaddingPreferenceFragment() {
                                     }.show()
                             }
                         }
-                        addRow(
-                            "已加载 ${GlossaryStore.packCount()} 个包、${GlossaryStore.entryCount()} 个词",
-                            "多个包会同时查询，结果合并显示",
-                        )
                     }
                     addChoice(
                         title = "下载外文词包",

@@ -41,6 +41,9 @@ object GlossaryStore {
     /** 内置英文词库的资产名（见 `app/src/main/glossary-assets/glossary/`）。 */
     private const val BUNDLED_EN = "glossary-en-cedict-1.0.bge"
 
+    /** 这个包是不是随 App 内置的（内置包在设置页里不可删除）。 */
+    fun isBuiltin(file: File): Boolean = file.name == BUNDLED_EN
+
     /**
      * 内置英文词库：**首次启动**从 assets 拷一份到私有目录，之后不再管。
      *
