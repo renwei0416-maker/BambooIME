@@ -47,7 +47,9 @@ import timber.log.Timber
  *  * 按钮 = 图标 + 名字 + 触发码小字；认不出名字的模式统一用一个默认图标；
  *  * 文曲星没启用时那个按钮不显示，不留点了没反应的死按钮。
  */
-class AiPanelWindow : BoardWindow.NoBarBoardWindow() {
+class AiPanelWindow : BoardWindow.BarBoardWindow() {
+    // 要顶栏（← 返回键盘）；没有这层时主题那颗齿轮会留在原位，用户会以为返回不了。
+    override val title: String = "AI 面板"
     private val service: TrimeInputMethodService
         get() = TrimeInputMethodService.current
             ?: error("ai panel: IME service is not available")

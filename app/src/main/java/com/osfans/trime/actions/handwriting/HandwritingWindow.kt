@@ -69,7 +69,9 @@ import timber.log.Timber
  * 结构：候选条 / [画布 + 右侧符号列（⌫ + 可滑符号）] / 数字·标点·符号面板（覆盖画布）/ 底部工具栏。
  * 面板是**同一容器里的一层**，不使用 PopupWindow（独立窗口在 IME 里容易 BadToken）。
  */
-class HandwritingWindow : BoardWindow.NoBarBoardWindow() {
+class HandwritingWindow : BoardWindow.BarBoardWindow() {
+    // 要顶栏（← 返回键盘）；没有这层时主题那颗齿轮会留在原位，用户会以为返回不了。
+    override val title: String = "手写板"
     /**
      * 不能用 `by di.instance()` 把这些缓存住。
      *

@@ -88,7 +88,9 @@ import timber.log.Timber
  * `InputDependencyManager` 每次重建 InputView 都会换一整套依赖，而本类是进程级单例，
  * 缓存下来就会拿到旧管理器，`attachWindow` 直接 early-return（返回键失灵）。
  */
-class OcrWindow : BoardWindow.NoBarBoardWindow() {
+class OcrWindow : BoardWindow.BarBoardWindow() {
+    // 要顶栏（← 返回键盘）；没有这层时主题那颗齿轮会留在原位，用户会以为返回不了。
+    override val title: String = "拍照识字"
     private val service: TrimeInputMethodService
         get() = TrimeInputMethodService.current
             ?: error("ocr: IME service is not available")

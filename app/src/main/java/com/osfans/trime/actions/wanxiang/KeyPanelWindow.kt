@@ -56,7 +56,9 @@ import timber.log.Timber
  * 切键盘 + 回写形态（[KeyboardWindow.switchKeyboard] 的 fromUser 分支会回写）、
  * 需要时切方案、然后收起回键盘。
  */
-class KeyPanelWindow : BoardWindow.NoBarBoardWindow() {
+class KeyPanelWindow : BoardWindow.BarBoardWindow() {
+    // 要顶栏（← 返回键盘）；没有这层时主题那颗齿轮会留在原位，用户会以为返回不了。
+    override val title: String = "功能面板"
     private val service: TrimeInputMethodService
         get() = TrimeInputMethodService.current
             ?: error("key panel: IME service is not available")
