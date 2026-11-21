@@ -192,6 +192,7 @@ class AppPrefs(
             const val VOICE_ANIMATION_STYLE = "voice_animation_style"
             const val VOICE_SENSITIVITY = "voice_sensitivity"
             const val VOICE_CHUNK_SIZE = "voice_chunk_size"
+            const val VOICE_DOWNLOAD_HOST = "voice_download_host"
         }
 
         enum class VoiceAnimationStyle(override val stringRes: Int) : PreferenceDelegateEnum {
@@ -204,6 +205,13 @@ class AppPrefs(
             CHUNK_480(R.string.voice_chunk_size_480, 480),
             CHUNK_960(R.string.voice_chunk_size_960, 960),
             CHUNK_1920(R.string.voice_chunk_size_1920, 1920),
+        }
+
+        /** 语音模型的下载源：自动测速 / 只用 GitHub / 只用 CNB 镜像。 */
+        enum class VoiceDownloadHost(override val stringRes: Int) : PreferenceDelegateEnum {
+            AUTO(R.string.voice_download_host_auto),
+            GITHUB(R.string.voice_download_host_github),
+            CNB(R.string.voice_download_host_cnb),
         }
 
         val asrkbAidlVoiceInputEnabled = switch(
@@ -238,6 +246,12 @@ class AppPrefs(
             R.string.voice_chunk_size,
             VOICE_CHUNK_SIZE,
             VoiceChunkSize.CHUNK_480,
+            enableUiOn = { !asrkbAidlVoiceInputEnabled.getValue() },
+        )
+        val voiceDownloadHost = enum(
+            R.string.voice_download_host,
+            VOICE_DOWNLOAD_HOST,
+            VoiceDownloadHost.AUTO,
             enableUiOn = { !asrkbAidlVoiceInputEnabled.getValue() },
         )
     }

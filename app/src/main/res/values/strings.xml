@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 
 <!--
   ~ SPDX-FileCopyrightText: 2015 - 2025 Rime community
@@ -433,6 +433,11 @@
     <string name="voice_chunk_size_480">480ms (recommended)</string>
     <string name="voice_chunk_size_960">960ms</string>
     <string name="voice_chunk_size_1920">1920ms (high accuracy)</string>
+    <string name="voice_download_host">Download source</string>
+    <string name="voice_download_host_auto">Auto (fastest)</string>
+    <string name="voice_download_host_github">GitHub only</string>
+    <string name="voice_download_host_cnb">CNB mirror only</string>
+    <string name="voice_download_source_line">Source: %1$s (%2$d/%3$d)</string>
     <string name="inline_suggestions">Show inline autofill suggestions</string>
     <string name="update_config">Update config</string>
     <string name="share">Share</string>

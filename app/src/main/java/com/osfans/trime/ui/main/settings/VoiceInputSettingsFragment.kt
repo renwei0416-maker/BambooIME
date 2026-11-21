@@ -27,7 +27,6 @@ import com.osfans.trime.link.VoiceModelManager
 import com.osfans.trime.ui.common.buildDialog
 import com.osfans.trime.ui.common.confirmDialog
 import com.osfans.trime.ui.common.progressDialog
-import com.osfans.trime.util.FileDownloader
 import com.osfans.trime.util.InputMethodUtils
 import com.osfans.trime.util.toast
 import kotlinx.coroutines.CancellationException
@@ -274,12 +273,10 @@ class VoiceInputSettingsFragment : PreferenceDelegateFragment(AppPrefs.defaultIn
                 if (!VoiceModelManager.hasEnoughSpace(VoiceModelManager.getRequiredFreeSpaceBytes())) {
                     throw RuntimeException(getString(R.string.voice_model_not_enough_space))
                 }
-                val expectedSha256 = VoiceModelManager.getExpectedSha256()
+                var usedUrl = downloadUrl
                 withContext(Dispatchers.IO) {
-                    FileDownloader.download(
-                        url = downloadUrl,
+                    usedUrl = VoiceModelManager.downloadWithMirror(
                         destFile = destFile,
-                        expectedSha256 = expectedSha256,
                         onProgress = { progress, downloaded, total ->
                             launch(Dispatchers.Main) {
                                 val status = formatDownloadStatus(progress, downloaded, total)
@@ -297,6 +294,11 @@ class VoiceInputSettingsFragment : PreferenceDelegateFragment(AppPrefs.defaultIn
                             }
                         },
                         isCancelled = { downloadJob?.isActive != true },
+                        onAttempt = { label, index, total ->
+                            launch(Dispatchers.Main) {
+                                taskText.text = getString(R.string.voice_download_source_line, label, index, total)
+                            }
+                        },
                     )
                 }
 
@@ -307,7 +309,7 @@ class VoiceInputSettingsFragment : PreferenceDelegateFragment(AppPrefs.defaultIn
                 )
                 progressBar.isIndeterminate = true
                 withContext(Dispatchers.IO) {
-                    VoiceModelManager.installArchive(destFile, downloadUrl.substringAfterLast('/'))
+                    VoiceModelManager.installArchive(destFile, usedUrl.substringAfterLast('/'))
                     destFile.delete()
                 }
 

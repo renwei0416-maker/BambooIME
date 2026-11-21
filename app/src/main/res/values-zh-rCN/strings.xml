@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 
 <!--
   ~ SPDX-FileCopyrightText: 2015 - 2025 Rime community
@@ -432,6 +432,11 @@
     <string name="voice_chunk_size_480">480ms（推荐）</string>
     <string name="voice_chunk_size_960">960ms</string>
     <string name="voice_chunk_size_1920">1920ms（高精度）</string>
+    <string name="voice_download_host">语音模型下载源</string>
+    <string name="voice_download_host_auto">自动（选最快的）</string>
+    <string name="voice_download_host_github">只用 GitHub</string>
+    <string name="voice_download_host_cnb">只用 CNB 镜像</string>
+    <string name="voice_download_source_line">下载源：%1$s（%2$d/%3$d）</string>
     <string name="inline_suggestions">显示内嵌自动填充建议</string>
     <string name="update_config">更新配置</string>
     <string name="share">分享</string>

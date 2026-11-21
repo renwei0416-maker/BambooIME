@@ -7,10 +7,12 @@ package com.osfans.trime.link
 
 import com.osfans.trime.data.ResourceUrls
 import com.osfans.trime.data.prefs.AppPrefs
+import com.osfans.trime.util.FileDownloader
 import com.osfans.trime.util.appContext
 import com.osfans.trime.util.computeFileSha256
 import timber.log.Timber
 import java.io.File
+import kotlin.coroutines.cancellation.CancellationException
 
 object VoiceModelManager {
     /**
@@ -48,12 +50,64 @@ object VoiceModelManager {
         VoiceBackend.CPU -> ResourceUrls.VOICE_MODEL_CPU_RELEASE_API
     }
 
+    /** CNB 镜像地址；未镜像的后端/档位返回 null。 */
+    fun getCnbDownloadUrl(backend: VoiceBackend = VoiceBackendSelector.preferred()): String? = when (backend) {
+        VoiceBackend.CPU -> ResourceUrls.buildCnbCpuVoiceModelUrl(chunkMs())
+        VoiceBackend.QNN -> null
+    }
+
+    /** 内置的期望大小与 sha256（目前只有 CPU 四档）；没有内置值时回落到 GitHub API。 */
+    fun getBundledAsset(backend: VoiceBackend = VoiceBackendSelector.preferred()): ResourceUrls.VoiceModelAsset? =
+        if (backend == VoiceBackend.CPU) ResourceUrls.VOICE_MODEL_CPU_ASSETS[chunkMs()] else null
+
     suspend fun getExpectedSha256(): String? {
+        getBundledAsset()?.let { return it.sha256 }
         val backend = VoiceBackendSelector.preferred()
         return ResourceUrls.GitHubAssetCache.getSha256(
             getDownloadUrl(backend),
             releaseApiUrl(backend),
         )
+    }
+
+    /**
+     * 从「最快的可用源」下载语音模型，失败自动换源。返回实际成功的 URL。
+     *
+     * 源顺序由 [VoiceModelMirror.orderedCandidates] 决定（自动测速或用户指定）。
+     */
+    suspend fun downloadWithMirror(
+        destFile: File,
+        onProgress: ((Float, Long, Long) -> Unit)? = null,
+        isCancelled: () -> Boolean = { false },
+        onAttempt: (label: String, index: Int, total: Int) -> Unit = { _, _, _ -> },
+    ): String {
+        val candidates = VoiceModelMirror.orderedCandidates()
+        val expectedSha256 = getExpectedSha256()
+        var lastError: Exception? = null
+
+        candidates.forEachIndexed { index, candidate ->
+            onAttempt(candidate.label, index + 1, candidates.size)
+            try {
+                FileDownloader.download(
+                    url = candidate.url,
+                    destFile = destFile,
+                    expectedSha256 = expectedSha256,
+                    onProgress = onProgress,
+                    isCancelled = isCancelled,
+                )
+                if (index > 0) {
+                    Timber.i("Voice model: downloaded from fallback source ${candidate.label}")
+                }
+                return candidate.url
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                lastError = e
+                Timber.w(e, "Voice model: source ${candidate.label} failed")
+                destFile.delete()
+            }
+        }
+
+        throw lastError ?: IllegalStateException("No download source available")
     }
 
     fun verifySha256(
@@ -84,8 +138,9 @@ object VoiceModelManager {
     suspend fun getRequiredFreeSpaceBytes(): Long {
         val backend = VoiceBackendSelector.preferred()
         val url = getDownloadUrl(backend)
-        val size = ResourceUrls.GitHubAssetCache.getAssetSize(url, releaseApiUrl(backend))
-        val archiveBytes = size?.takeIf { it > 0 } ?: DEFAULT_ARCHIVE_BYTES
+        val archiveBytes = getBundledAsset(backend)?.size
+            ?: ResourceUrls.GitHubAssetCache.getAssetSize(url, releaseApiUrl(backend))?.takeIf { it > 0 }
+            ?: DEFAULT_ARCHIVE_BYTES
         return archiveBytes * 2 + STORAGE_MARGIN_BYTES
     }
 

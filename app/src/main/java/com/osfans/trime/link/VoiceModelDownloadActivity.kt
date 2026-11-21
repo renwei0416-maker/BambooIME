@@ -14,7 +14,6 @@ import androidx.lifecycle.lifecycleScope
 import com.osfans.trime.R
 import com.osfans.trime.ui.common.buildDialog
 import com.osfans.trime.ui.common.progressDialog
-import com.osfans.trime.util.FileDownloader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -81,12 +80,10 @@ class VoiceModelDownloadActivity : ComponentActivity() {
                 if (!VoiceModelManager.hasEnoughSpace(VoiceModelManager.getRequiredFreeSpaceBytes())) {
                     throw RuntimeException(getString(R.string.voice_model_not_enough_space))
                 }
-                val expectedSha256 = VoiceModelManager.getExpectedSha256()
+                var usedUrl = downloadUrl
                 withContext(Dispatchers.IO) {
-                    FileDownloader.download(
-                        url = downloadUrl,
+                    usedUrl = VoiceModelManager.downloadWithMirror(
                         destFile = destFile,
-                        expectedSha256 = expectedSha256,
                         onProgress = { progress, downloaded, total ->
                             val pct = (progress * 100).toInt()
                             val status = if (progress >= 0f && total > 0) {
@@ -106,7 +103,7 @@ class VoiceModelDownloadActivity : ComponentActivity() {
 
                 progressDialog.setTitle(R.string.voice_model_extracting)
                 withContext(Dispatchers.IO) {
-                    VoiceModelManager.installArchive(destFile, downloadUrl.substringAfterLast('/'))
+                    VoiceModelManager.installArchive(destFile, usedUrl.substringAfterLast('/'))
                 }
 
                 withContext(Dispatchers.IO) {
