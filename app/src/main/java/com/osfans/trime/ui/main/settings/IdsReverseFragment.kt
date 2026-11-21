@@ -20,6 +20,7 @@ import androidx.preference.PreferenceScreen
 import com.osfans.trime.R
 import com.osfans.trime.actions.ids.IdsConfig
 import com.osfans.trime.actions.ids.IdsPrefs
+import com.osfans.trime.actions.ids.IdsSync
 import com.osfans.trime.actions.ids.idsConfigOrNull
 import com.osfans.trime.actions.ids.resolvedShuangpinScheme
 import com.osfans.trime.actions.wanxiang.WanxiangCustom
@@ -47,6 +48,7 @@ import kotlinx.coroutines.withContext
  */
 class IdsReverseFragment : PaddingPreferenceFragment() {
     private var downloadJob: kotlinx.coroutines.Job? = null
+    private var syncing = false
 
     private val importLauncher =
         registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -67,7 +69,12 @@ class IdsReverseFragment : PaddingPreferenceFragment() {
                 requireContext().toast(
                     if (ok) "导入成功：${IdsDataManager.installedSize() / 1024 / 1024} MB" else "导入失败：文件大小不符（应为 29.0 MB）",
                 )
+                if (ok && !IdsPrefs.enabled) {
+                    IdsPrefs.enabled = true
+                    requireContext().toast("已自动开启部件反查")
+                }
                 refreshScreen()
+                if (ok) syncAndDeploy()
             }
         }
 
@@ -113,6 +120,8 @@ class IdsReverseFragment : PaddingPreferenceFragment() {
                         }
                         IdsPrefs.enabled = newValue
                         refreshScreen()
+                        // 拨动开关就是「启用 / 停用」本身：立刻写盘并部署，不要求用户再去点按钮。
+                        syncAndDeploy()
                         true
                     }
                 },
@@ -183,13 +192,14 @@ class IdsReverseFragment : PaddingPreferenceFragment() {
                         setOnPreferenceClickListener {
                             AlertDialog.Builder(requireContext())
                                 .setTitle("删除部件反查数据？")
-                                .setMessage("删掉后功能会关闭，下次用要重新下载（29.0 MB）。")
+                                .setMessage("删掉后功能会关闭，并把方案里的 IDS 配置一起摘掉；下次用要重新下载（29.0 MB）。")
                                 .setNegativeButton("取消", null)
                                 .setPositiveButton("删除") { _, _ ->
                                     IdsDataManager.delete()
                                     IdsPrefs.enabled = false
                                     requireContext().toast("已删除")
                                     refreshScreen()
+                                    syncAndDeploy()
                                 }
                                 .show()
                             true
@@ -471,10 +481,10 @@ class IdsReverseFragment : PaddingPreferenceFragment() {
                 BambooClick(requireContext()).apply {
                     key = "ids_apply"
                     title = "应用并部署"
-                    summary = "写入 wanxiang.custom.yaml 的托管块，然后部署（几十秒）"
+                    summary = "按当前开关状态写入或摘除，然后部署（几十秒）"
                     isIconSpaceReserved = false
                     setOnPreferenceClickListener {
-                        applyAndDeploy()
+                        syncAndDeploy()
                         true
                     }
                 },
@@ -595,7 +605,13 @@ class IdsReverseFragment : PaddingPreferenceFragment() {
                 }.onSuccess {
                     progress.dismiss()
                     requireContext().toast("下载完成：${IdsDataManager.installedSize() / 1024 / 1024} MB")
+                    if (!IdsPrefs.enabled) {
+                        // 数据装好、开关却是关的，最容易让人以为「开了却不生效」：这里补上。
+                        IdsPrefs.enabled = true
+                        requireContext().toast("已自动开启部件反查")
+                    }
                     refreshScreen()
+                    syncAndDeploy()
                 }.onFailure {
                     progress.dismiss()
                     val msg = it.message ?: it.javaClass.simpleName
@@ -614,49 +630,45 @@ class IdsReverseFragment : PaddingPreferenceFragment() {
 
     // ---- 写入 ----
 
-    private fun applyAndDeploy() {
+    /**
+     * 唯一的写入入口：按钮「应用并部署」、拨动开关、删数据、下载/导入完成都走这里。
+     *
+     * 具体写什么由 [IdsSync] 决定（只看开关 + 数据在不在），这里只管前置检查与提示。
+     */
+    private fun syncAndDeploy() {
+        if (syncing) {
+            requireContext().toast("正在处理上一步，稍等")
+            return
+        }
         val target = WanxiangCustom.scopeTarget()
         if (target == null) {
             requireContext().toast("只有万象 Base / Pro 方案能自动写入；自己的方案请看「说明」手动贴")
             return
         }
-        if (IdsPrefs.enabled && !IdsDataManager.isInstalled()) {
-            requireContext().toast("先下载数据")
-            return
-        }
+        syncing = true
         lifecycleScope.launch {
-            if (target == SchemaPackStore.BASE_ID && !SchemaPackStore.isInstalled(SchemaPackStore.BASE_ID)) {
-                requireContext().toast("正在释放内置方案包…")
-                val copied = withContext(Dispatchers.IO) { SchemaPackStore.ensureBaseCopied(requireContext()) }
-                if (!copied) {
-                    requireContext().toast("释放内置包失败：检查 Documents 目录是否可写")
+            try {
+                if (target == SchemaPackStore.BASE_ID && !SchemaPackStore.isInstalled(SchemaPackStore.BASE_ID)) {
+                    requireContext().toast("正在释放内置方案包…")
+                    val copied = withContext(Dispatchers.IO) { SchemaPackStore.ensureBaseCopied(requireContext()) }
+                    if (!copied) {
+                        requireContext().toast("释放内置包失败：检查 Documents 目录是否可写")
+                        return@launch
+                    }
+                }
+                if (target == SchemaPackStore.PRO_ID && !SchemaPackStore.isInstalled(SchemaPackStore.PRO_ID)) {
+                    requireContext().toast("还没装 Pro 词库：先去「方案包与下载」装一个")
                     return@launch
                 }
+                requireContext().toast("正在写入并部署…")
+                val out = IdsSync.applyAndDeploy(target)
+                requireContext().toast(out.message)
+                if (!out.ok) IdsPrefs.deployCheck = out.message
+                refreshScreen()
+                if (out.ok) selfCheckDeploy(target)
+            } finally {
+                syncing = false
             }
-            if (target == SchemaPackStore.PRO_ID && !SchemaPackStore.isInstalled(SchemaPackStore.PRO_ID)) {
-                requireContext().toast("还没装 Pro 词库：先去「方案包与下载」装一个")
-                return@launch
-            }
-            requireContext().toast("正在写入配置…")
-            val ok = withContext(Dispatchers.IO) {
-                WanxiangCustom.applySettings(
-                    pkgId = target,
-                    fuzzy = com.osfans.trime.actions.wanxiang.WanxiangPrefs.fuzzy,
-                    pageSize = com.osfans.trime.actions.wanxiang.WanxiangPrefs.pageSize,
-                    contextual = com.osfans.trime.actions.wanxiang.WanxiangPrefs.contextual,
-                    ids = idsConfigOrNull(),
-                )
-            }
-            if (!ok) {
-                requireContext().toast("写入失败：检查 Documents 目录是否可写")
-                return@launch
-            }
-            requireContext().toast("正在部署，请稍候…")
-            SchemaPackageManager.setActivePackageId(target)
-            runCatching { RimeDaemon.restartRime(fullCheck = false) }
-                .onFailure { requireContext().toast("部署失败：${it.message ?: it.javaClass.simpleName}") }
-            refreshScreen()
-            selfCheckDeploy(target)
         }
     }
 

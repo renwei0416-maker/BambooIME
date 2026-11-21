@@ -293,6 +293,25 @@ object WanxiangCustom {
             "build/${if (pkgId == SchemaPackStore.PRO_ID) SCHEMA_PRO_26 else SCHEMA_BASE_26}.schema.yaml",
         )
 
+    /** 当前方案包的 custom 文件（设置页读回校验 / 回滚用）。 */
+    fun customFile(pkgId: String): File = File(SchemaPackStore.dir(pkgId), customFileOf(pkgId))
+
+    /**
+     * 把最近一份 `.bak*` 还原回 custom 文件。
+     *
+     * 只在「写完读回校验不一致」时用：宁可退回上一次的正确状态，也不留一个半截文件。
+     * [backup] 的命名是 `<file>.bak-<stamp>` / `<file>.bak-legacy-<stamp>`，按修改时间取最新。
+     */
+    fun restoreLatestBackup(pkgId: String): Boolean = runCatching {
+        val file = customFile(pkgId)
+        val latest = file.parentFile
+            ?.listFiles { f -> f.isFile && f.name.startsWith("${file.name}.bak") }
+            ?.maxByOrNull { it.lastModified() }
+            ?: return@runCatching false
+        latest.copyTo(file, overwrite = true)
+        true
+    }.getOrDefault(false)
+
     /** 把 `ids_reverse:` 这一段拼出来（缩进两格，与 `menu/page_size` 同级）。 */
     private fun appendIdsSection(ids: IdsConfig, sink: (String) -> Unit) {
         sink("  ids_reverse:")
