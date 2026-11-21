@@ -41,7 +41,8 @@ object GlossaryDownloader {
         onProgress: (done: Long, total: Long) -> Unit,
     ): String? {
         Timber.i("glossary: download %s", url)
-        val tmp = File(TrimeApplication.getInstance().cacheDir, "glossary-download.part")
+        // 放在词库目录内：保证后面的 renameTo 是同目录改名（跨目录改名在某些机型上会失败）
+        val tmp = File(GlossaryStore.dir, "glossary-download.part")
         try {
             val request = Request.Builder().url(url).build()
             client.newCall(request).execute().use { resp ->

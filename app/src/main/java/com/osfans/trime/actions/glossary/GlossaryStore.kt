@@ -29,6 +29,10 @@ object GlossaryStore {
     val dir: File
         get() = File(TrimeApplication.getInstance().filesDir, "glossary").also { if (!it.exists()) it.mkdirs() }
 
+    /** 读一个文件的语言码；读不到返回 null。只读文件头，不动已加载的实例。 */
+    fun langOf(file: File): Int? =
+        runCatching { GlossaryPack.open(file)?.let { it.lang } }.getOrNull()
+
     fun installedFiles(): List<File> =
         dir.listFiles { f -> f.isFile && f.name.endsWith(".bge", ignoreCase = true) }
             ?.sortedBy { it.name }

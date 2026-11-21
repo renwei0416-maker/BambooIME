@@ -420,16 +420,25 @@ class GlossaryFragment : PaddingPreferenceFragment() {
             dialog.dismiss()
             if (!isAdded) return@launch
             if (err == null) {
-                // 刚下的多半就是用户想用的那门语言：直接切过去，省得再点一次下拉
-                val downloaded = GlossaryStore.installedFiles().maxByOrNull { it.lastModified() }
-                val lang = downloaded?.let { f ->
-                    runCatching { GlossaryPack.open(f)?.use { it.lang } }.getOrNull()
+                // 装完只做一件正事：重新加载。语言由用户自己在「学习语言」里选。
+                GlossaryStore.reload()
+                val installed = GlossaryStore.installedFiles()
+                val want = GlossaryPrefs.langCodeOf(GlossaryPrefs.lang)
+                if (installed.none { GlossaryStore.langOf(it) == want }) {
+                    // 装成功了但当前语言还是没包（说明装的不是这门语言）——说清楚，别让人以为坏了
+                    AlertDialog.Builder(requireContext())
+                        .setTitle("已安装，但不是当前语言")
+                        .setMessage(
+                            "当前学习语言还没有词包。\n\n" +
+                                "目录里现有：\n" +
+                                installed.joinToString("\n") { it.name } +
+                                "\n\n到「语言」里把学习语言切到对应语言即可。",
+                        )
+                        .setPositiveButton(android.R.string.ok, null)
+                        .show()
+                } else {
+                    Toast.makeText(requireContext(), "语言包已安装并已加载", Toast.LENGTH_SHORT).show()
                 }
-                if (lang == GlossaryPrefs.langCodeOf(GlossaryPrefs.LANG_JA)) {
-                    GlossaryPrefs.lang = GlossaryPrefs.LANG_JA
-                    GlossaryStore.reload()
-                }
-                Toast.makeText(requireContext(), "语言包已安装", Toast.LENGTH_SHORT).show()
                 rebuildScreen()
             } else {
                 AlertDialog.Builder(requireContext())
