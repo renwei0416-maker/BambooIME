@@ -154,6 +154,13 @@ class MainFragment : PaddingPreferenceFragment() {
                 addPreference("外观", "设置界面是否跟随键盘主题配色、深浅色与取色自检", R.drawable.ic_baseline_color_lens_24) {
                     findNavController().navigateWithAnim(NavigationRoute.BambooAppearance)
                 }
+                addPreference(
+                    "部件反查（IDS）",
+                    "打 I木口 查「木+口」的字；打 O 前缀可拼音与部件混着打",
+                    R.drawable.ic_baseline_search_24,
+                ) {
+                    findNavController().navigateWithAnim(NavigationRoute.IdsReverse)
+                }
                 addPreference("其它扩展功能设置", "面板行为、键盘形态与零散开关", R.drawable.ic_baseline_tune_24) {
                     findNavController().navigateWithAnim(NavigationRoute.PanelQuick)
                 }

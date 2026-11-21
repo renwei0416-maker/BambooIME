@@ -69,12 +69,18 @@ object IdsDataManager {
 
     data class Candidate(val label: String, val url: String, val host: Int)
 
+    /**
+     * 要下载的源，按优先级排列：始终两个都返回，前一个失败自动换下一个。
+     *
+     * - 自动：先测速，快的在前；
+     * - 指定 GitHub / CNB：指定的在前，另一个兜底 —— 避免某一源被墙时直接下不动。
+     */
     suspend fun orderedCandidates(): List<Candidate> {
         val gh = Candidate("GitHub", ResourceUrls.buildIdsDataUrl(cnb = false), IdsPrefs.HOST_GITHUB)
         val cnb = Candidate("CNB", ResourceUrls.buildIdsDataUrl(cnb = true), IdsPrefs.HOST_CNB)
         return when (IdsPrefs.host) {
-            IdsPrefs.HOST_GITHUB -> listOf(gh)
-            IdsPrefs.HOST_CNB -> listOf(cnb)
+            IdsPrefs.HOST_GITHUB -> listOf(gh, cnb)
+            IdsPrefs.HOST_CNB -> listOf(cnb, gh)
             else -> if (fastestIsCnb()) listOf(cnb, gh) else listOf(gh, cnb)
         }
     }

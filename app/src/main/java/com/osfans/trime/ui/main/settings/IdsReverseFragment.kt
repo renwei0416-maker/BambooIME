@@ -39,7 +39,7 @@ import kotlinx.coroutines.withContext
 /**
  * 「部件反查（IDS）」设置页。
  *
- * 插件（librime-ids-reverse）已经编进包里，缺的只是 24 MB 的 `ids_data.bin`，
+ * 插件（librime-ids-reverse）已经编进包里，缺的只是 29 MB 的 `ids_data.bin`，
  * 所以这里第一件事是下载/导入数据，第二件事是把 4 个组件挂进万象方案的 `engine:`。
  *
  * 挂接落点固定写「万象 Base / Pro 的 custom 文件托管块」，非 Base/Pro 的用户
@@ -65,7 +65,7 @@ class IdsReverseFragment : PaddingPreferenceFragment() {
                         }.getOrDefault(false)
                     }
                 requireContext().toast(
-                    if (ok) "导入成功：${IdsDataManager.installedSize() / 1024 / 1024} MB" else "导入失败：文件大小不符（应为 25.3 MB）",
+                    if (ok) "导入成功：${IdsDataManager.installedSize() / 1024 / 1024} MB" else "导入失败：文件大小不符（应为 29.0 MB）",
                 )
                 refreshScreen()
             }
@@ -108,7 +108,7 @@ class IdsReverseFragment : PaddingPreferenceFragment() {
                     }
                     setOnPreferenceChangeListener { _, newValue ->
                         if (newValue as Boolean && !IdsDataManager.isInstalled()) {
-                            requireContext().toast("先下载数据（约 25 MB）")
+                            requireContext().toast("先下载数据（约 29 MB）")
                             return@setOnPreferenceChangeListener false
                         }
                         IdsPrefs.enabled = newValue
@@ -126,7 +126,7 @@ class IdsReverseFragment : PaddingPreferenceFragment() {
                         if (installed) {
                             "已安装 · ${IdsDataManager.installedSize() / 1024 / 1024} MB"
                         } else {
-                            "未安装 · 需要 ids_data.bin（25.3 MB）"
+                            "未安装 · 需要 ids_data.bin（29.0 MB）"
                         }
                     isIconSpaceReserved = false
                     isSelectable = false
@@ -183,7 +183,7 @@ class IdsReverseFragment : PaddingPreferenceFragment() {
                         setOnPreferenceClickListener {
                             AlertDialog.Builder(requireContext())
                                 .setTitle("删除部件反查数据？")
-                                .setMessage("删掉后功能会关闭，下次用要重新下载（25.3 MB）。")
+                                .setMessage("删掉后功能会关闭，下次用要重新下载（29.0 MB）。")
                                 .setNegativeButton("取消", null)
                                 .setPositiveButton("删除") { _, _ ->
                                     IdsDataManager.delete()
@@ -204,9 +204,9 @@ class IdsReverseFragment : PaddingPreferenceFragment() {
                     title = "下载源"
                     summary =
                         when (IdsPrefs.host) {
-                            IdsPrefs.HOST_GITHUB -> "只用 GitHub"
-                            IdsPrefs.HOST_CNB -> "只用 CNB（国内镜像）"
-                            else -> "自动（测速后选快的）"
+                            IdsPrefs.HOST_GITHUB -> "优先 GitHub；失败自动换 CNB"
+                            IdsPrefs.HOST_CNB -> "优先 CNB（国内镜像）；失败自动换 GitHub"
+                            else -> "自动（两个源测速，快的先下；失败自动换另一个）"
                         }
                     isIconSpaceReserved = false
                     onRestore = {
@@ -214,7 +214,7 @@ class IdsReverseFragment : PaddingPreferenceFragment() {
                         refreshScreen()
                     }
                     setOnPreferenceClickListener {
-                        val labels = arrayOf("自动（测速）", "只用 GitHub", "只用 CNB")
+                        val labels = arrayOf("自动（测速，失败换源）", "优先 GitHub（失败换源）", "优先 CNB（失败换源）")
                         val values = intArrayOf(IdsPrefs.HOST_AUTO, IdsPrefs.HOST_GITHUB, IdsPrefs.HOST_CNB)
                         val checked = values.indexOf(IdsPrefs.host).coerceAtLeast(0)
                         AlertDialog.Builder(requireContext())
@@ -824,7 +824,7 @@ class IdsReverseFragment : PaddingPreferenceFragment() {
                 —— 过滤与排序（去重、按字频、限制条数）
 
             ids_reverse: 这一段是本插件的参数：
-              data_file            数据文件绝对路径（必须先下载 25.3 MB 的 ids_data.bin）
+              data_file            数据文件绝对路径（必须先下载 29.0 MB 的 ids_data.bin）
               search_prefix        查找前缀，默认 I：打 I木口 = 找「木+口」的字
               hybrid_prefix        组合前缀，默认 O：拼音和部件混着打
               max_results          最多给几条候选（1–300，默认 60）

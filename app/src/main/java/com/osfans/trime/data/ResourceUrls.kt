@@ -65,13 +65,13 @@ object ResourceUrls {
      * 只差这份 mmap 数据；不随 APK 发，用户按需下载（GitHub / CNB 双源）。
      */
     const val IDS_DATA_FILE_NAME = "ids_data.bin"
-    const val IDS_DATA_SIZE = 26_581_834L
+    const val IDS_DATA_SIZE = 30_450_540L
     const val IDS_DATA_SHA256 =
-        "65c2dd853110664b1f9293185e678280bf496d954a3cc5d2c5884e091cf26a3d"
+        "4ec54a2ab815d3a0370e51e2b26b3aed72be3a1c8778ea2902c5b1fa974c7f67"
     const val IDS_DATA_GH_RELEASE_BASE =
-        "https://github.com/renwei0416-maker/BambooIME/releases/download/ids-data-v1"
+        "https://github.com/renwei0416-maker/BambooIME/releases/download/ids-data-v2"
     const val IDS_DATA_CNB_RELEASE_BASE =
-        "https://cnb.cool/renwei.co/BambooIME/-/releases/download/ids-data-v1"
+        "https://cnb.cool/renwei.co/BambooIME/-/releases/download/ids-data-v2"
 
     fun buildIdsDataUrl(cnb: Boolean): String =
         (if (cnb) IDS_DATA_CNB_RELEASE_BASE else IDS_DATA_GH_RELEASE_BASE) + "/" + IDS_DATA_FILE_NAME
