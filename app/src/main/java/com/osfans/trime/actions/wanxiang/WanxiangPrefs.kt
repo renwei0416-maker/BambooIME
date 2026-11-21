@@ -74,6 +74,7 @@ object WanxiangPrefs {
     private const val KEY_HINT_STAMP = "first_run_hint_stamp"
     private const val KEY_APPLIED = "applied_signature"
     private const val KEY_DOWNLOAD_BASE = "download_base"
+    private const val KEY_HIDE_NUMBER_ROW = "hide_number_row"
 
     private const val KEY_T9_PAGE_SIZE = "t9_page_size"
     private const val KEY_T9_USER_DICT = "t9_user_dict"
@@ -279,6 +280,16 @@ object WanxiangPrefs {
         }
     }
 
+    /**
+     * 隐藏键盘最上面那行纯数字键（默认关）。
+     *
+     * 开了之后键盘会按「剩余行数 / 原来行数」真的变矮，而不是让剩下的行各自变高；
+     * 数字行上的长按/上滑符号会一起消失（用符号面板打）。
+     */
+    var hideNumberRow: Boolean
+        get() = ready().getBoolean(KEY_HIDE_NUMBER_ROW, false)
+        set(value) = ready().edit { putBoolean(KEY_HIDE_NUMBER_ROW, value) }
+
     fun resetToDefaults() {
         ready().edit {
             putInt(KEY_LAYOUT, LAYOUT_26)
@@ -294,6 +305,7 @@ object WanxiangPrefs {
             putInt(KEY_T9_PAGE_SIZE, 6)
             putBoolean(KEY_T9_USER_DICT, true)
             putBoolean(KEY_T9_CONTEXTUAL, false)
+            putBoolean(KEY_HIDE_NUMBER_ROW, false)
         }
     }
 }

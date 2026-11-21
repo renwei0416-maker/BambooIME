@@ -294,6 +294,14 @@ class KeyPanelWindow : BoardWindow.BarBoardWindow() {
                 Cell("aai", "功能模式", "", "cmd_robot", Kind.ACTION, "ai"),
                 Cell("aclip", "剪贴板", "", "cmd_clipboard_text", Kind.ACTION, "clipboard"),
                 Cell("ashot", "截图", "", "cmd_monitor_screenshot", Kind.ACTION, "shot"),
+            Cell(
+                "anumrow",
+                "数字行",
+                if (WanxiangPrefs.hideNumberRow) "已隐藏" else "显示中",
+                "cmd_numeric",
+                Kind.ACTION,
+                "num_row",
+            ),
                 Cell("ashotball", "截图浮球", if (ShotBallPrefs.enabled) "已开启" else "", "cmd_monitor_screenshot", Kind.ACTION, "shot_ball"),
             )
 
@@ -444,6 +452,13 @@ class KeyPanelWindow : BoardWindow.BarBoardWindow() {
                     "ocr" -> windowManager.attachWindow(OcrWindow.instance)
                     "ai" -> windowManager.attachWindow(AiPanelWindow.instance)
                     "clipboard" -> windowManager.attachWindow(ClipboardWindow())
+                    "num_row" -> {
+                        val want = !WanxiangPrefs.hideNumberRow
+                        WanxiangPrefs.hideNumberRow = want
+                        rebuild()
+                        KeyboardWindow.instance?.reloadCurrentKeyboard()
+                        toast(if (want) "已隐藏数字行" else "已显示数字行")
+                    }
                     "shot_ball" -> {
                         val ctx = service ?: return
                         if (!ShotService.isGranted(ctx)) {

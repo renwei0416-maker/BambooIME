@@ -39,6 +39,8 @@ class Keyboard(
     private val theme: Theme,
     selfConfig: TextKeyboard? = null,
     val resolver: ThemeResolver = ColorManager,
+    /** 总高缩放比：隐藏数字行后按行数比缩，让键盘真的变矮。 */
+    private val heightScale: Float = 1f,
 ) {
 
     /** 按鍵默認水平間距  */
@@ -221,10 +223,12 @@ class Keyboard(
     }
 
     val keyboardHeight: Int =
-        intArrayOf(
-            selfConfig?.let { getKeyboardHeightFromKeyboardConfig(it) } ?: 0,
-            getKeyboardHeightFromTheme(theme),
-        ).firstOrNull { it > 0 } ?: 0
+        (
+            intArrayOf(
+                selfConfig?.let { getKeyboardHeightFromKeyboardConfig(it) } ?: 0,
+                getKeyboardHeightFromTheme(theme),
+            ).firstOrNull { it > 0 } ?: 0
+        ).let { if (heightScale == 1f) it else (it * heightScale).toInt() }
 
     private val expandKeypressArea: Boolean by AppPrefs.defaultInstance().keyboard.expandKeypressArea
 

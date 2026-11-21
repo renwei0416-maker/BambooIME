@@ -174,12 +174,27 @@ class KeyboardWindow :
 
     private val resolvedConfigCache = mutableMapOf<String, TextKeyboard?>()
 
+    /** 重新按当前 id 建一次键盘（改了影响高度的偏好后调用）。 */
+    fun reloadCurrentKeyboard() {
+        runCatching { attachKeyboard(evalKeyboard(currentKeyboardId)) }
+            .onFailure { Timber.w(it, "reloadCurrentKeyboard failed") }
+    }
+
     private fun attachKeyboard(target: String) {
         currentKeyboardId = target
         lastKeyboardId = target
 
-        val config = getKeyboardConfig(target)
-        val keyboard = currentKeyboard ?: Keyboard(context, theme, config)
+        val rawConfig = getKeyboardConfig(target)
+        // 「键盘与方案」面板里的「数字行」开关：首行是纯数字就丢掉，并按行数比缩总高
+        val hider = NumberRowHider.apply(rawConfig, WanxiangPrefs.hideNumberRow)
+        if (hider.scale != 1f) {
+            Timber.i(
+                "hide number row: rows %d -> %d, scale %.3f",
+                rawConfig?.rows?.size ?: 0, hider.config?.rows?.size ?: 0, hider.scale,
+            )
+        }
+        val keyboard =
+            currentKeyboard ?: Keyboard(context, theme, hider.config, heightScale = hider.scale)
 
         val newSidebarController =
             if (keyboard.isSidebarMode) {
@@ -251,9 +266,9 @@ class KeyboardWindow :
         view.let {
             keyboardView.apply {
                 removeAllViews()
-                if (config?.navbar == true) {
+                if (rawConfig?.navbar == true) {
                     inputBarDelegate.navBar.attach(
-                        title = config.name,
+                        title = rawConfig?.name ?: target,
                         onCloseClick = { service.requestHideSelf(0) },
                         onBackClick = { switchKeyboard(".previous") },
                     )
