@@ -52,6 +52,10 @@ object GlossaryPrefs {
     fun githubUrlFor(lang: String): String =
         if (lang == LANG_JA) DEFAULT_DOWNLOAD_URL_JA else DEFAULT_DOWNLOAD_URL
 
+    /** 两源的字节数（同一份文件）：用来判断下载是否完整。 */
+    fun expectedSizeFor(lang: String): Long =
+        if (lang == LANG_JA) 16_505_046L else 8_472_162L
+
     /** CNB 国内镜像源，与 GitHub 同一份文件。 */
     fun cnbUrlFor(lang: String): String =
         if (lang == LANG_JA) DEFAULT_DOWNLOAD_URL_JA_CNB else DEFAULT_DOWNLOAD_URL_CNB

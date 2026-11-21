@@ -37,6 +37,7 @@ object GlossaryDownloader {
      */
     fun download(
         url: String,
+        expectSize: Long = 0L,
         onProgress: (done: Long, total: Long) -> Unit,
     ): String? {
         Timber.i("glossary: download %s", url)
@@ -44,9 +45,17 @@ object GlossaryDownloader {
         try {
             val request = Request.Builder().url(url).build()
             client.newCall(request).execute().use { resp ->
-                if (!resp.isSuccessful) return "服务器返回 ${resp.code}"
+                val finalUrl = resp.request.url.toString()
+                if (!resp.isSuccessful) {
+                    val peek = runCatching {
+                        resp.body?.bytes()?.toString(Charsets.UTF_8)?.take(180)
+                    }.getOrNull().orEmpty()
+                    Timber.w("glossary: HTTP %s for %s (final=%s) body=%s", resp.code, url, finalUrl, peek)
+                    return "服务器返回 ${resp.code}"
+                }
                 val body = resp.body ?: return "响应为空"
                 val total = body.contentLength()
+                Timber.i("glossary: 200 final=%s length=%s", finalUrl, total)
                 tmp.delete()
                 body.byteStream().use { input ->
                     tmp.outputStream().use { out ->
@@ -69,6 +78,12 @@ object GlossaryDownloader {
                 }
             }
             val name = url.substringAfterLast('/').ifBlank { "glossary.bge" }
+            val got = tmp.length()
+            Timber.i("glossary: 落盘 %s 字节（%s）", got, name)
+            // 大小对不上多半是下载被截断：宁可报错，也不要装一个坏包进去
+            if (expectSize > 0 && got != expectSize) {
+                return "下载不完整：$got / $expectSize 字节，请重试"
+            }
             val err = tmp.inputStream().use { GlossaryStore.install(it, name) }
             Timber.i("glossary: download done, install=%s", err)
             return err
@@ -97,7 +112,13 @@ object GlossaryDownloader {
         var last: String? = null
         for (candidate in GlossaryMirror.orderedCandidates(lang, customUrl)) {
             onAttempt(candidate.label)
-            val err = withContext(Dispatchers.IO) { download(candidate.url, onProgress) }
+            val err = withContext(Dispatchers.IO) {
+                download(
+                    url = candidate.url,
+                    expectSize = GlossaryPrefs.expectedSizeFor(lang),
+                    onProgress = onProgress,
+                )
+            }
             if (err == null) return null
             last = err
             Timber.w("glossary: %s 源失败，换下一个：%s", candidate.label, err)
@@ -111,9 +132,9 @@ object GlossaryDownloader {
         onProgress: (Float?) -> Unit,
     ): String? =
         withContext(Dispatchers.IO) {
-            download(url) { done, total ->
+            download(url, onProgress = { done, total ->
                 val ratio = if (total > 0) (done.toFloat() / total) else null
                 onProgress(ratio)
-            }
+            })
         }
 }

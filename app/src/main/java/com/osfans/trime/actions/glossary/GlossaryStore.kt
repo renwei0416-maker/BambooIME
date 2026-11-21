@@ -185,6 +185,8 @@ object GlossaryStore {
                 tmp.delete()
                 return "无法写入 ${target.name}"
             }
+            val lang = runCatching { GlossaryPack.open(target)?.use { it.lang } }.getOrNull()
+            Log.i(TAG, "installed ${target.name} (lang=$lang)")
             reload()
             null
         }.getOrElse {

@@ -21,6 +21,7 @@ import com.osfans.trime.R
 import com.osfans.trime.data.base.DataManager
 import com.osfans.trime.ime.core.TrimeInputMethodService
 import com.osfans.trime.actions.glossary.GlossaryDownloader
+import com.osfans.trime.actions.glossary.GlossaryPack
 import com.osfans.trime.actions.glossary.GlossaryPrefs
 import com.osfans.trime.actions.glossary.GlossaryStore
 import com.osfans.trime.actions.glossary.GlossaryTips
@@ -281,10 +282,17 @@ class GlossaryFragment : PaddingPreferenceFragment() {
                     if (files.isEmpty()) {
                         addRow("还没有安装语言包", "点下面「下载」或「从文件导入」，装好后候选才有英文")
                     } else {
+                        val currentLangCode = GlossaryPrefs.langCodeOf(GlossaryPrefs.lang)
                         files.forEach { f ->
+                            val packLang = runCatching { GlossaryPack.open(f)?.use { it.lang } }.getOrNull()
+                            val tag = when (packLang) {
+                                null -> "无法识别"
+                                currentLangCode -> "当前语言 · 已加载"
+                                else -> "其它语言 · 切过去才加载"
+                            }
                             addRow(
                                 f.name,
-                                "${"%.1f".format(f.length() / 1024.0 / 1024.0)} MB · 点击可删除",
+                                "${"%.1f".format(f.length() / 1024.0 / 1024.0)} MB · $tag · 点击可删除",
                             ) {
                                 AlertDialog.Builder(requireContext())
                                     .setTitle("删除语言包")
@@ -412,6 +420,15 @@ class GlossaryFragment : PaddingPreferenceFragment() {
             dialog.dismiss()
             if (!isAdded) return@launch
             if (err == null) {
+                // 刚下的多半就是用户想用的那门语言：直接切过去，省得再点一次下拉
+                val downloaded = GlossaryStore.installedFiles().maxByOrNull { it.lastModified() }
+                val lang = downloaded?.let { f ->
+                    runCatching { GlossaryPack.open(f)?.use { it.lang } }.getOrNull()
+                }
+                if (lang == GlossaryPrefs.langCodeOf(GlossaryPrefs.LANG_JA)) {
+                    GlossaryPrefs.lang = GlossaryPrefs.LANG_JA
+                    GlossaryStore.reload()
+                }
                 Toast.makeText(requireContext(), "语言包已安装", Toast.LENGTH_SHORT).show()
                 rebuildScreen()
             } else {
