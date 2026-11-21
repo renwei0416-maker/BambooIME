@@ -5,6 +5,8 @@
 
 package com.osfans.trime.actions.wanxiang
 
+import com.osfans.trime.actions.ids.IdsConfig
+import com.osfans.trime.actions.ids.idsConfigOrNull
 import com.osfans.trime.data.packaging.CustomSignature
 import com.osfans.trime.data.packaging.SchemaPackStore
 import com.osfans.trime.data.packaging.SchemaPackageManager
@@ -179,6 +181,7 @@ object WanxiangCustom {
         nodes: List<String>,
         pageSize: Int,
         contextual: Boolean = WanxiangPrefs.contextual,
+        ids: IdsConfig? = idsConfigOrNull(),
     ): String = buildString {
         appendLine(BEGIN)
         appendLine("patch:")
@@ -187,6 +190,10 @@ object WanxiangCustom {
         nodes.forEach { appendLine("      - $it") }
         appendLine("  menu/page_size: $pageSize")
         appendLine("  translator/contextual_suggestions: $contextual")
+        if (ids != null) {
+            IDS_ENGINE_LINES.forEach { appendLine(it) }
+            appendIdsSection(ids) { appendLine(it) }
+        }
         append(END)
     }
 
@@ -250,6 +257,67 @@ object WanxiangCustom {
         else -> false
     }
 
+    // ------------------------------------------------------------ 部件反查（IDS）
+
+    /**
+     * 挂进 `engine` 的四行。
+     *
+     * processors / segmentors / filters 是**有序链**，必须排在 ascii-composer、recognizer 之前，
+     * 才能在 `I` / `O` 起头时先被拦下来；translators 是并行合并候选、顺序只影响排序，所以用 `+` 追加
+     * —— 与插件作者 `examples/attach.patch.yaml` 的写法一致。
+     */
+    private val IDS_ENGINE_LINES = listOf(
+        "  engine/processors/@before 0: ids_reverse_processor",
+        "  engine/segmentors/@before 0: ids_reverse_segmentor",
+        "  engine/translators/+: ids_reverse_translator",
+        "  engine/filters/@before 0: ids_reverse_filter",
+    )
+
+    private val IDS_ENGINE_PREFIXES = listOf(
+        "engine/processors/@before 0:",
+        "engine/segmentors/@before 0:",
+        "engine/translators/+:",
+        "engine/filters/@before 0:",
+    )
+
+    /** 把 `ids_reverse:` 这一段拼出来（缩进两格，与 `menu/page_size` 同级）。 */
+    private fun appendIdsSection(ids: IdsConfig, sink: (String) -> Unit) {
+        sink("  ids_reverse:")
+        sink("    data_file: \"${ids.dataFile}\"")
+        sink("    search_prefix: ${ids.searchPrefix}")
+        sink("    hybrid_prefix: ${ids.hybridPrefix}")
+        sink("    max_results: ${ids.maxResults}")
+        sink("    shuangpin_scheme: ${ids.shuangpinScheme}")
+        sink("    show_pinyin: ${ids.showPinyin}")
+        sink("    show_ids: ${ids.showIds}")
+        sink("    show_unicode: ${ids.showUnicode}")
+        sink("    show_block: ${ids.showBlock}")
+        sink("    ids_format: ${ids.idsFormat}")
+        sink("    variant_trigger: \"${ids.variantTrigger}\"")
+        sink("    variant_replace_key: \"${ids.variantReplaceKey}\"")
+        if (ids.disabledBlocks.isNotBlank()) sink("    disabled_blocks: ${ids.disabledBlocks}")
+        if (ids.searchTips.isNotBlank()) sink("    search_tips: \"${ids.searchTips}\"")
+        if (ids.hybridTips.isNotBlank()) sink("    hybrid_tips: \"${ids.hybridTips}\"")
+    }
+
+    /** 删掉整段 `name:`（含它下面所有缩进更深的行）。 */
+    private fun removeSection(lines: MutableList<String>, name: String) {
+        val start = lines.indexOfFirst { it.trimStart().startsWith("$name:") }
+        if (start < 0) return
+        val indent = lines[start].indexOfFirst { !it.isWhitespace() }
+        var end = start + 1
+        while (end < lines.size) {
+            val line = lines[end]
+            if (line.isBlank()) {
+                end++
+                continue
+            }
+            val ind = line.indexOfFirst { !it.isWhitespace() }
+            if (ind > indent) end++ else break
+        }
+        lines.subList(start, end).clear()
+    }
+
     // ------------------------------------------------------------ 合并写入
 
     /** 取出现有托管块（含首尾标记行）。 */
@@ -270,10 +338,14 @@ object WanxiangCustom {
         fuzzy: Set<String>,
         pageSize: Int,
         contextual: Boolean,
+        ids: IdsConfig? = idsConfigOrNull(),
     ): String {
         val lines = block.lines().toMutableList()
 
         lines.removeAll { it.trimStart().startsWith("- wanxiang_algebra:/模糊音_") }
+        // 部件反查：先整段清掉再按开关插回，避免反复「应用」堆叠出重复行。
+        lines.removeAll { line -> IDS_ENGINE_PREFIXES.any { line.trimStart().startsWith(it) } }
+        removeSection(lines, "ids_reverse")
 
         val wanted =
             WanxiangPrefs.FUZZY_KEYS.filter { fuzzy.contains(it) }
@@ -295,6 +367,16 @@ object WanxiangCustom {
         setOrAppend("menu/page_size:", "  menu/page_size: $pageSize")
         setOrAppend("translator/contextual_suggestions:", "  translator/contextual_suggestions: $contextual")
 
+        if (ids != null) {
+            val end = lines.indexOfFirst { it.trim() == END }
+            val at = if (end >= 0) end else lines.size
+            val added = buildList {
+                addAll(IDS_ENGINE_LINES)
+                appendIdsSection(ids) { add(it) }
+            }
+            lines.addAll(at, added)
+        }
+
         return lines.joinToString("\n")
     }
 
@@ -308,6 +390,7 @@ object WanxiangCustom {
         fuzzy: Set<String>,
         pageSize: Int,
         contextual: Boolean,
+        ids: IdsConfig? = idsConfigOrNull(),
     ): Boolean = runCatching {
         val dir = SchemaPackStore.dir(pkgId)
         if (!dir.isDirectory) {
@@ -320,9 +403,9 @@ object WanxiangCustom {
             if (hasMarkers(old)) {
                 blockOf(old)
             } else {
-                renderCustomBlock(algebraNodes(pkgId), pageSize, contextual)
+                renderCustomBlock(algebraNodes(pkgId), pageSize, contextual, ids)
             }
-        writeManaged(file, mergeBlock(base, fuzzy, pageSize, contextual))
+        writeManaged(file, mergeBlock(base, fuzzy, pageSize, contextual, ids))
         true
     }.getOrElse {
         Timber.w(it, "wanxiang: applySettings failed")

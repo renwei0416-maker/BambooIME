@@ -59,6 +59,23 @@ object ResourceUrls {
             null
         }
 
+    // ---- IDS reverse data（部件反查数据，约 26 MB） ----
+    /**
+     * 部件反查（librime-ids-reverse）的数据包。插件本身已经编进 `librime_jni.so`，
+     * 只差这份 mmap 数据；不随 APK 发，用户按需下载（GitHub / CNB 双源）。
+     */
+    const val IDS_DATA_FILE_NAME = "ids_data.bin"
+    const val IDS_DATA_SIZE = 26_581_834L
+    const val IDS_DATA_SHA256 =
+        "65c2dd853110664b1f9293185e678280bf496d954a3cc5d2c5884e091cf26a3d"
+    const val IDS_DATA_GH_RELEASE_BASE =
+        "https://github.com/renwei0416-maker/BambooIME/releases/download/ids-data-v1"
+    const val IDS_DATA_CNB_RELEASE_BASE =
+        "https://cnb.cool/renwei.co/BambooIME/-/releases/download/ids-data-v1"
+
+    fun buildIdsDataUrl(cnb: Boolean): String =
+        (if (cnb) IDS_DATA_CNB_RELEASE_BASE else IDS_DATA_GH_RELEASE_BASE) + "/" + IDS_DATA_FILE_NAME
+
     // ---- GitHub Release API URLs ----
     private const val RELEASE_API_K2FSA_SHERPA_ONNX =
         "https://api.github.com/repos/k2-fsa/sherpa-onnx/releases/tags"

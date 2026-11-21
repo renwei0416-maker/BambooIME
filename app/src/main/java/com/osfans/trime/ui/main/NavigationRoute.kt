@@ -29,6 +29,7 @@ import com.osfans.trime.ui.main.settings.KeyboardSettingsFragment
 import com.osfans.trime.ui.main.settings.OcrSettingsFragment
 import com.osfans.trime.ui.main.settings.ShotSettingsFragment
 import com.osfans.trime.ui.main.settings.PackageListFragment
+import com.osfans.trime.ui.main.settings.IdsReverseFragment
 import com.osfans.trime.ui.main.settings.PanelQuickFragment
 import com.osfans.trime.ui.main.settings.ProfileSettingsFragment
 import com.osfans.trime.ui.main.settings.VoiceInputSettingsFragment
@@ -98,6 +99,9 @@ sealed class NavigationRoute : Parcelable {
 
     @Serializable
     data object PanelQuick : NavigationRoute()
+
+@Serializable
+data object IdsReverse : NavigationRoute()
 
     @Serializable
     data object Wanxiang : NavigationRoute()
@@ -223,6 +227,10 @@ sealed class NavigationRoute : Parcelable {
             }
             fragment<PanelQuickFragment, PanelQuick> {
                 label = "其它扩展功能设置"
+            }
+
+            fragment<IdsReverseFragment, IdsReverse> {
+                label = "部件反查"
             }
 
             fragment<WanxiangFragment, Wanxiang> {

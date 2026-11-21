@@ -13,6 +13,9 @@ import com.osfans.trime.R
 import com.osfans.trime.actions.bamboo.BambooPrefs
 import com.osfans.trime.actions.glossary.GlossaryPrefs
 import com.osfans.trime.actions.wanxiang.WanxiangPrefs
+import com.osfans.trime.ui.main.NavigationRoute
+import com.osfans.trime.util.navigateWithAnim
+import androidx.navigation.fragment.findNavController
 import com.osfans.trime.ui.common.BambooClick
 import com.osfans.trime.data.prefs.MemoryPrefs
 import com.osfans.trime.util.memory.IdleReclaimer
@@ -129,7 +132,26 @@ class PanelQuickFragment : PaddingPreferenceFragment() {
         )
     
         buildMemorySection(screen)
+        buildIdsEntry(screen)
 }
+
+    /** 部件反查（IDS）：数据下载与挂接在子页面里做，这里只放入口。 */
+    private fun buildIdsEntry(screen: PreferenceScreen) {
+        screen.addBambooCategory("扩展模块", "按部件查字、按部件反查读音；需要单独下载 25 MB 数据") {
+            addPreference(
+                BambooClick(requireContext()).apply {
+                    key = "ids_reverse_entry"
+                    title = "部件反查（IDS）"
+                    summary = "打 I木口 查「木+口」的字；打 O 前缀可拼音与部件混着打"
+                    isIconSpaceReserved = false
+                    setOnPreferenceClickListener {
+                        findNavController().navigateWithAnim(NavigationRoute.IdsReverse)
+                        true
+                    }
+                },
+            )
+        }
+    }
 
     /** 内存占用：空闲后释放语音/手写/识图三个模型。 */
     private fun buildMemorySection(screen: PreferenceScreen) {
