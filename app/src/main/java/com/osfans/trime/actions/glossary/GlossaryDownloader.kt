@@ -111,12 +111,14 @@ object GlossaryDownloader {
         onAttempt: (label: String) -> Unit,
     ): String? {
         var last: String? = null
+        // 自定义地址不按语言校验大小（用户填的包可能是任何语言）
+        val expect = if (customUrl.isNotBlank()) 0L else GlossaryPrefs.expectedSizeFor(lang)
         for (candidate in GlossaryMirror.orderedCandidates(lang, customUrl)) {
             onAttempt(candidate.label)
             val err = withContext(Dispatchers.IO) {
                 download(
                     url = candidate.url,
-                    expectSize = GlossaryPrefs.expectedSizeFor(lang),
+                    expectSize = expect,
                     onProgress = onProgress,
                 )
             }

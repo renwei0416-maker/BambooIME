@@ -156,13 +156,28 @@ object GlossaryPrefs {
         get() = p().getBoolean("show_cl", true)
         set(v) = p().edit().putBoolean("show_cl", v).apply()
 
-    /** 要下载哪一份外文词库：日语（内置只有英语，所以下载项只给日语）或自定义地址。 */
+    /** 要下载哪一份外文词库：日语、英语（内置一份，也允许重新下载覆盖）或自定义地址。 */
     const val PACK_JA = "ja"
+    const val PACK_EN = "en"
     const val PACK_CUSTOM = "custom"
 
     var downloadPack: String
         get() = p().getString("download_pack", PACK_JA) ?: PACK_JA
-        set(v) = p().edit().putString("download_pack", if (v == PACK_CUSTOM) PACK_CUSTOM else PACK_JA).apply()
+        set(v) = p().edit().putString(
+            "download_pack",
+            when (v) {
+                PACK_EN -> PACK_EN
+                PACK_CUSTOM -> PACK_CUSTOM
+                else -> PACK_JA
+            },
+        ).apply()
+
+    /** 下拉选项对应的语言；自定义地址返回 null（语言由装进来的包自己决定）。 */
+    fun langForPack(pack: String): String? = when (pack) {
+        PACK_JA -> LANG_JA
+        PACK_EN -> LANG_EN
+        else -> null
+    }
 
     /** 自定义地址（镜像）里的那个 URL；留空表示还没填。 */
     var customDownloadUrl: String
@@ -179,7 +194,7 @@ object GlossaryPrefs {
         get() = if (downloadPack == PACK_CUSTOM) {
             customDownloadUrl.ifBlank { DEFAULT_DOWNLOAD_URL_JA }
         } else {
-            DEFAULT_DOWNLOAD_URL_JA
+            defaultDownloadUrlFor(langForPack(downloadPack) ?: LANG_JA)
         }
         set(v) {
             customDownloadUrl = v

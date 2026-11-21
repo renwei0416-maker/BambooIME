@@ -306,53 +306,53 @@ class GlossaryFragment : PaddingPreferenceFragment() {
                     }
                     files.forEach { f ->
                         val packLang = runCatching { GlossaryStore.langTagOf(f) }.getOrNull()
-                        val builtin = GlossaryStore.isBuiltin(f)
                         val tag = when {
-                            builtin -> "内置 · 不可删除"
                             packLang == null -> "无法识别"
                             packLang == currentLangCode -> "当前语言 · 已加载"
                             else -> "其它语言 · 切过去才加载"
                         }
                         val head = "${"%.1f".format(f.length() / 1024.0 / 1024.0)} MB · $tag"
-                        if (builtin) {
-                            addRow(f.name, head)
-                        } else {
-                            addRow(f.name, "$head · 点击可删除") {
-                                AlertDialog.Builder(requireContext())
-                                    .setTitle("删除语言包")
-                                    .setMessage("删除 ${f.name} 后，这一份词库的${langName}就不显示了。")
-                                    .setNegativeButton(R.string.cancel, null)
-                                    .setPositiveButton("删除") { _, _ ->
-                                        GlossaryStore.delete(f)
-                                        rebuildScreen()
-                                    }.show()
-                            }
+                        addRow(f.name, "$head · 点击可删除") {
+                            AlertDialog.Builder(requireContext())
+                                .setTitle("删除语言包")
+                                .setMessage("删除 ${f.name} 后，这一份词库的译词就不显示了。")
+                                .setNegativeButton(R.string.cancel, null)
+                                .setPositiveButton("删除") { _, _ ->
+                                    GlossaryStore.delete(f)
+                                    rebuildScreen()
+                                }.show()
                         }
                     }
                     addChoice(
                         title = "下载外文词包",
-                        subtitle =
-                            if (GlossaryPrefs.downloadPack == GlossaryPrefs.PACK_CUSTOM) {
+                        subtitle = when (GlossaryPrefs.downloadPack) {
+                            GlossaryPrefs.PACK_CUSTOM ->
                                 "自定义地址（镜像）：${GlossaryPrefs.downloadUrl}"
-                            } else {
-                                "日语词库 · 约 16 MB（英语已内置，不用下载）"
-                            },
-                        entries = arrayOf("日语词库", "自定义地址（镜像）"),
-                        currentIndex =
-                            if (GlossaryPrefs.downloadPack == GlossaryPrefs.PACK_CUSTOM) 1 else 0,
+                            GlossaryPrefs.PACK_EN -> "英语词库 · 8.1 MB"
+                            else -> "日语词库 · 约 16 MB"
+                        },
+                        entries = arrayOf("日语词库", "英语词库", "自定义地址（镜像）"),
+                        currentIndex = when (GlossaryPrefs.downloadPack) {
+                            GlossaryPrefs.PACK_CUSTOM -> 2
+                            GlossaryPrefs.PACK_EN -> 1
+                            else -> 0
+                        },
                         defaultIndex = 0,
                         resetters = resetters,
                     ) { idx ->
-                        GlossaryPrefs.downloadPack =
-                            if (idx == 1) GlossaryPrefs.PACK_CUSTOM else GlossaryPrefs.PACK_JA
+                        GlossaryPrefs.downloadPack = when (idx) {
+                            2 -> GlossaryPrefs.PACK_CUSTOM
+                            1 -> GlossaryPrefs.PACK_EN
+                            else -> GlossaryPrefs.PACK_JA
+                        }
                         rebuildScreen()
                     }
                     addRow(
                         "下载",
-                        if (GlossaryPrefs.downloadPack == GlossaryPrefs.PACK_CUSTOM) {
-                            "从自定义地址下载"
-                        } else {
-                            "下载日语词库"
+                        when (GlossaryPrefs.downloadPack) {
+                            GlossaryPrefs.PACK_CUSTOM -> "从自定义地址下载"
+                            GlossaryPrefs.PACK_EN -> "下载英语词库"
+                            else -> "下载日语词库"
                         },
                     ) {
                         confirmDownload()
@@ -401,8 +401,9 @@ class GlossaryFragment : PaddingPreferenceFragment() {
         val message = if (custom.isNotBlank()) {
             "将从下面的地址下载词库：\n\n$custom"
         } else {
+            val size = if (GlossaryPrefs.downloadPack == GlossaryPrefs.PACK_EN) "8.1 MB" else "16 MB"
             "会自动选最快的源下载（GitHub / CNB 国内镜像），失败自动换另一个。\n\n" +
-                "日语词库约 16 MB，请留着 Wi-Fi。"
+                "词库约 $size，请留着 Wi-Fi。"
         }
         AlertDialog.Builder(requireContext())
             .setTitle("下载语言包")
@@ -429,7 +430,8 @@ class GlossaryFragment : PaddingPreferenceFragment() {
         lifecycleScope.launch {
             val err =
                 GlossaryDownloader.downloadAuto(
-                    lang = GlossaryPrefs.lang,
+                    // 下哪个包只由「下载外文词包」的下拉决定，与「学习语言」无关
+                    lang = GlossaryPrefs.langForPack(GlossaryPrefs.downloadPack) ?: GlossaryPrefs.lang,
                     customUrl = custom,
                     onProgress = { done, total ->
                         val text = if (total > 0) "${done * 100 / total}%" else "${done / 1024} KB"
@@ -440,25 +442,14 @@ class GlossaryFragment : PaddingPreferenceFragment() {
             dialog.dismiss()
             if (!isAdded) return@launch
             if (err == null) {
-                // 装完只做一件正事：重新加载。语言由用户自己在「学习语言」里选。
+                // 装完只做一件正事：重新加载并刷新列表。语言由用户自己在「学习语言」里选。
                 GlossaryStore.reload()
-                val installed = GlossaryStore.installedFiles()
-                val want = GlossaryPrefs.langCodeOf(GlossaryPrefs.lang)
-                if (installed.none { GlossaryStore.langOf(it) == want }) {
-                    // 装成功了但当前语言还是没包（说明装的不是这门语言）——说清楚，别让人以为坏了
-                    AlertDialog.Builder(requireContext())
-                        .setTitle("已安装，但不是当前语言")
-                        .setMessage(
-                            "当前学习语言还没有词包。\n\n" +
-                                "目录里现有：\n" +
-                                installed.joinToString("\n") { it.name } +
-                                "\n\n到「语言」里把学习语言切到对应语言即可。",
-                        )
-                        .setPositiveButton(android.R.string.ok, null)
-                        .show()
-                } else {
-                    Toast.makeText(requireContext(), "语言包已安装并已加载", Toast.LENGTH_SHORT).show()
-                }
+                val newest = GlossaryStore.installedFiles().maxByOrNull { it.lastModified() }
+                Toast.makeText(
+                    requireContext(),
+                    "已安装：${newest?.name ?: "语言包"}",
+                    Toast.LENGTH_SHORT,
+                ).show()
                 rebuildScreen()
             } else {
                 AlertDialog.Builder(requireContext())
