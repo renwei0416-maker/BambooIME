@@ -1890,7 +1890,9 @@ class HandwritingWindow : BoardWindow.BarBoardWindow() {
         // 只有真的要显示手写画布时才加载模型；「只开数字/符号面板」那一次跳过。
         // 这里按状态判断（面板是否已开、是否登记了 panel-only），不再依赖调用次数计数——
         // 顶栏改版后 attach 链路变长，计数很容易被吃错，表现为进手写板一直「模型未就绪」。
-        if (panelOpen || panelOnlyPage != -1) {
+        // 只有「从数字/符号键直接开面板」（panel-only）才跳过手写模型；
+        // 正常进手写板一律无条件加载，不再看 panelOpen / 残留计数。
+        if (panelOnlyPage != -1 && pendingPanelOnlyBuilds > 0) {
             BambooLog.hw.d("model", "skip load on attach: panelOpen=$panelOpen page=$panelOnlyPage")
         } else {
             pendingPanelOnlyBuilds = 0

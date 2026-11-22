@@ -176,8 +176,21 @@ class KeyboardWindow :
 
     /** 重新按当前 id 建一次键盘（改了影响高度的偏好后调用）。 */
     fun reloadCurrentKeyboard() {
-        runCatching { attachKeyboard(evalKeyboard(currentKeyboardId)) }
+        // 必须先清掉 cachedKeyboards 里的旧对象再 attach：attachKeyboard 会复用 currentKeyboard，
+        // 复用旧的 heightScale 就白改了，表现为「点了开关要切一次键盘才生效」。
+        runCatching { refreshKeyboards(false) }
             .onFailure { Timber.w(it, "reloadCurrentKeyboard failed") }
+    }
+
+    /**
+     * 重发一次输入区高度。
+     * [useUnscaled] = true 用未缩放原高：面板（手写板 / 拍照识字 / 功能面板）盖满输入区，
+     * 高度直接取自这里，若沿用「隐藏数字行」缩放后的值，面板会跟着变矮。
+     */
+    internal fun emitHeight(useUnscaled: Boolean) {
+        val kb = currentKeyboard ?: return
+        val base = if (useUnscaled) kb.keyboardHeightUnscaled else kb.keyboardHeight
+        _currentKeyboardHeight.tryEmit(base + (currentKeyboardView?.bottomShadowExtent ?: 0))
     }
 
     private fun attachKeyboard(target: String) {

@@ -222,13 +222,17 @@ class Keyboard(
         }
     }
 
-    val keyboardHeight: Int =
+    /** 未按行数比缩放的总高：面板态（手写板 / 拍照识字 / 功能面板）用它，避免被「隐藏数字行」带矮。 */
+    val keyboardHeightUnscaled: Int =
         (
             intArrayOf(
                 selfConfig?.let { getKeyboardHeightFromKeyboardConfig(it) } ?: 0,
                 getKeyboardHeightFromTheme(theme),
             ).firstOrNull { it > 0 } ?: 0
-        ).let { if (heightScale == 1f) it else (it * heightScale).toInt() }
+        )
+
+    val keyboardHeight: Int =
+        if (heightScale == 1f) keyboardHeightUnscaled else (keyboardHeightUnscaled * heightScale).toInt()
 
     private val expandKeypressArea: Boolean by AppPrefs.defaultInstance().keyboard.expandKeypressArea
 

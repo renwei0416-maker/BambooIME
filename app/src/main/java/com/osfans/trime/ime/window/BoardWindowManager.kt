@@ -112,6 +112,8 @@ class BoardWindowManager {
         window.onAttached()
         currentWindow = window
         broadcaster.onWindowAttached(window)
+        // 面板态用未缩放原高、键盘态用缩放后高度：「隐藏数字行」只让键盘变矮，不连带手写板/OCR。
+        KeyboardWindow.instance?.emitHeight(window !is KeyboardWindow)
     }
 
     val view: FrameLayout by lazy { context.frameLayout(R.id.input_window) }
