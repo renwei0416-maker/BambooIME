@@ -44,7 +44,7 @@ class BambooAppearanceFragment : PaddingPreferenceFragment() {
         val restorers = mutableListOf<() -> Unit>()
 
         screen.addRestoreAll(restorers)
-        screen.addCategory("外观", "设置界面按键盘主题配色")
+        screen.addCategory("设置页外观", "决定设置页用固定的浅/深配色；强调色可以单独跟随键盘主题")
 
         val followSwitch =
             BambooSwitch(context).apply {
@@ -53,16 +53,16 @@ class BambooAppearanceFragment : PaddingPreferenceFragment() {
                 isChecked = AppearancePrefs.followTheme
                 summary =
                     if (AppearancePrefs.followTheme) {
-                        "开（默认）＝底色、文字、强调色都从当前主题取；换主题后设置界面跟着变"
+                        "开＝强调色也一起跟随键盘主题（底色与文字始终固定）"
                     } else {
-                        "关＝用下面指定的深浅色，与主题无关"
+                        "关（默认）＝固定浅/深配色，只有强调色从键盘主题取"
                     }
                 isIconSpaceReserved = false
                 onRestore = {
-                    AppearancePrefs.followTheme = true
+                    AppearancePrefs.followTheme = false
                     refresh()
                 }
-                restorers += { AppearancePrefs.followTheme = true }
+                restorers += { AppearancePrefs.followTheme = false }
                 setOnPreferenceChangeListener { _, newValue ->
                     AppearancePrefs.followTheme = newValue as Boolean
                     refresh()
@@ -74,17 +74,17 @@ class BambooAppearanceFragment : PaddingPreferenceFragment() {
         val modeRow =
             BambooClick(context).apply {
                 key = "appearance_force_mode"
-                title = "深浅色"
+                title = "配色"
                 summary = describeMode()
+                isVisible = !AppearancePrefs.followTheme
                 isIconSpaceReserved = false
-                isEnabled = !AppearancePrefs.followTheme
                 onRestore = {
-                    AppearancePrefs.forceMode = AppearancePrefs.MODE_THEME
+                    AppearancePrefs.forceMode = AppearancePrefs.MODE_DARK
                     refresh()
                 }
-                restorers += { AppearancePrefs.forceMode = AppearancePrefs.MODE_THEME }
+                restorers += { AppearancePrefs.forceMode = AppearancePrefs.MODE_DARK }
                 setOnPreferenceClickListener {
-                    if (!AppearancePrefs.followTheme) chooseMode()
+                    chooseMode()
                     true
                 }
             }
@@ -141,27 +141,23 @@ class BambooAppearanceFragment : PaddingPreferenceFragment() {
     }
 
     private fun describeMode(): String =
-        if (AppearancePrefs.followTheme) {
-            "跟随主题配色时不可选"
-        } else {
-            when (AppearancePrefs.forceMode) {
-                AppearancePrefs.MODE_LIGHT -> "强制浅色"
-                AppearancePrefs.MODE_DARK -> "强制深色"
-                else -> "跟随系统深色模式"
-            }
+        when (AppearancePrefs.forceMode) {
+            AppearancePrefs.MODE_LIGHT -> "浅色"
+            AppearancePrefs.MODE_DARK -> "深色（默认）"
+            else -> "跟随系统"
         }
 
     private fun chooseMode() {
         val modes =
             arrayOf(
-                AppearancePrefs.MODE_THEME to "跟随系统深色模式",
+                AppearancePrefs.MODE_THEME to "跟随系统",
                 AppearancePrefs.MODE_LIGHT to "浅色",
                 AppearancePrefs.MODE_DARK to "深色",
             )
         val labels = modes.map { it.second }.toTypedArray()
         val checked = modes.indexOfFirst { it.first == AppearancePrefs.forceMode }.coerceAtLeast(0)
         AlertDialog.Builder(requireContext())
-            .setTitle("深浅色")
+            .setTitle("配色")
             .setSingleChoiceItems(labels, checked) { dialog: DialogInterface, which: Int ->
                 AppearancePrefs.forceMode = modes[which].first
                 dialog.dismiss()

@@ -175,10 +175,10 @@ val ACCENT_BAR_BG: Int = 0xFF3C2320.toInt()
 
 /** 左侧竖条上的米色文字。 */
 @ColorInt
-val ACCENT_BAR_TEXT: Int = 0xFFF2EFE6.toInt()
+val ACCENT_BAR_TEXT: Int = 0xFFFFFFFF.toInt()
 
 @ColorInt
-val ACCENT_BAR_SUMMARY: Int = 0xFFD9BDB6.toInt()
+val ACCENT_BAR_SUMMARY: Int = 0xE6FFFFFF.toInt()
 
 /**
  * 「行不动、标题后面挂一个小胶囊」用的 span。
@@ -307,6 +307,8 @@ private class BarBackground(
 
 /** C：淡红底 + 左侧竖条，文字改米色。 */
 open class AccentBarRow(context: Context) : BambooClick(context) {
+    override val selfStyled: Boolean get() = true
+
     override fun onBindViewHolder(holder: PreferenceViewHolder) {
         super.onBindViewHolder(holder)
         runCatching {
@@ -337,6 +339,8 @@ open class AccentBarRow(context: Context) : BambooClick(context) {
 
 /** 标题带红的行（保留给需要「只红字」的场合）。 */
 open class AccentClick(context: Context) : BambooClick(context) {
+    override val selfStyled: Boolean get() = true
+
     override fun onBindViewHolder(holder: PreferenceViewHolder) {
         super.onBindViewHolder(holder)
         runCatching {

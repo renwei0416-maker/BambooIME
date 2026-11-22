@@ -211,7 +211,7 @@ data object IdsReverse : NavigationRoute()
                 label = "截图"
             }
             fragment<BambooAppearanceFragment, BambooAppearance> {
-                label = "外观"
+                label = "设置页外观"
             }
             fragment<HardwareKeyboardFragment, HardwareKeyboard> {
                 label = "外接键盘"

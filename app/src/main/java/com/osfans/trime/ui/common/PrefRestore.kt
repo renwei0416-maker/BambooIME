@@ -138,6 +138,9 @@ open class BambooClick
     ) : Preference(context, attrs) {
         var onRestore: (() -> Unit)? = null
 
+        /** 该行自己负责配色（例如暗红强调行）；统一样式应跳过它，别把颜色刷掉。 */
+        open val selfStyled: Boolean get() = false
+
         override fun onBindViewHolder(holder: PreferenceViewHolder) {
             super.onBindViewHolder(holder)
             holder.ensureRestoreButton(onRestore)

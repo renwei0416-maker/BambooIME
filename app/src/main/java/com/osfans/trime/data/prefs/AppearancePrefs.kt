@@ -16,6 +16,7 @@ object AppearancePrefs {
     private const val FILE = "bamboo_appearance"
     private const val K_FOLLOW_THEME = "follow_theme"
     private const val K_FORCE_MODE = "force_mode"
+    private const val K_TOKENS_MIGRATED = "tokens_v1_migrated"
 
     /** 跟随当前键盘主题取色。 */
     const val MODE_THEME = 0
@@ -46,4 +47,21 @@ object AppearancePrefs {
     var forceMode: Int
         get() = p().getInt(K_FORCE_MODE, MODE_THEME).coerceIn(MODE_THEME, MODE_DARK)
         set(value) = p().edit().putInt(K_FORCE_MODE, value.coerceIn(MODE_THEME, MODE_DARK)).apply()
+
+    /** 新版设置页（固定配色 + 默认深色）的一次性迁移是否已执行。 */
+    var tokensMigrated: Boolean
+        get() = p().getBoolean(K_TOKENS_MIGRATED, false)
+        private set(value) = p().edit().putBoolean(K_TOKENS_MIGRATED, value).apply()
+
+    /**
+     * 3.9.x 迁移：老版本「跟随键盘主题配色」出厂就是开着的，而新版设置页默认不跟随主题
+     * （只让强调色跟随）。如果不动它，老用户升级后看到的仍是"跟随主题"的效果，却找不到原因。
+     * 这里只在第一次进入新版设置界面时改一次，之后完全尊重用户的选择。
+     */
+    fun migrateTokensOnce() {
+        if (tokensMigrated) return
+        val editor = p().edit().putBoolean(K_FOLLOW_THEME, false)
+        if (forceMode == MODE_THEME) editor.putInt(K_FORCE_MODE, MODE_DARK)
+        editor.putBoolean(K_TOKENS_MIGRATED, true).apply()
+    }
 }

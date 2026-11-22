@@ -151,7 +151,7 @@ class MainFragment : PaddingPreferenceFragment() {
                 addPreference("语音发AI", "按住空格说完话，识别结果直接交给当前 AI 模式处理", R.drawable.ic_baseline_mic_24) {
                     findNavController().navigateWithAnim(NavigationRoute.VoiceAi)
                 }
-                addPreference("外观", "设置界面是否跟随键盘主题配色、深浅色与取色自检", R.drawable.ic_baseline_color_lens_24) {
+                addPreference("设置页外观", "固定浅/深配色，强调色可跟随键盘主题；含取色自检", R.drawable.ic_baseline_color_lens_24) {
                     findNavController().navigateWithAnim(NavigationRoute.BambooAppearance)
                 }
                 addPreference(
