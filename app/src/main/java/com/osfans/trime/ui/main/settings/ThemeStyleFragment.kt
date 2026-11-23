@@ -2157,18 +2157,54 @@ class ThemeStyleFragment : Fragment() {
         // popup 与 long_click 是两套机制：长按有 long_click 就执行动作，
         // 没有才会弹出这个列表。列表项是纯字符串，命中 preset_keys 名字才等于「命令」。
         val popupItems = popupItemsOf(path, tk)
-        content.addView(sectionTitle("长按弹窗"))
+        val popupOverridden = draft.rawField(path, "popup") != null
+        content.addView(
+            LinearLayout(requireContext()).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                addView(
+                    sectionTitle("长按弹窗"),
+                    LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
+                )
+                addView(
+                    TextView(requireContext()).apply {
+                        text = "↺"
+                        setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+                        setTextColor(
+                            if (popupOverridden) subColor else (subColor and 0x00FFFFFF) or 0x66000000,
+                        )
+                        setPadding(0, dp(12), dp(16), dp(2))
+                        if (popupOverridden) {
+                            setOnClickListener {
+                                pushUndo()
+                                draft.removeField(path, "popup")
+                                onChange()
+                                renderTab(Tabs.ACTIONS, keepScroll = false)
+                            }
+                        }
+                    },
+                )
+            },
+        )
         content.addView(
             hint(
                 "长按这个键弹出的候选列表，共 ${popupItems.size} 项。" +
-                    "每项是一条字符串：普通文字，或 preset_keys 里的键名（如 BaiduSearch、ZiTools）。",
+                    "每项是一条字符串：普通文字，或 preset_keys 里的键名（如 BaiduSearch、ZiTools）。" +
+                    "行尾 ↺ 删掉这一项；标题右侧 ↺ 把整套还原成主题默认。",
             ),
         )
         popupItems.forEachIndexed { index, item ->
             content.addView(
-                plainRow("${index + 1}. ${popupItemLabel(item)}　·　${popupItemTypeName(item)}") {
-                    showPopupItemEditor(path, index, item)
-                },
+                popupRow(
+                    title = "${index + 1}. ${popupItemLabel(item)}　·　${popupItemTypeName(item)}",
+                    canRestore = true,
+                    onClick = { showPopupItemEditor(path, index, item) },
+                    onRestore = {
+                        val next = popupItems.toMutableList()
+                        next.removeAt(index)
+                        writePopupItems(path, next)
+                    },
+                ),
             )
         }
         content.addView(plainRow("+ 添加一项") { showPopupItemEditor(path, popupItems.size, "") })
@@ -2715,6 +2751,44 @@ class ThemeStyleFragment : Fragment() {
                 setTextColor(0xFFE0857A.toInt())
             },
             LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
+        )
+        line.setOnClickListener { onClick() }
+        return LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(line, rowParams())
+            addView(divider())
+        }
+    }
+
+    /** popup 列表行：左边点进去改，右边 ↺ 删掉这一项。 */
+    private fun popupRow(
+        title: String,
+        canRestore: Boolean,
+        onClick: () -> Unit,
+        onRestore: () -> Unit,
+    ): View {
+        val line = LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(16), 0, dp(16), 0)
+            minimumHeight = dp(46)
+        }
+        line.addView(
+            TextView(requireContext()).apply {
+                text = title
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+                setTextColor(0xFFE0857A.toInt())
+            },
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
+        )
+        line.addView(
+            TextView(requireContext()).apply {
+                text = "↺"
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+                setTextColor(if (canRestore) subColor else (subColor and 0x00FFFFFF) or 0x66000000)
+                setPadding(dp(12), 0, 0, 0)
+                if (canRestore) setOnClickListener { onRestore() }
+            },
         )
         line.setOnClickListener { onClick() }
         return LinearLayout(requireContext()).apply {
