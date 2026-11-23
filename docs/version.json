@@ -1,0 +1,24 @@
+{
+  "versionName": "3.9.1",
+  "versionCode": 20261122,
+  "publishedAt": "2026-11-22",
+  "notes": "部件反查（IDS）、隐藏数字行、语音多模型（Paraformer / SenseVoice / X-ASR）与标点模型、截图常驻球与菜单浮球、设置页新视觉。",
+  "apk": {
+    "name": "com.bambooime-3.9.1-arm64-v8a-release.apk",
+    "size": 88829474,
+    "sha256": "887afb2c1a72b69f52616b00509e7cd4cdc5de9c8cfe72134b2a3f725ee92b32",
+    "urls": [
+      "https://cnb.cool/renwei.co/BambooIME/-/releases/download/v3.9.1/com.bambooime-3.9.1-arm64-v8a-release.apk",
+      "https://github.com/renwei0416-maker/BambooIME/releases/download/v3.9.1/com.bambooime-3.9.1-arm64-v8a-release.apk"
+    ]
+  },
+  "themes": {
+    "name": "themes-3.6.0.zip",
+    "size": 14975917,
+    "sha256": "c13a1bcc08ef6bb008bc812692cdd82b71e4a7858f6bb85d935f9f71852a3fed",
+    "urls": [
+      "https://cnb.cool/renwei.co/BambooIME/-/releases/download/v3.9.1/themes-3.6.0.zip",
+      "https://github.com/renwei0416-maker/BambooIME/releases/download/v3.9.1/themes-3.6.0.zip"
+    ]
+  }
+}
