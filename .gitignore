@@ -486,3 +486,6 @@ app/onnxruntime-android-*.zip
 # kotlin
 .kotlin
 
+
+# rust build output
+app/src/main/rust/target/
