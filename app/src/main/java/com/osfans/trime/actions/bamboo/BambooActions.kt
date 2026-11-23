@@ -536,6 +536,7 @@ object BambooActions {
 
             BambooTokens.ABOUT -> {
                 val ctx = appContext
+                if (ctx == null) toast("打不开设置页：拿不到上下文")
                 if (ctx != null) {
                     mainHandler.post {
                         runCatching {

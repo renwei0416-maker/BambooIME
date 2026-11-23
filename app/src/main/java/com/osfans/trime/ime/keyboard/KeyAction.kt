@@ -186,6 +186,9 @@ class KeyAction(
                     shiftLock = preset.shiftLock
                     commit = preset.commit
                     text = preset.text
+                    // 兼容旧主题：把苍竹动作名（BambooXxx）错写进 send 时，当作文本动作处理。
+                    // 否则 code 被置 0、text 又是空的，按键点了没有任何反应。
+                    if (text.isEmpty() && preset.send.startsWith("Bamboo")) text = preset.send
                     if (preset.actions.isNotEmpty()) {
                         text = preset.actions.joinToString("") { "{$it}" }
                     }

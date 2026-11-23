@@ -73,6 +73,8 @@ object AppUtils {
     fun launchMainToPackageList(context: Context) =
         launchMainToDest(context, NavigationRoute.PackageList)
 
+    fun launchMainToAbout(context: Context) = launchMainToDest(context, NavigationRoute.About)
+
     fun launchLogActivity(context: Context) {
         context.startActivity<LogActivity>()
     }
