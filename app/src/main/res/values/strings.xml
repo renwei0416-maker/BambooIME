@@ -762,4 +762,6 @@
     <string name="release_bundled_themes_message">This overwrites theme files and lib with the same names; your edits to them will be lost. Themes you created yourself are untouched. Continue?</string>
     <string name="release_bundled_themes_done">Released %1$d files</string>
     <string name="release_bundled_themes_failed">Failed to release</string>
+    <string name="theme_bundled_hint_title">About bundled themes</string>
+    <string name="theme_bundled_hint_summary">The bundled themes can be restored any time with &quot;Release bundled themes&quot; on the Home screen. To keep your own edits, copy the theme first.</string>
 </resources>

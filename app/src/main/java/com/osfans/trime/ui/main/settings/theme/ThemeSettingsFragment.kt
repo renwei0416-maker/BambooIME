@@ -8,6 +8,8 @@ package com.osfans.trime.ui.main.settings.theme
 import android.os.Bundle
 import androidx.lifecycle.lifecycleScope
 import androidx.preference.Preference
+import androidx.preference.PreferenceScreen
+import com.osfans.trime.R
 import com.osfans.trime.data.prefs.PreferenceDelegateFragment
 import com.osfans.trime.data.theme.ThemeManager
 import com.osfans.trime.ui.main.settings.ColorPickerDialog
@@ -33,5 +35,19 @@ class ThemeSettingsFragment : PreferenceDelegateFragment(ThemeManager.prefs) {
             lifecycleScope.launch { ColorPickerDialog.build(lifecycleScope, requireContext()).show() }
             true
         }
+    }
+
+    override fun onPreferenceUiCreated(screen: PreferenceScreen) {
+        super.onPreferenceUiCreated(screen)
+        screen.addPreference(
+            Preference(requireContext()).apply {
+                key = "bundled_theme_hint"
+                isSelectable = false
+                isIconSpaceReserved = false
+                title = getString(R.string.theme_bundled_hint_title)
+                summary = getString(R.string.theme_bundled_hint_summary)
+                order = -1000
+            },
+        )
     }
 }
