@@ -1,4 +1,4 @@
-﻿/*
+/*
  * SPDX-FileCopyrightText: 2015 - 2025 Rime community
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
@@ -75,7 +75,7 @@ android {
         applicationId = "com.bambooime"
         minSdk = 29
         targetSdk = 37
-        versionCode = LocalDate.now(ZoneId.of("Asia/Shanghai")).format(DateTimeFormatter.BASIC_ISO_DATE).toInt()
+        versionCode = LocalDate.now(ZoneId.of("Asia/Shanghai")).format(DateTimeFormatter.BASIC_ISO_DATE).toInt() * 100 + ((project.findProperty("buildVersionCodeSeq") as String?)?.toIntOrNull() ?: 1)
         versionName = "3.9.1"
 
         multiDexEnabled = true

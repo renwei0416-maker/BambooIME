@@ -48,7 +48,7 @@ BaiduSearch        = { label = "百", popup_label = "百", command = "run", opti
   Sync               = { label = "ic@sync", command = "apply", option = "SYNC_USER_DATA" },                -- 同步用户数据
   Restart            = { label = "ic@restart", command = "apply", option = "RESTART_RIME" },               -- 重启 Rime
   Settings           = { label = "ic@cog-outline", send = "SETTINGS" },                                    -- 设置
-  Info               = { label = "ic@information-outline", send = "INFO" },                                -- 关于
+  Info               = { label = "ic@information-outline", send = "BambooAbout" },                                -- 关于
   SchemeList         = { label = "ic@list-box-outline", send = "MENU" },                                   -- 方案列表
   ThemeList          = { label = "ic@palette-swatch-outline", send = "SETTINGS", option = "theme" },       -- 主题列表
   ColorList          = { label = "ic@palette-outline", send = "PROG_RED" },                                -- 配色列表
