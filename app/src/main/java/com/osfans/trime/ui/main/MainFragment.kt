@@ -9,17 +9,26 @@ import android.os.Bundle
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.fragment.app.activityViewModels
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import androidx.preference.PreferenceGroup
 import com.osfans.trime.R
 import com.osfans.trime.actions.wanxiang.WanxiangPrefs
 import com.osfans.trime.data.packaging.SchemaPackStore
+import com.osfans.trime.data.theme.BambooThemeSeed
+import com.osfans.trime.data.theme.ThemeManager
 import com.osfans.trime.ui.common.PaddingPreferenceFragment
+import com.osfans.trime.ui.common.confirmDialog
 import com.osfans.trime.ui.texteditor.FileBrowserActivity
 import com.osfans.trime.util.addCategory
 import com.osfans.trime.util.addAccentChipPreference
 import com.osfans.trime.util.addPreference
 import com.osfans.trime.util.navigateWithAnim
+import com.osfans.trime.util.toast
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import timber.log.Timber
 
 class MainFragment : PaddingPreferenceFragment() {
     private val viewModel: MainViewModel by activityViewModels()
@@ -49,6 +58,38 @@ class MainFragment : PaddingPreferenceFragment() {
     /** 首页入口说明：固定一句话，不随状态变化。 */
     private fun wanxiangSummary(): String =
         "不用自己的方案包、也不懂改 custom 的，直接进「设置向导」配置就好。"
+
+    /**
+     * 「释放内置主题」：把 5 套出厂主题（.lua + lib/<id>/）与内置字体无条件写回主题目录。
+     * 会覆盖同名文件，故先确认；写完后若当前主题就是内置主题则重载它。
+     */
+    private fun releaseBundledThemes() {
+        val appContext = requireContext().applicationContext
+        requireContext().confirmDialog(
+            R.string.release_bundled_themes_title,
+            R.string.release_bundled_themes_message,
+        ) {
+            lifecycleScope.launch {
+                val count = withContext(Dispatchers.IO) {
+                    runCatching { BambooThemeSeed.releaseAll(appContext) }.getOrDefault(-1)
+                }
+                if (count < 0) {
+                    requireContext().toast(R.string.release_bundled_themes_failed)
+                    return@launch
+                }
+                val current = runCatching { ThemeManager.prefs.selectedTheme.getValue() }.getOrNull()
+                if (current != null && current in BambooThemeSeed.BUNDLED_THEME_IDS) {
+                    withContext(Dispatchers.IO) {
+                        runCatching { ThemeManager.selectTheme(current, true) }
+                            .onFailure { Timber.w(it, "releaseBundledThemes: 重载主题失败") }
+                    }
+                }
+                requireContext().toast(
+                    requireContext().getString(R.string.release_bundled_themes_done, count),
+                )
+            }
+        }
+    }
 
     override fun onCreatePreferences(
         savedInstanceState: Bundle?,
@@ -84,6 +125,13 @@ class MainFragment : PaddingPreferenceFragment() {
                 R.drawable.ic_baseline_refresh_reversed_24,
                 NavigationRoute.Update,
             )
+            addPreference(
+                getString(R.string.release_bundled_themes_title),
+                getString(R.string.release_bundled_themes_summary),
+                R.drawable.ic_baseline_refresh_reversed_24,
+            ) {
+                releaseBundledThemes()
+            }
             addCategory("") {
                 isIconSpaceReserved = false
                 addDestinationPreference(

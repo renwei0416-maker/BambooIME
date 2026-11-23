@@ -757,4 +757,9 @@
     <string name="update_theme_done">Theme pack updated (%d files)</string>
     <string name="update_check_failed">Check failed: %s</string>
     <string name="update_need_permission">Please allow installing unknown apps first</string>
+    <string name="release_bundled_themes_title">Release bundled themes</string>
+    <string name="release_bundled_themes_summary">Rewrite the 5 bundled themes into the theme folder (overwrites same-name files)</string>
+    <string name="release_bundled_themes_message">This overwrites theme files and lib with the same names; your edits to them will be lost. Themes you created yourself are untouched. Continue?</string>
+    <string name="release_bundled_themes_done">Released %1$d files</string>
+    <string name="release_bundled_themes_failed">Failed to release</string>
 </resources>
