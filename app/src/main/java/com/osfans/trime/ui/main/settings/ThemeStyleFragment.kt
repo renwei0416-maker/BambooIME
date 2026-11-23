@@ -832,6 +832,8 @@ class ThemeStyleFragment : Fragment() {
             else -> renderAdvanced()
         }
         scroll.scrollTo(0, savedScroll)
+        // 重排后子视图尚未测量，直接 scrollTo 可能被夹回 0；布局完成后再补一次
+        scroll.post { scroll.scrollTo(0, savedScroll) }
     }
 
     // ---------------------------------------------------------------- 配色
@@ -2179,7 +2181,7 @@ class ThemeStyleFragment : Fragment() {
                                 pushUndo()
                                 draft.removeField(path, "popup")
                                 onChange()
-                                renderTab(Tabs.ACTIONS, keepScroll = false)
+                                renderTab(Tabs.ACTIONS)
                             }
                         }
                     },
@@ -2237,7 +2239,7 @@ class ThemeStyleFragment : Fragment() {
                     draft.setField(path, field, JsonPrimitive(picked))
                 }
                 onChange()
-                renderTab(Tabs.ACTIONS, keepScroll = false)
+                renderTab(Tabs.ACTIONS)
             }
             .setNeutralButton("手填…") { _, _ ->
                 val input = EditText(requireContext()).apply {
@@ -2258,7 +2260,7 @@ class ThemeStyleFragment : Fragment() {
                             draft.setField(path, field, JsonPrimitive(text))
                         }
                         onChange()
-                        renderTab(Tabs.ACTIONS, keepScroll = false)
+                        renderTab(Tabs.ACTIONS)
                     }
                     .setNegativeButton("取消", null)
                     .show()
@@ -2309,7 +2311,7 @@ class ThemeStyleFragment : Fragment() {
             draft.setField(path, "popup", JsonArray(items.map { JsonPrimitive(it) }))
         }
         onChange()
-        renderTab(Tabs.ACTIONS, keepScroll = false)
+        renderTab(Tabs.ACTIONS)
     }
 
     /** 编辑一条 popup：手填文字，或直接选 preset_keys 里的键名。 */
