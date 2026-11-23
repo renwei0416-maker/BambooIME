@@ -756,8 +756,8 @@
     <string name="release_bundled_themes_title">释放内置主题</string>
     <string name="release_bundled_themes_summary">把 App 自带的 5 套主题重新写入主题目录（会覆盖同名文件）</string>
     <string name="release_bundled_themes_message">会覆盖主题目录里同名的主题文件与 lib，你对它们的改动将丢失。自己新建的主题不受影响。确定继续？</string>
-    <string name="release_bundled_themes_done">已释放 %1$d 个文件</string>
-    <string name="release_bundled_themes_failed">释放失败</string>
+    <string name="release_bundled_themes_done">已全部覆盖</string>
+    <string name="release_bundled_themes_failed">释放异常</string>
     <string name="theme_bundled_hint_title">关于内置主题</string>
     <string name="theme_bundled_hint_summary">内置主题可随时用首页「释放内置主题」恢复出厂；想保留自己的改动，请先复制一份再改。</string>
 </resources>

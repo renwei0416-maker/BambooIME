@@ -70,10 +70,12 @@ class MainFragment : PaddingPreferenceFragment() {
             R.string.release_bundled_themes_message,
         ) {
             lifecycleScope.launch {
-                val count = withContext(Dispatchers.IO) {
-                    runCatching { BambooThemeSeed.releaseAll(appContext) }.getOrDefault(-1)
+                val released = withContext(Dispatchers.IO) {
+                    runCatching { BambooThemeSeed.releaseAll(appContext) }
+                        .onFailure { Timber.w(it, "releaseBundledThemes: 释放异常") }
+                        .isSuccess
                 }
-                if (count < 0) {
+                if (!released) {
                     requireContext().toast(R.string.release_bundled_themes_failed)
                     return@launch
                 }
@@ -84,9 +86,7 @@ class MainFragment : PaddingPreferenceFragment() {
                             .onFailure { Timber.w(it, "releaseBundledThemes: 重载主题失败") }
                     }
                 }
-                requireContext().toast(
-                    requireContext().getString(R.string.release_bundled_themes_done, count),
-                )
+                requireContext().toast(R.string.release_bundled_themes_done)
             }
         }
     }
