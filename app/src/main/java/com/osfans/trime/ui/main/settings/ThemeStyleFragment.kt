@@ -40,6 +40,7 @@ import com.osfans.trime.data.theme.ThemeManager
 import com.osfans.trime.actions.bamboo.BambooTokens
 import com.osfans.trime.ime.keyboard.KeyBehavior
 import com.osfans.trime.data.theme.ThemeResourceResolver
+import com.osfans.trime.data.theme.model.TextKeyboard.TextKey
 import com.osfans.trime.data.theme.model.TextKeyboard
 import com.osfans.trime.data.theme.model.ColorScheme
 import com.osfans.trime.data.theme.model.GeneralStyle
@@ -2151,6 +2152,26 @@ class ThemeStyleFragment : Fragment() {
             )
             content.addView(divider())
         }
+
+        // ---- 长按弹窗（popup）----
+        // popup 与 long_click 是两套机制：长按有 long_click 就执行动作，
+        // 没有才会弹出这个列表。列表项是纯字符串，命中 preset_keys 名字才等于「命令」。
+        val popupItems = popupItemsOf(path, tk)
+        content.addView(sectionTitle("长按弹窗"))
+        content.addView(
+            hint(
+                "长按这个键弹出的候选列表，共 ${popupItems.size} 项。" +
+                    "每项是一条字符串：普通文字，或 preset_keys 里的键名（如 BaiduSearch、ZiTools）。",
+            ),
+        )
+        popupItems.forEachIndexed { index, item ->
+            content.addView(
+                plainRow("${index + 1}. ${popupItemLabel(item)}　·　${popupItemTypeName(item)}") {
+                    showPopupItemEditor(path, index, item)
+                },
+            )
+        }
+        content.addView(plainRow("+ 添加一项") { showPopupItemEditor(path, popupItems.size, "") })
     }
 
     private fun showActionPicker(path: KeyPath, field: String, label: String, current: String) {
@@ -2214,6 +2235,103 @@ class ThemeStyleFragment : Fragment() {
         draft.rawField(path, field)?.let { el ->
             runCatching { el.toString().trim('"') }.getOrNull()
         }
+
+    /** 取键盘里的原始键对象（编辑弹窗里要用）。 */
+    private fun keyOf(path: KeyPath): TextKey? =
+        ThemeManager.getKeyboard(path.keyboard)?.rows?.getOrNull(path.row)?.keys?.getOrNull(path.column)
+
+    /** 当前键的 popup 列表：草稿里有覆盖就用覆盖，否则用主题原值。 */
+    private fun popupItemsOf(path: KeyPath, tk: TextKey?): List<String> {
+        val raw = draft.rawField(path, "popup")
+        if (raw is JsonArray) {
+            return raw.mapNotNull { (it as? JsonPrimitive)?.content?.takeIf { text -> text.isNotEmpty() } }
+        }
+        return tk?.popup ?: emptyList()
+    }
+
+    private fun presetOfPopupItem(item: String) =
+        runCatching { ThemeManager.activeTheme.presetKeys[item] }.getOrNull()
+
+    /** popup 项显示成什么字：预设键优先 popupLabel，其次 label；图标名就退回原名。 */
+    private fun popupItemLabel(item: String): String {
+        val preset = presetOfPopupItem(item) ?: return item
+        // PresetKey.label 是 LabelSegment 列表（不是字符串），这里只用 popupLabel 兜底到键名。
+        val label = preset.popupLabel.ifEmpty { item }
+        return if (label.startsWith("ic@")) item else label
+    }
+
+    private fun popupItemTypeName(item: String): String {
+        val preset = presetOfPopupItem(item) ?: return "字符"
+        return if (preset.command == "run") "命令（预设键 $item）" else "预设键 $item"
+    }
+
+    private fun writePopupItems(path: KeyPath, items: List<String>) {
+        pushUndo()
+        if (items.isEmpty()) {
+            draft.removeField(path, "popup")
+        } else {
+            draft.setField(path, "popup", JsonArray(items.map { JsonPrimitive(it) }))
+        }
+        onChange()
+        renderTab(Tabs.ACTIONS, keepScroll = false)
+    }
+
+    /** 编辑一条 popup：手填文字，或直接选 preset_keys 里的键名。 */
+    private fun showPopupItemEditor(path: KeyPath, index: Int, current: String) {
+        val presets = runCatching { ThemeManager.activeTheme.presetKeys.keys.sorted() }.getOrDefault(emptyList())
+        val options = ArrayList<String>()
+        val values = ArrayList<String>()
+        options.add("手填文字…")
+        values.add("")
+        presets.forEach {
+            options.add("预设键：$it")
+            values.add(it)
+        }
+        val items = popupItemsOf(path, keyOf(path)).toMutableList()
+        val builder = AlertDialog.Builder(requireContext())
+            .setTitle(if (current.isEmpty()) "添加一项" else "第 ${index + 1} 项：${popupItemLabel(current)}")
+            .setItems(options.toTypedArray()) { _, which ->
+                val picked = values.getOrNull(which).orEmpty()
+                if (picked.isEmpty()) {
+                    editPopupText(path, index, current)
+                } else {
+                    if (index < items.size) items[index] = picked else items.add(picked)
+                    writePopupItems(path, items)
+                }
+            }
+            .setNegativeButton("取消", null)
+        if (current.isNotEmpty()) {
+            builder.setNeutralButton("删除") { _, _ ->
+                if (index < items.size) items.removeAt(index)
+                writePopupItems(path, items)
+            }
+        }
+        builder.show()
+    }
+
+    private fun editPopupText(path: KeyPath, index: Int, prefill: String) {
+        val input = EditText(requireContext()).apply {
+            setText(prefill)
+            setHint("文字，或预设键名（如 BaiduSearch）")
+            setSingleLine()
+            setPadding(dp(20), dp(12), dp(20), dp(12))
+        }
+        AlertDialog.Builder(requireContext())
+            .setTitle(if (prefill.isEmpty()) "添加一项" else "第 ${index + 1} 项")
+            .setView(input)
+            .setPositiveButton("确定") { _, _ ->
+                val text = input.text?.toString()?.trim().orEmpty()
+                if (text.isEmpty()) {
+                    toast("不能为空")
+                } else {
+                    val items = popupItemsOf(path, keyOf(path)).toMutableList()
+                    if (index < items.size) items[index] = text else items.add(text)
+                    writePopupItems(path, items)
+                }
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
 
     /**
      * 该键在键盘 JSON 里**本来就写着**的颜色值（通常是 zmu_q 这类色键名）。
