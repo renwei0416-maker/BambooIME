@@ -38,6 +38,9 @@ class AboutFragment : PaddingPreferenceFragment() {
                     ),
                 )
             }
+            addPreference(R.string.update_check, R.string.update_check_summary) {
+                findNavController().navigate(NavigationRoute.Update)
+            }
             addPreference(R.string.librime_version, BuildConfig.LIBRIME_VERSION) {
                 val hash = getCommitFromVersionName(BuildConfig.LIBRIME_VERSION)
                 startActivity(

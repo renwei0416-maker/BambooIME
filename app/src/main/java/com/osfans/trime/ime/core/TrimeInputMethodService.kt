@@ -69,6 +69,7 @@ import com.osfans.trime.ime.hardware.HardwareStatusBar
 import com.osfans.trime.ime.keyboard.InputFeedbackManager
 import com.osfans.trime.ime.keyboard.KeyboardWindow
 import com.osfans.trime.link.SherpaSpeechClient
+import com.osfans.trime.link.WxSpeechClient
 import com.osfans.trime.receiver.RimeIntentReceiver
 import com.osfans.trime.util.any
 import com.osfans.trime.util.findSectionFrom
@@ -773,6 +774,7 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
             clearComposition()
         }
         SherpaSpeechClient.forceStop()
+        WxSpeechClient.forceStop()
         inputView?.stopVoiceRecognition()
         InputFeedbackManager.finishInput()
         InputStatsRepository.flushAsync()

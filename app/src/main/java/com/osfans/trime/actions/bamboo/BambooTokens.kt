@@ -110,10 +110,13 @@ object BambooTokens {
      */
     const val SHOT = "BambooShot"
 
+    /** 打开「关于」页。 */
+    const val ABOUT = "BambooAbout"
+
     val fixed: List<String> =
         listOf(
             REVERT, CLEAR, DELETE_LINE, DELETE_WORD, AI_SEND, AI_CLIP, AI_OFF, AI_PANEL,
-            KEY_PANEL, GLOSSARY, SETTINGS, QUOTE, QUOTE_SINGLE, TIP, VOICE_AI, SHOT,
+            KEY_PANEL, GLOSSARY, SETTINGS, QUOTE, QUOTE_SINGLE, TIP, VOICE_AI, SHOT, ABOUT,
         ) + TIP_SLOTS
 
     /** 设置页「动作名一览」用的说明表；与 [fixed] 同源，不会漏项。 */

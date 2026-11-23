@@ -26,6 +26,7 @@ import com.osfans.trime.ime.sidebar.SidebarView
 import com.osfans.trime.ime.voice.WaveformView
 import com.osfans.trime.link.AsrkbSpeechClient
 import com.osfans.trime.link.SherpaSpeechClient
+import com.osfans.trime.link.WxSpeechClient
 import com.osfans.trime.link.VoiceOverlayUiBridge
 import splitties.dimensions.dp
 import timber.log.Timber
@@ -252,6 +253,8 @@ class KeyboardView(
         VoiceOverlayUiBridge.clear()
         if (AsrkbSpeechClient.isHolding()) {
             AsrkbSpeechClient.stopHoldSession()
+        } else if (WxSpeechClient.isHolding()) {
+            WxSpeechClient.stopHoldSession()
         } else if (SherpaSpeechClient.isHolding()) {
             SherpaSpeechClient.stopHoldSession()
         }

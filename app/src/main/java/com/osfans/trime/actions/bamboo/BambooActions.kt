@@ -534,6 +534,26 @@ object BambooActions {
                 return true
             }
 
+            BambooTokens.ABOUT -> {
+                val ctx = appContext
+                if (ctx != null) {
+                    mainHandler.post {
+                        runCatching {
+                            val intent = Intent(ctx, MainActivity::class.java).apply {
+                                action = Intent.ACTION_RUN
+                                putExtra(MainActivity.EXTRA_SETTINGS_ROUTE, NavigationRoute.About)
+                                addFlags(
+                                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                                        Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS,
+                                )
+                            }
+                            ctx.startActivity(intent)
+                        }.onFailure { Timber.w(it, "bamboo: open about failed") }
+                    }
+                }
+                return true
+            }
+
             BambooTokens.SETTINGS -> {
                 val ctx = appContext
                 if (ctx != null) {

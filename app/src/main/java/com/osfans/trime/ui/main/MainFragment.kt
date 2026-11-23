@@ -136,6 +136,9 @@ class MainFragment : PaddingPreferenceFragment() {
                 addPreference("截图", "截取屏幕任意区域：保存、复制、识字、AI 看图（需先开无障碍截图权限）", R.drawable.ic_baseline_photo_camera_24) {
                     findNavController().navigateWithAnim(NavigationRoute.ShotSettings)
                 }
+                addPreference("更新", "检查新版本：下载 APK 安装、更新主题包", R.drawable.ic_baseline_refresh_reversed_24) {
+                    findNavController().navigateWithAnim(NavigationRoute.Update)
+                }
                 addPreference("文曲星", "诗词提示：候选/剪贴板/光标前文本命中名句、唐诗宋词时在编码后给出摘要", R.drawable.ic_baseline_book_24) {
                     findNavController().navigateWithAnim(NavigationRoute.Wenquxing)
                 }

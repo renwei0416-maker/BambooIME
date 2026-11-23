@@ -18,8 +18,10 @@ import androidx.preference.Preference
 import androidx.preference.PreferenceScreen
 import com.osfans.trime.R
 import com.osfans.trime.data.prefs.AppPrefs
+import com.osfans.trime.infer.SherpaModelPack
 import com.osfans.trime.data.prefs.PreferenceDelegateFragment
 import com.osfans.trime.data.prefs.PreferenceDelegateProvider
+import com.osfans.trime.infer.WxVoicePack
 import com.osfans.trime.link.SherpaSpeechClient
 import com.osfans.trime.link.VoiceBackend
 import com.osfans.trime.link.VoiceBackendSelector
@@ -38,6 +40,8 @@ import timber.log.Timber
 import java.io.File
 import java.io.FileOutputStream
 
+private const val WX_SUMMARY_TAG = "wx_summary_v1"
+
 class VoiceInputSettingsFragment : PreferenceDelegateFragment(AppPrefs.defaultInstance().voiceInput) {
 
     private val voiceInputPrefs = AppPrefs.defaultInstance().voiceInput
@@ -45,6 +49,17 @@ class VoiceInputSettingsFragment : PreferenceDelegateFragment(AppPrefs.defaultIn
     private var importPref: Preference? = null
     private var deletePref: Preference? = null
     private var downloadJob: Job? = null
+    private var wxDownloadPref: Preference? = null
+    private val mmPrefs = LinkedHashMap<String, Preference>()
+    private val mmBusy = mutableSetOf<String>()
+    private var wxImportPref: Preference? = null
+    private var wxDeletePref: Preference? = null
+    private var wxJob: Job? = null
+    private var pendingImportForWx = false
+    private var pendingImportSpecId: String? = null
+
+    /** onPreferenceUiCreated 拿到的 screen：那时 preferenceScreen 尚未赋值，findPreference 会返回 null。 */
+    private var cachedScreen: PreferenceScreen? = null
 
     private val importMimeTypes = arrayOf(
         "application/zip",
@@ -59,7 +74,15 @@ class VoiceInputSettingsFragment : PreferenceDelegateFragment(AppPrefs.defaultIn
             ActivityResultContracts.OpenDocument(),
         ) { uri ->
             uri ?: return@registerForActivityResult
-            handleSelectedFile(uri)
+            val forWx = pendingImportForWx
+            val specId = pendingImportSpecId
+            pendingImportForWx = false
+            pendingImportSpecId = null
+            when {
+                forWx -> handleSelectedWxFile(uri)
+                specId != null -> handleSelectedModelPack(uri, specId)
+                else -> handleSelectedFile(uri)
+            }
         }
 
     private val onVoiceInputChangeListener = PreferenceDelegateProvider.OnChangeListener { key ->
@@ -67,6 +90,9 @@ class VoiceInputSettingsFragment : PreferenceDelegateFragment(AppPrefs.defaultIn
             key == AppPrefs.VoiceInput.ASRKB_AIDL_VOICE_INPUT
         ) {
             updateLocalVoiceEnabled()
+        }
+        if (key == AppPrefs.VoiceInput.VOICE_ENGINE) {
+            applyEngineVisibility()
         }
     }
 
@@ -86,10 +112,12 @@ class VoiceInputSettingsFragment : PreferenceDelegateFragment(AppPrefs.defaultIn
 
     override fun onDestroy() {
         voiceInputPrefs.unregisterOnChangeListener(onVoiceInputChangeListener)
+        cachedScreen = null
         super.onDestroy()
     }
 
     override fun onPreferenceUiCreated(screen: PreferenceScreen) {
+        cachedScreen = screen
         downloadPref =
             Preference(requireContext()).apply {
                 key = "voice_model_download"
@@ -123,8 +151,70 @@ class VoiceInputSettingsFragment : PreferenceDelegateFragment(AppPrefs.defaultIn
                 }
             }.also { screen.addPreference(it) }
 
+        wxDownloadPref =
+            Preference(requireContext()).apply {
+                key = "wx_pack_download"
+                isIconSpaceReserved = false
+                title = getString(R.string.wx_pack_download)
+                setOnPreferenceClickListener {
+                    maybeConfirmThenWxDownload()
+                    true
+                }
+            }.also { screen.addPreference(it) }
+
+        wxImportPref =
+            Preference(requireContext()).apply {
+                key = "wx_pack_import"
+                isIconSpaceReserved = false
+                title = getString(R.string.wx_pack_import)
+                setOnPreferenceClickListener {
+                    pendingImportForWx = true
+                    selectFileLauncher.launch(importMimeTypes)
+                    true
+                }
+            }.also { screen.addPreference(it) }
+
+        wxDeletePref =
+            Preference(requireContext()).apply {
+                key = "wx_pack_delete"
+                isIconSpaceReserved = false
+                title = getString(R.string.wx_pack_delete)
+                setOnPreferenceClickListener {
+                    requireContext().confirmDialog(
+                        title = R.string.wx_pack_delete_title,
+                        message = R.string.wx_pack_delete_message,
+                        onConfirm = { doDeleteWxPack() },
+                    )
+                    true
+                }
+            }.also { screen.addPreference(it) }
+
+        listOf(
+            SherpaModelPack.PARAFORMER to "mm_pack_paraformer",
+            SherpaModelPack.SENSE_VOICE to "mm_pack_sensevoice",
+            SherpaModelPack.X_ASR to "mm_pack_xasr",
+            SherpaModelPack.PUNCT_ZH_EN to "mm_pack_punct",
+        ).forEach { (spec, key) ->
+            val item =
+                Preference(requireContext()).apply {
+                    this.key = key
+                    isIconSpaceReserved = false
+                    title = spec.label
+                    setOnPreferenceClickListener {
+                        onModelPackClicked(spec)
+                        true
+                    }
+                }.also { screen.addPreference(it) }
+            mmPrefs[spec.id] = item
+        }
+
+        downloadPref?.title = getString(R.string.voice_model_download_sherpa)
         refreshModelUi()
         updateLocalVoiceEnabled()
+        refreshWxUi()
+        updateWxEnabled()
+        refreshMmUi()
+        applyEngineVisibility()
     }
 
     private val prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
@@ -138,6 +228,7 @@ class VoiceInputSettingsFragment : PreferenceDelegateFragment(AppPrefs.defaultIn
         preferenceManager.sharedPreferences
             ?.registerOnSharedPreferenceChangeListener(prefsListener)
         refreshModelUi()
+        applyEngineVisibility()
     }
 
     override fun onPause() {
@@ -417,6 +508,308 @@ class VoiceInputSettingsFragment : PreferenceDelegateFragment(AppPrefs.defaultIn
                 progressDialog.dismiss()
                 ctx.toast(e.message ?: getString(R.string.voice_model_download_failed, ""))
             }
+        }
+    }
+
+    // ---------------- 其它多模型 -------------------------------------------
+
+    private fun refreshMmUi() {
+        val ctx = requireContext()
+        val multi = voiceInputPrefs.voiceEngine.getValue() == AppPrefs.VoiceInput.VoiceEngine.MULTI
+        SherpaModelPack.ALL.forEach { spec ->
+            val pref = mmPrefs[spec.id] ?: return@forEach
+            pref.isEnabled = multi
+            if (mmBusy.contains(spec.id)) return@forEach
+            pref.summary =
+                if (SherpaModelPack.isInstalled(ctx, spec.id)) {
+                    val mb = packBytes(ctx, spec.id) / 1024 / 1024
+                    getString(R.string.multi_model_state_installed) + " · " + mb + " MB"
+                } else {
+                    val mb = spec.bytes / 1024 / 1024
+                    getString(R.string.multi_model_state_missing, mb) + " · " + getString(R.string.multi_model_pack_import_hint)
+                }
+        }
+    }
+
+    /** 单个模型包已安装占用（字节）。 */
+    private fun packBytes(context: android.content.Context, id: String): Long {
+        val dir = SherpaModelPack.installedDir(context, id) ?: return 0L
+        return dir.listFiles()?.filter { it.isFile }?.sumOf { it.length() } ?: 0L
+    }
+
+    private fun onModelPackClicked(spec: SherpaModelPack.Spec) {
+        if (voiceInputPrefs.voiceEngine.getValue() != AppPrefs.VoiceInput.VoiceEngine.MULTI) {
+            requireContext().toast(R.string.voice_engine_multi)
+            return
+        }
+        showModelPackActions(spec)
+    }
+
+    private fun showModelPackImportDelete(spec: SherpaModelPack.Spec) {
+        val ctx = requireContext()
+        val installed = SherpaModelPack.isInstalled(ctx, spec.id)
+        val actions = mutableListOf<Pair<String, () -> Unit>>()
+        actions +=
+            getString(R.string.multi_model_action_import) to {
+                pendingImportSpecId = spec.id
+                selectFileLauncher.launch(importMimeTypes)
+            }
+        if (installed) {
+            actions +=
+                getString(R.string.multi_model_action_delete) to {
+                    SherpaModelPack.delete(ctx, spec.id)
+                    refreshMmUi()
+                    ctx.toast(R.string.multi_model_deleted)
+                }
+        }
+        androidx.appcompat.app.AlertDialog.Builder(ctx)
+            .setTitle(spec.label)
+            .setItems(actions.map { it.first }.toTypedArray()) { _, index -> actions[index].second() }
+            .show()
+    }
+
+    private fun showModelPackPicker() {
+        val specs = SherpaModelPack.ALL
+        val labels =
+            specs.map { spec ->
+                val state =
+                    if (SherpaModelPack.isInstalled(requireContext(), spec.id)) {
+                        getString(R.string.multi_model_state_installed)
+                    } else {
+                        getString(R.string.multi_model_state_missing, spec.bytes / 1024 / 1024)
+                    }
+                "${spec.label}（$state）"
+            }.toTypedArray()
+        androidx.appcompat.app.AlertDialog.Builder(requireContext())
+            .setTitle(R.string.multi_model_manage)
+            .setItems(labels) { _, index -> showModelPackActions(specs[index]) }
+            .show()
+    }
+
+    private fun showModelPackActions(spec: SherpaModelPack.Spec) {
+        val installed = SherpaModelPack.isInstalled(requireContext(), spec.id)
+        val actions = mutableListOf<Pair<String, () -> Unit>>()
+        actions +=
+            getString(
+                if (installed) R.string.voice_model_download_action_reinstall else R.string.voice_model_download_action,
+            ) to { downloadModelPack(spec) }
+        actions +=
+            getString(R.string.multi_model_action_import) to {
+                pendingImportSpecId = spec.id
+                selectFileLauncher.launch(importMimeTypes)
+            }
+        if (installed) {
+            actions +=
+                getString(R.string.multi_model_action_delete) to {
+                    SherpaModelPack.delete(requireContext(), spec.id)
+                    refreshMmUi()
+                    requireContext().toast(R.string.multi_model_deleted)
+                }
+        }
+        androidx.appcompat.app.AlertDialog.Builder(requireContext())
+            .setTitle(spec.label)
+            .setItems(actions.map { it.first }.toTypedArray()) { _, index -> actions[index].second() }
+            .show()
+    }
+
+    private fun downloadModelPack(spec: SherpaModelPack.Spec) {
+        val ctx = requireContext()
+        if (!SherpaModelPack.hasEnoughSpace(ctx, spec)) {
+            ctx.toast(R.string.multi_model_no_space)
+            return
+        }
+        val pref = mmPrefs[spec.id]
+        mmBusy.add(spec.id)
+        pref?.summary = getString(R.string.multi_model_pack_progress, 0)
+        viewLifecycleOwner.lifecycleScope.launch {
+            val appCtx = ctx.applicationContext
+            var message: String? = null
+            val ok =
+                runCatching {
+                    SherpaModelPack.downloadAndInstall(appCtx, spec) { ratio, stage ->
+                        val pct = (ratio * 100).toInt().coerceIn(0, 100)
+                        viewLifecycleOwner.lifecycleScope.launch(Dispatchers.Main) {
+                            if (mmBusy.contains(spec.id)) {
+                                mmPrefs[spec.id]?.summary =
+                                    if (pct > 0) {
+                                        getString(R.string.multi_model_pack_progress, pct)
+                                    } else {
+                                        stage
+                                    }
+                            }
+                        }
+                    }
+                }.getOrElse { e ->
+                    message = e.message
+                    false
+                }
+            mmBusy.remove(spec.id)
+            withContext(Dispatchers.Main) {
+                refreshMmUi()
+                if (ok) {
+                    ctx.toast(R.string.multi_model_download_ok)
+                } else {
+                    val detail = message
+                    ctx.toast(
+                        if (detail.isNullOrBlank()) {
+                            getString(R.string.multi_model_download_failed_short)
+                        } else {
+                            getString(R.string.multi_model_download_failed, detail)
+                        },
+                    )
+                }
+            }
+        }
+    }
+
+    private fun handleSelectedModelPack(uri: android.net.Uri, specId: String) {
+        val spec = SherpaModelPack.spec(specId) ?: return
+        viewLifecycleOwner.lifecycleScope.launch {
+            val ctx = requireContext().applicationContext
+            val ok =
+                runCatching {
+                    SherpaModelPack.installFromUri(ctx, spec, uri) { _, _ -> }
+                }.isSuccess
+            withContext(Dispatchers.Main) {
+                refreshMmUi()
+                requireContext().toast(
+                    if (ok) R.string.multi_model_install_ok else R.string.multi_model_download_failed_short,
+                )
+            }
+        }
+    }
+
+    private fun refreshWxUi() {
+        val ctx = requireContext()
+        val installed = WxVoicePack.isInstalled(ctx)
+        val status = if (installed) {
+            val mb = WxVoicePack.info(ctx)?.megabytes ?: 0L
+            getString(R.string.wx_pack_status_installed_fmt, mb.toString())
+        } else {
+            getString(R.string.wx_pack_status_missing)
+        }
+        val title = "${getString(R.string.wx_pack_title)}：$status"
+        wxDownloadPref?.title = getString(if (installed) R.string.wx_pack_reinstall else R.string.wx_pack_download)
+        wxDownloadPref?.summary = title
+        wxImportPref?.summary = status
+        wxDeletePref?.isEnabled = installed
+        wxDeletePref?.summary = status
+    }
+
+    private fun applyEngineVisibility() {
+        val engine = voiceInputPrefs.voiceEngine.getValue()
+        val wechat = engine == AppPrefs.VoiceInput.VoiceEngine.WECHAT
+        val multi = engine == AppPrefs.VoiceInput.VoiceEngine.MULTI
+        val sherpa = !wechat && !multi
+        listOf(
+            AppPrefs.VoiceInput.VOICE_SENSITIVITY,
+            AppPrefs.VoiceInput.VOICE_CHUNK_SIZE,
+            "voice_model_download",
+            "voice_model_import",
+            "voice_model_delete",
+        ).forEach { key -> cachedScreen?.findPreference<Preference>(key)?.isVisible = sherpa }
+        listOf(
+            "wx_pack_download",
+            "wx_pack_import",
+            "wx_pack_delete",
+        ).forEach { key -> cachedScreen?.findPreference<Preference>(key)?.isVisible = wechat }
+        listOf(
+            AppPrefs.VoiceInput.MULTI_MODEL_ZH,
+            AppPrefs.VoiceInput.MULTI_MODEL_JA,
+            AppPrefs.VoiceInput.MULTI_MODEL_EN,
+            AppPrefs.VoiceInput.VOICE_PUNCT_AUTO,
+            AppPrefs.VoiceInput.VOICE_RECORRECT_ZH,
+            AppPrefs.VoiceInput.VOICE_RECORRECT_EN,
+            AppPrefs.VoiceInput.VOICE_FINALIZE_ZH,
+            "mm_pack_paraformer",
+        "mm_pack_sensevoice",
+        "mm_pack_xasr",
+        "mm_pack_punct",
+        ).forEach { key -> cachedScreen?.findPreference<Preference>(key)?.isVisible = multi }
+        updateWxEnabled()
+        refreshMmUi()
+    }
+
+    private fun updateWxEnabled() {
+        val engine = voiceInputPrefs.voiceEngine.getValue() == AppPrefs.VoiceInput.VoiceEngine.WECHAT
+        wxDownloadPref?.isVisible = engine
+        wxImportPref?.isVisible = engine
+        wxDeletePref?.isVisible = engine
+        if (engine) refreshWxUi()
+    }
+
+    private fun maybeConfirmThenWxDownload() {
+        val ctx = requireContext()
+        if (WxVoicePack.isInstalled(ctx)) {
+            ctx.confirmDialog(
+                title = R.string.wx_pack_exists_title,
+                message = R.string.wx_pack_exists_re_download,
+                onConfirm = { startWxDownload() },
+            )
+        } else {
+            startWxDownload()
+        }
+    }
+
+    private fun startWxDownload() {
+        val ctx = requireContext()
+        if (!WxVoicePack.hasEnoughSpace(ctx)) {
+            ctx.toast(getString(R.string.voice_model_not_enough_space))
+            return
+        }
+        val dialog = ctx.progressDialog(message = getString(R.string.wx_pack_downloading)).show()
+        wxJob = lifecycleScope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    WxVoicePack.downloadAndInstall(
+                        ctx,
+                        onProgress = { progress, status ->
+                            lifecycleScope.launch(Dispatchers.Main) {
+                                dialog.text =
+                                    getString(R.string.wx_pack_downloading) + " " +
+                                        status + " " + formatDownloadStatus(progress, 0L, 0L)
+                            }
+                        },
+                    )
+                }
+                dialog.dismiss()
+                ctx.toast(R.string.voice_model_installed)
+                refreshWxUi()
+            } catch (_: CancellationException) {
+                dialog.dismiss()
+            } catch (e: Exception) {
+                Timber.e(e, "Wx speech pack download failed")
+                dialog.dismiss()
+                ctx.toast(e.message ?: getString(R.string.voice_model_download_failed, ""))
+            }
+        }
+    }
+
+    private fun handleSelectedWxFile(uri: Uri) {
+        val ctx = requireContext()
+        val dialog = ctx.progressDialog(message = getString(R.string.wx_pack_importing)).show()
+        lifecycleScope.launch {
+            try {
+                withContext(Dispatchers.IO) { WxVoicePack.installFromUri(ctx, uri) }
+                dialog.dismiss()
+                ctx.toast(R.string.voice_model_installed)
+                refreshWxUi()
+            } catch (_: CancellationException) {
+                dialog.dismiss()
+            } catch (e: Exception) {
+                Timber.e(e, "Wx speech pack import failed")
+                dialog.dismiss()
+                ctx.toast(e.message ?: getString(R.string.voice_model_download_failed, ""))
+            }
+        }
+    }
+
+    private fun doDeleteWxPack() {
+        val ctx = requireContext()
+        lifecycleScope.launch {
+            withContext(Dispatchers.IO) { WxVoicePack.delete(ctx) }
+            ctx.toast(R.string.wx_pack_deleted)
+            refreshWxUi()
         }
     }
 

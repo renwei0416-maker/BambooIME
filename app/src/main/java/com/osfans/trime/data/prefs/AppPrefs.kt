@@ -193,6 +193,16 @@ class AppPrefs(
             const val VOICE_SENSITIVITY = "voice_sensitivity"
             const val VOICE_CHUNK_SIZE = "voice_chunk_size"
             const val VOICE_DOWNLOAD_HOST = "voice_download_host"
+            const val VOICE_ENGINE = "voice_engine"
+
+            const val MULTI_MODEL_ZH = "multi_model_zh"
+            const val MULTI_MODEL_JA = "multi_model_ja"
+            const val MULTI_MODEL_EN = "multi_model_en"
+            const val VOICE_PUNCT_AUTO = "voice_punct_auto"
+    const val VOICE_PAUSE_SPACE = "voice_pause_space"
+            const val VOICE_RECORRECT_ZH = "voice_recorrect_zh"
+            const val VOICE_RECORRECT_EN = "voice_recorrect_en"
+            const val VOICE_FINALIZE_ZH = "voice_finalize_zh"
         }
 
         enum class VoiceAnimationStyle(override val stringRes: Int) : PreferenceDelegateEnum {
@@ -214,6 +224,14 @@ class AppPrefs(
             CNB(R.string.voice_download_host_cnb),
         }
 
+        /** 离线语音引擎：内置 Sherpa（随包）/ 微信离线（需另外下载语音包）。 */
+
+        enum class VoiceEngine(override val stringRes: Int) : PreferenceDelegateEnum {
+            SHERPA(R.string.voice_engine_sherpa),
+            WECHAT(R.string.voice_engine_wechat),
+            MULTI(R.string.voice_engine_multi),
+        }
+
         val asrkbAidlVoiceInputEnabled = switch(
             R.string.asrkb_aidl_voice_input,
             ASRKB_AIDL_VOICE_INPUT,
@@ -222,6 +240,13 @@ class AppPrefs(
         )
 
         val voiceAnimationStyle = enum(R.string.voice_animation_style, VOICE_ANIMATION_STYLE, VoiceAnimationStyle.PARTICLE)
+
+        val voiceEngine = enum(
+            R.string.voice_engine,
+            VOICE_ENGINE,
+            VoiceEngine.SHERPA,
+            enableUiOn = { !asrkbAidlVoiceInputEnabled.getValue() },
+        )
 
         val preferredVoiceInput = list(
             R.string.preferred_voice_input,
@@ -254,6 +279,72 @@ class AppPrefs(
             VoiceDownloadHost.AUTO,
             enableUiOn = { !asrkbAidlVoiceInputEnabled.getValue() },
         )
+
+        /** 「其它多模型」的中文主模型：Paraformer（流式感）/ SenseVoice（离线多语）。 */
+        enum class MultiModelZH(override val stringRes: Int) : PreferenceDelegateEnum {
+            PARAFORMER(R.string.multi_model_paraformer_zh),
+            SENSE_VOICE(R.string.multi_model_sense_voice),
+        }
+
+        /** 日语主模型：只有 SenseVoice 覆盖。 */
+        enum class MultiModelJA(override val stringRes: Int) : PreferenceDelegateEnum {
+            SENSE_VOICE(R.string.multi_model_sense_voice),
+        }
+
+        /** 英文主模型：Paraformer 自带中英；也可以让 SenseVoice 复核。 */
+        enum class MultiModelEN(override val stringRes: Int) : PreferenceDelegateEnum {
+            PARAFORMER(R.string.multi_model_paraformer_en),
+            SENSE_VOICE(R.string.multi_model_sense_voice),
+        }
+
+        val multiModelZh = enum(
+            R.string.multi_model_zh_label,
+            MULTI_MODEL_ZH,
+            MultiModelZH.PARAFORMER,
+        )
+        val multiModelJa = enum(
+            R.string.multi_model_ja_label,
+            MULTI_MODEL_JA,
+            MultiModelJA.SENSE_VOICE,
+        )
+        val multiModelEn = enum(
+            R.string.multi_model_en_label,
+            MULTI_MODEL_EN,
+            MultiModelEN.PARAFORMER,
+        )
+
+        val voicePunctAuto = switch(
+            R.string.voice_punct_auto,
+            VOICE_PUNCT_AUTO,
+            true,
+            R.string.voice_punct_auto_summary,
+        )
+        val voicePauseSpace = switch(
+            R.string.voice_pause_space,
+            VOICE_PAUSE_SPACE,
+            true,
+            R.string.voice_pause_space_summary,
+        )
+
+        val voiceRecorrectZh = switch(
+            R.string.voice_recorrect_zh,
+            VOICE_RECORRECT_ZH,
+            false,
+            R.string.voice_recorrect_summary,
+        )
+        val voiceRecorrectEn = switch(
+            R.string.voice_recorrect_en,
+            VOICE_RECORRECT_EN,
+            false,
+            R.string.voice_recorrect_summary,
+        )
+        val voiceFinalizeZh = switch(
+            R.string.voice_finalize_zh,
+            VOICE_FINALIZE_ZH,
+            false,
+            R.string.voice_finalize_zh_summary,
+        )
+
     }
 
     /**

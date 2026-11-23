@@ -30,7 +30,7 @@ local keyboard = keyboard(merge(S.settings, keyboard {
         key(merge(S.settings, key { click = "Sync", hint = { { text = "同步" } } })),
         key(merge(S.settings, key { click = "ThemeReload", hint = { { text = "刷新" } } })),
         key(merge(S.settings, key { click = "Restart", hint = { { text = "重启" } } })),
-        key(merge(S.settings, key { click = "Info", hint = { { text = "关于" } } })),
+        key(merge(S.settings, key { click = "BambooAbout", hint = { { text = "关于" } } })),
         key { spacer = true, width = 0.1 }
       }
     },

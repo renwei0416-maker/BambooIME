@@ -42,8 +42,26 @@ internal class AsrkbVoiceHoldSessionController(
 
         if (delegateToThirdPartyVoice()) return
 
+        if (useWeChatEngine()) {
+            startLocalOrAidlSession(WxSpeechClient::startHoldSession)
+            return
+        }
+
+        // 「其它多模型」复用微信这条管路：分段/上屏/记账都一样，只是解码换模型。
+        if (useMultiEngine()) {
+            startLocalOrAidlSession(WxSpeechClient::startHoldSession)
+            return
+        }
+
         startLocalOrAidlSession(SherpaSpeechClient::startHoldSession)
     }
+
+    private fun useMultiEngine(): Boolean =
+        AppPrefs.defaultInstance().voiceInput.voiceEngine.getValue() ==
+            AppPrefs.VoiceInput.VoiceEngine.MULTI
+
+    private fun useWeChatEngine(): Boolean =
+        AppPrefs.defaultInstance().voiceInput.voiceEngine.getValue() == AppPrefs.VoiceInput.VoiceEngine.WECHAT
 
     /** Delegate dictation to the selected third-party IME's voice subtype. Returns true when handled. */
     private fun delegateToThirdPartyVoice(): Boolean {
@@ -103,6 +121,10 @@ internal class AsrkbVoiceHoldSessionController(
         if (useAidl()) {
             if (AsrkbSpeechClient.isHolding()) {
                 AsrkbSpeechClient.stopHoldSession()
+            }
+        } else if (useWeChatEngine() || useMultiEngine()) {
+            if (WxSpeechClient.isHolding()) {
+                WxSpeechClient.stopHoldSession()
             }
         } else {
             if (SherpaSpeechClient.isHolding()) {

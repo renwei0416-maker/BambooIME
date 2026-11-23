@@ -40,6 +40,7 @@ import com.osfans.trime.ime.core.TrimeInputMethodService
 import com.osfans.trime.link.AsrkbSpeechClient
 import com.osfans.trime.link.AsrkbVoiceHoldSessionController
 import com.osfans.trime.link.SherpaSpeechClient
+import com.osfans.trime.link.WxSpeechClient
 import com.osfans.trime.ui.main.MainActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -399,7 +400,9 @@ class HardwareStatusBar(
     }
 
     private fun voiceHolding(): Boolean =
-        runCatching { AsrkbSpeechClient.isHolding() || SherpaSpeechClient.isHolding() }.getOrDefault(false)
+        runCatching {
+                AsrkbSpeechClient.isHolding() || SherpaSpeechClient.isHolding() || WxSpeechClient.isHolding()
+            }.getOrDefault(false)
 
     private fun firstColor(vararg keys: String): Int = firstColorOrNull(*keys) ?: FALLBACK_BG
 

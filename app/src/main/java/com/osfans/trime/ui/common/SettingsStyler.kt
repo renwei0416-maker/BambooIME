@@ -88,11 +88,58 @@ object SettingsStyler {
         list.addItemDecoration(SettingsCardDecoration(list.context, tokens.card, tokens.divider))
         list.addOnChildAttachStateChangeListener(
             object : RecyclerView.OnChildAttachStateChangeListener {
-                override fun onChildViewAttachedToWindow(view: View) = applyRowIn(list, view, tokens)
+                override fun onChildViewAttachedToWindow(view: View) {
+                    applyRowIn(list, view, tokens)
+                    // onBindViewHolder 会在 attach 之后重设颜色，这里补一次
+                    view.post { applyRowIn(list, view, tokens) }
+                }
 
                 override fun onChildViewDetachedFromWindow(view: View) = Unit
             },
         )
+        retintVisible(list, tokens)
+        list.post { retintVisible(list, tokens) }
+        observeAdapterChanges(list, tokens)
+    }
+
+    /**
+     * 改设置值时 AndroidX 走 notifyChanged() → 同一行**原地 rebind**（不 detach/attach），
+     * 上面的 attach 监听不会再触发，涂过的颜色被主题属性重新覆盖（标题变浅）。
+     * 所以还要监听 adapter 数据变化，变化后把可见行再涂一遍。
+     */
+    private fun observeAdapterChanges(list: RecyclerView, tokens: SettingsTokens) {
+        if (list.tag != null) return
+        val marker = Any()
+        list.tag = marker
+        fun register() {
+            val adapter = list.adapter ?: return
+            adapter.registerAdapterDataObserver(
+                object : RecyclerView.AdapterDataObserver() {
+                    override fun onChanged() = scheduleRetint(list, tokens)
+
+                    override fun onItemRangeChanged(positionStart: Int, itemCount: Int) =
+                        scheduleRetint(list, tokens)
+
+                    override fun onItemRangeChanged(positionStart: Int, itemCount: Int, payload: Any?) =
+                        scheduleRetint(list, tokens)
+
+                    override fun onItemRangeInserted(positionStart: Int, itemCount: Int) =
+                        scheduleRetint(list, tokens)
+
+                    override fun onItemRangeRemoved(positionStart: Int, itemCount: Int) =
+                        scheduleRetint(list, tokens)
+                },
+            )
+        }
+        register()
+        if (list.adapter == null) list.post { if (list.tag === marker) register() }
+    }
+
+    private fun scheduleRetint(list: RecyclerView, tokens: SettingsTokens) {
+        list.post { retintVisible(list, tokens) }
+    }
+
+    private fun retintVisible(list: RecyclerView, tokens: SettingsTokens) {
         for (index in 0 until list.childCount) applyRowIn(list, list.getChildAt(index), tokens)
     }
 

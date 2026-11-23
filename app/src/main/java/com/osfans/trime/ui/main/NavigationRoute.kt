@@ -28,6 +28,7 @@ import com.osfans.trime.ui.main.settings.InputStatsFragment
 import com.osfans.trime.ui.main.settings.KeyboardSettingsFragment
 import com.osfans.trime.ui.main.settings.OcrSettingsFragment
 import com.osfans.trime.ui.main.settings.ShotSettingsFragment
+import com.osfans.trime.ui.main.settings.UpdateFragment
 import com.osfans.trime.ui.main.settings.PackageListFragment
 import com.osfans.trime.ui.main.settings.IdsReverseFragment
 import com.osfans.trime.ui.main.settings.PanelQuickFragment
@@ -148,6 +149,9 @@ data object IdsReverse : NavigationRoute()
     @Serializable
     data object ShotSettings : NavigationRoute()
 
+    @Serializable
+    data object Update : NavigationRoute()
+
     companion object {
         fun createGraph(controller: NavController) = controller.createGraph(Main) {
             val ctx = controller.context
@@ -256,6 +260,9 @@ data object IdsReverse : NavigationRoute()
             }
             fragment<AboutFragment, About> {
                 label = ctx.getString(R.string.about)
+            }
+            fragment<UpdateFragment, Update> {
+                label = ctx.getString(R.string.update_title)
             }
             fragment<LicenseFragment, License> {
                 label = ctx.getString(R.string.license)

@@ -276,3 +276,26 @@ configurations {
         exclude(group = "androidx.profileinstaller", module = "profileinstaller")
     }
 }
+
+// ---- BambooIME: Rust inference (optional, run manually) -------------------
+// Not wired into assembleDebug/Release: builds still work without Rust installed.
+tasks.register<Exec>("buildWxAsrInfer") {
+    group = "bamboo"
+    description = "Builds libbamboo_wxasr_infer.so with cargo-ndk (arm64-v8a)"
+    workingDir = layout.projectDirectory.dir("src/main/rust").asFile
+    val jniOut = layout.projectDirectory.dir("src/main/jniLibs").asFile.absolutePath
+    doFirst {
+        val cargoHome = System.getenv("USERPROFILE") + "\\.cargo\\bin"
+        environment("PATH", cargoHome + File.pathSeparator + (System.getenv("PATH") ?: ""))
+        val ndk = System.getenv("ANDROID_NDK_HOME")
+            ?: (System.getenv("LOCALAPPDATA") + "\\Android\\Sdk\\ndk\\29.0.14206865")
+        environment("ANDROID_NDK_HOME", ndk)
+    }
+    commandLine(
+        "cargo", "ndk",
+        "-t", "arm64-v8a",
+        "-P", "24",
+        "-o", jniOut,
+        "build", "--release",
+    )
+}

@@ -27,8 +27,10 @@ import com.osfans.trime.data.theme.BambooThemeSeed
 import com.osfans.trime.data.theme.ColorManager
 import com.osfans.trime.actions.bamboo.BambooPrefs
 import com.osfans.trime.data.theme.ThemeManager
+import com.osfans.trime.update.UpdateCenter
 import com.osfans.trime.ime.clipboard.ScreenshotClipboardWatcher
 import com.osfans.trime.link.SherpaSpeechClient
+import com.osfans.trime.link.WxSpeechClient
 import com.osfans.trime.actions.ocr.OcrRecognizer
 import com.osfans.trime.actions.handwriting.HandwritingRecognizer
 import com.osfans.trime.data.prefs.MemoryPrefs
@@ -40,6 +42,7 @@ import com.osfans.trime.util.isNightMode
 import com.osfans.trime.util.toast
 import com.osfans.trime.worker.BackgroundSyncWork
 import kotlinx.coroutines.CoroutineName
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.plus
@@ -134,6 +137,13 @@ class TrimeApplication : Application() {
             // 出厂主题（Gboard）+ 字体先铺到用户主题目录，必须在首次读取主题之前。
             BambooThemeSeed.ensure(this)
             ThemeManager.initNative()
+            // 后台静默检查更新：启动 20 秒后跑一次，一天最多一次（UpdateCenter 内部判断）。
+            coroutineScope.launch {
+                delay(20_000L)
+                runCatching { UpdateCenter.silentCheck(applicationContext) }
+                    .getOrNull()
+                    ?.let { toast(getString(R.string.update_found_toast, it.versionName)) }
+            }
             // record last pid for crash logs
             appPrefs.internal.pid.apply {
                 val currentPid = Process.myPid()
@@ -172,9 +182,12 @@ class TrimeApplication : Application() {
             IdleReclaimer.Entry(
                 name = "voice",
                 label = "语音",
-                isBusy = { SherpaSpeechClient.isHolding() },
-                release = { SherpaSpeechClient.releaseEngineForMemoryPressure() },
-                loaded = { SherpaSpeechClient.isEngineLoaded() },
+                isBusy = { SherpaSpeechClient.isHolding() || WxSpeechClient.isHolding() },
+                release = {
+                    SherpaSpeechClient.releaseEngineForMemoryPressure()
+                    WxSpeechClient.releaseEngineForMemoryPressure()
+                },
+                loaded = { SherpaSpeechClient.isEngineLoaded() || WxSpeechClient.isEngineLoaded() },
                 pinned = { MemoryPrefs.voicePinned },
             ),
         )
