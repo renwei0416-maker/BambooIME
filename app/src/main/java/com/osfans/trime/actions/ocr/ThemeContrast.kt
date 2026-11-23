@@ -66,13 +66,4 @@ object ThemeContrast {
         return readableOn(composited, fg, min)
     }
 
-    /**
-     * 保证 [bg] 上的文字/描边都够清楚，返回修正后的文字色。
-     * [styles] 是要一起检查的其它前景色（例如分割线、描边），会被就地替换成可读版本。
-     */
-    fun fixText(
-        bg: Int,
-        fg: Int,
-        min: Double = MIN_TEXT,
-    ): Int = readableOn(bg, fg, min)
 }

@@ -569,14 +569,6 @@ class KeyPanelWindow : BoardWindow.BarBoardWindow() {
             else -> id
         }
 
-    private fun layoutName(layout: Int): String =
-        when (layout) {
-            WanxiangPrefs.LAYOUT_18 -> "18 键"
-            WanxiangPrefs.LAYOUT_14 -> "14 键"
-            WanxiangPrefs.LAYOUT_9 -> "九宫格"
-            else -> "26 键"
-        }
-
     private fun toast(msg: String) {
         runCatching { Toast.makeText(context, msg, Toast.LENGTH_SHORT).show() }
             .onFailure { Timber.w(it, "key panel: toast failed") }

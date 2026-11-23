@@ -170,18 +170,6 @@ object WxVoicePack {
         throw last ?: IOException("没有可用的下载源")
     }
 
-    /** 从本地文件（用户自己保存的 `.apk` / 内层 `.zip`）安装。 */
-    suspend fun installFromFile(
-        context: Context,
-        file: File,
-        onProgress: (Float, String) -> Unit = { _, _ -> },
-    ): Info = withContext(Dispatchers.IO) {
-        if (!hasEnoughSpace(context)) {
-            throw IOException("存储空间不足，还需要约 ${requiredBytes() / (1024 * 1024)} MB")
-        }
-        installApk(context, file, onProgress)
-    }
-
     /** 从 SAF 选中的 Uri 安装（用户从文件管理器挑包）。 */
     suspend fun installFromUri(
         context: Context,
@@ -383,6 +371,4 @@ object WxVoicePack {
         return "${info.xnet.name} · ${info.megabytes} MB"
     }
 
-    /** 用户手动保存到本地时建议的文件名。 */
-    fun suggestedFileName(): String = APK_FILE_NAME
 }

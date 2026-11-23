@@ -161,7 +161,6 @@ class ThemeStyleFragment : Fragment() {
         const val POPUP = 6
         const val TOOLBAR = 7
         const val LIQUID = 8
-        const val ADVANCED = 9
     }
 
     private companion object {
@@ -613,17 +612,6 @@ class ThemeStyleFragment : Fragment() {
             ViewGroup.LayoutParams.WRAP_CONTENT,
             ViewGroup.LayoutParams.WRAP_CONTENT,
         ).apply { marginEnd = dp(6) }
-
-    private fun dividerChipParams(): LinearLayout.LayoutParams =
-        LinearLayout.LayoutParams(dp(1), dp(16)).apply {
-            marginStart = dp(2)
-            marginEnd = dp(8)
-            gravity = Gravity.CENTER_VERTICAL
-        }
-
-    private fun dividerChip(): View = View(requireContext()).apply {
-        setBackgroundColor(0x33FFFFFF)
-    }
 
     // ---------------------------------------------------------------- 顶部动作
 
@@ -1167,44 +1155,6 @@ class ThemeStyleFragment : Fragment() {
     }
 
     // ---------------------------------------------------------------- 字号
-
-    private fun renderFonts() {
-        content.addView(sectionTitle("字号"))
-        content.addView(hint("单位 sp；改完上方预览立刻变。"))
-        val f = style.fonts
-        content.addView(sliderRow("按键文字", f.key_size, 10f, 34f, 0.5f, "sp") {
-            style = style.copy(fonts = style.fonts.copy(key_size = it))
-            onChange()
-        })
-        content.addView(sliderRow("长按文字", f.key_long_size, 8f, 30f, 0.5f, "sp") {
-            style = style.copy(fonts = style.fonts.copy(key_long_size = it))
-            onChange()
-        })
-        content.addView(sliderRow("按键标签", f.label_size, 0f, 30f, 0.5f, "sp") {
-            style = style.copy(fonts = style.fonts.copy(label_size = it))
-            onChange()
-        })
-        content.addView(sliderRow("按键符号", f.symbol_size, 0f, 20f, 0.5f, "sp") {
-            style = style.copy(fonts = style.fonts.copy(symbol_size = it))
-            onChange()
-        })
-        content.addView(sliderRow("候选词", f.candidate_size, 10f, 30f, 0.5f, "sp") {
-            style = style.copy(fonts = style.fonts.copy(candidate_size = it))
-            onChange()
-        })
-        content.addView(sliderRow("释义", f.comment_size, 6f, 22f, 0.5f, "sp") {
-            style = style.copy(fonts = style.fonts.copy(comment_size = it))
-            onChange()
-        })
-        content.addView(sliderRow("提示", f.hint_size, 0f, 22f, 0.5f, "sp") {
-            style = style.copy(fonts = style.fonts.copy(hint_size = it))
-            onChange()
-        })
-        content.addView(sliderRow("弹窗", f.popup_size, 0f, 30f, 0.5f, "sp") {
-            style = style.copy(fonts = style.fonts.copy(popup_size = it))
-            onChange()
-        })
-    }
 
     // ---------------------------------------------------------------- 候选栏
 
@@ -2421,7 +2371,7 @@ class ThemeStyleFragment : Fragment() {
             value = valueText,
             swatch = effective,
             swatchDashed = inherited,
-            // ↺ = 撤销我在这一行做的改动，回到键盘原本的值（可能是 zmu_q 这类色键）
+            // ↺ = 撤销本行的改动，回到键盘原本的值（可能是 zmu_q 这类色键）
             onRestore = {
                 pushUndo()
                 draft.removeField(path, field)

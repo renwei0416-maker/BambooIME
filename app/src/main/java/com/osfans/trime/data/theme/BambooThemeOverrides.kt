@@ -71,15 +71,5 @@ object BambooThemeOverrides {
             .getOrDefault(base)
     }
 
-    /** 把 JSON 里的一串键写成嵌套对象，例如 path("style","fonts","key_size") = {"style":{"fonts":{"key_size":..}}} */
-    fun nest(vararg path: String, value: JsonElement): JsonObject {
-        require(path.isNotEmpty())
-        var node: JsonObject = JsonObject(mapOf(path.last() to value))
-        for (i in path.size - 2 downTo 0) {
-            node = JsonObject(mapOf(path[i] to node))
-        }
-        return node
-    }
-
     fun arrayOf(vararg values: String): JsonArray = JsonArray(values.map { JsonPrimitive(it) })
 }

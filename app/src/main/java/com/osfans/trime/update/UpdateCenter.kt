@@ -93,8 +93,6 @@ object UpdateCenter {
         sp(context).edit().putBoolean(KEY_AUTO, value).apply()
     }
 
-    fun lastCheckMs(context: Context): Long = sp(context).getLong(KEY_LAST, 0L)
-
     fun source(context: Context): Int = sp(context).getInt(KEY_SOURCE, SOURCE_AUTO)
 
     fun setSource(context: Context, value: Int) {

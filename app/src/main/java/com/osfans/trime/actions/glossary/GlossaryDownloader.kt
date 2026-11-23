@@ -130,14 +130,4 @@ object GlossaryDownloader {
     }
 
 
-    suspend fun downloadAsync(
-        url: String,
-        onProgress: (Float?) -> Unit,
-    ): String? =
-        withContext(Dispatchers.IO) {
-            download(url, onProgress = { done, total ->
-                val ratio = if (total > 0) (done.toFloat() / total) else null
-                onProgress(ratio)
-            })
-        }
 }

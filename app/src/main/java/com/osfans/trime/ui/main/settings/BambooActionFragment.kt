@@ -400,38 +400,6 @@ class BambooActionFragment : PaddingPreferenceFragment() {
     }
 
 
-    /** 「动作名一览」：纯展示，内容由 [BambooTokens.docRows] 生成，避免和代码不同步。 */
-    private fun showTokenList() {
-        val ctx = requireContext()
-        val pad = (16 * resources.displayMetrics.density).toInt()
-        val body =
-            TextView(ctx).apply {
-                setTextIsSelectable(true)
-                textSize = 13f
-                setPadding(pad, pad / 2, pad, pad / 2)
-                text =
-                    BambooTokens.docRows().joinToString("\n\n") { (name, desc) ->
-                        "$name\n    $desc"
-                    }
-            }
-        val scroll =
-            ScrollView(ctx).apply {
-                addView(
-                    body,
-                    ViewGroup.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ),
-                )
-            }
-        AlertDialog
-            .Builder(ctx)
-            .setTitle("主题动作名")
-            .setView(scroll)
-            .setPositiveButton(android.R.string.ok, null)
-            .show()
-    }
-
     /** 「和快捷组合键的关系」：解释两条触发通路。 */
     private fun showComboVsToken() {
         val ctx = requireContext()
@@ -465,42 +433,6 @@ class BambooActionFragment : PaddingPreferenceFragment() {
             .Builder(ctx)
             .setTitle("组合键 vs 动作名")
             .setMessage(text)
-            .setPositiveButton(android.R.string.ok, null)
-            .show()
-    }
-
-    /** 「怎么绑定」：三行示例。 */
-    private fun showBindHelp() {
-        val ctx = requireContext()
-        val sample =
-            """
-            在主题布局的 Lua 里，把动作字段写成 token 名字：
-
-              key(merge(S.backspace, key {
-                  click       = "del",           -- 单击：退格
-                  swipe_right = "BambooRevert",  -- 右滑：回退最近一笔
-              }))
-
-              key(merge(S.d, key {
-                  click      = "d",
-                  long_click = "BambooClear",    -- 长按 D：清空编辑区
-              }))
-
-              popup = { "BambooAi1", "BambooAi2", "BambooAiOff" }
-
-            可用槽位：click / double_click / long_click /
-                      swipe_left / swipe_right / swipe_up / swipe_down / popup
-
-            说明：
-            · 名字大小写不敏感，必须以 Bamboo 开头；
-            · 改完主题要重新载入主题才生效；
-            · BambooClear / BambooDeleteLine / BambooDeleteWord 走
-              InputConnection 一次性删除，比连发按键稳。
-            """.trimIndent()
-        AlertDialog
-            .Builder(ctx)
-            .setTitle("怎么绑定")
-            .setMessage(sample)
             .setPositiveButton(android.R.string.ok, null)
             .show()
     }

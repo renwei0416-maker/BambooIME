@@ -22,10 +22,6 @@ object GlossaryTips {
     /** 往后看几个候选位置（含高亮那个）。 */
     private const val SCAN_WINDOW = 6
 
-    /** 展开时取几个义项、多长；够长就行，真取不完也无所谓。 */
-    private const val DETAIL_SENSES = 8
-    private const val DETAIL_CHARS = 400
-
     /** 一条都别太长，超过这个长度的候选根本不去查（诗词整句之类）。 */
     private const val MAX_CANDIDATE_LEN = 8
 

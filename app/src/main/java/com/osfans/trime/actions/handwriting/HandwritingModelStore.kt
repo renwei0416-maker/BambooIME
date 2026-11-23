@@ -53,9 +53,6 @@ object HandwritingModelStore {
         )
     }
 
-    /** 这份包有没有把模型打进 APK。 */
-    val isBundledBuild: Boolean get() = BuildConfig.BUNDLED_HANDWRITING_MODEL
-
     /**
      * 确保某个版本的模型已落在磁盘上。内置版本会从 assets 拷出来（只拷一次），
      * 下载版本则要求用户先下载过。

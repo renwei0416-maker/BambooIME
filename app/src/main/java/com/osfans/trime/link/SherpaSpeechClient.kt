@@ -92,14 +92,6 @@ object SherpaSpeechClient {
     @Volatile
     private var cpuFallbackNotified = false
 
-    fun prewarmAsync(service: TrimeInputMethodService) {
-        service.lifecycleScope.launch(Dispatchers.IO) {
-            if (!VoiceModelManager.checkModelFiles()) return@launch
-            if (!VoiceNativeManager.loadNativeLibs()) return@launch
-            initEngineIfNeeded()
-        }
-    }
-
     /**
      * Eagerly initialize the engine right after a model download/import so QNN
      * context binaries are generated (and the original .so model libs removed) or

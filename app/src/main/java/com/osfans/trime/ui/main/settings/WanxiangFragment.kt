@@ -204,19 +204,6 @@ class WanxiangFragment : PaddingPreferenceFragment() {
 
     // ---------------------------------------------------------------- 动作
 
-    private fun confirmEnable() {
-        AlertDialog.Builder(requireContext())
-            .setTitle("启用万象拼音")
-            .setMessage(
-                "将切到 `wanxiang-base` 并立即部署。\n\n" +
-                    "· 词库较大，首次部署约 2–4 分钟，期间键盘可能短暂不可用\n" +
-                    "· 部署完成前请不要反复切换方案",
-            )
-            .setNegativeButton("取消", null)
-            .setPositiveButton("启用") { _, _ -> enable() }
-            .show()
-    }
-
     private fun enable() {
         val context = requireContext()
         lifecycleScope.launch {
@@ -237,16 +224,6 @@ class WanxiangFragment : PaddingPreferenceFragment() {
             }
             toast("正在部署，请稍候…")
             deployToOurPackage()
-            rebuildPreferencesKeepingScroll { buildScreen() }
-        }
-    }
-
-    private fun releaseThenRefresh() {
-        val context = requireContext()
-        lifecycleScope.launch {
-            toast("正在释放内置包…")
-            val ok = withContext(Dispatchers.IO) { SchemaPackStore.ensureBaseCopied(context) }
-            toast(if (ok) "已就绪" else "释放失败：检查 Documents 目录是否可写")
             rebuildPreferencesKeepingScroll { buildScreen() }
         }
     }
@@ -392,32 +369,6 @@ class WanxiangFragment : PaddingPreferenceFragment() {
             "双拼 · ${WanxiangPrefs.scheme}"
         }
 
-    /** 键盘形态：同时决定写进方案的键位折叠（/26jian、/18jian、/14jian）。 */
-    private fun pickLayout() {
-        val layouts = intArrayOf(
-            WanxiangPrefs.LAYOUT_26,
-            WanxiangPrefs.LAYOUT_18,
-            WanxiangPrefs.LAYOUT_14,
-            WanxiangPrefs.LAYOUT_9,
-        )
-        val labels = arrayOf("全键盘（26 键）", "18 键", "14 键", "九宫格（9 键，固定全拼）")
-        val checked = layouts.indexOfFirst { it == WanxiangPrefs.layout }.coerceAtLeast(0)
-        AlertDialog.Builder(requireContext())
-            .setTitle("键盘形态")
-            .setSingleChoiceItems(labels, checked) { dialog, which ->
-                WanxiangPrefs.layout = layouts[which]
-                // 明确改了形态就以它为准，丢掉「上次手动切的键盘」
-                WanxiangPrefs.lastKeyboard = ""
-                if (layouts[which] == WanxiangPrefs.LAYOUT_9) {
-                    toast("九键固定全拼：已把编码改成全拼、关掉辅助码和模糊音")
-                }
-                dialog.dismiss()
-                refresh()
-            }
-            .setNegativeButton("取消", null)
-            .show()
-    }
-
     private fun layoutLabel(): String = when (WanxiangPrefs.layout) {
         WanxiangPrefs.LAYOUT_18 -> "18 键"
         WanxiangPrefs.LAYOUT_14 -> "14 键"
@@ -436,24 +387,6 @@ class WanxiangFragment : PaddingPreferenceFragment() {
         items: List<Pair<Int, String>>,
         current: Int,
         onPick: (Int) -> Unit,
-    ) {
-        val labels = items.map { it.second }.toTypedArray()
-        val checked = items.indexOfFirst { it.first == current }.coerceAtLeast(0)
-        AlertDialog.Builder(requireContext())
-            .setTitle(title)
-            .setSingleChoiceItems(labels, checked) { dialog, which ->
-                onPick(items[which].first)
-                dialog.dismiss()
-            }
-            .setNegativeButton("取消", null)
-            .show()
-    }
-
-    private fun pickString(
-        title: String,
-        items: List<Pair<String, String>>,
-        current: String,
-        onPick: (String) -> Unit,
     ) {
         val labels = items.map { it.second }.toTypedArray()
         val checked = items.indexOfFirst { it.first == current }.coerceAtLeast(0)

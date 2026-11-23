@@ -63,9 +63,6 @@ class ShotActivity : Activity() {
     private lateinit var resultText: TextView
 
     private lateinit var busyBox: LinearLayout
-    /** 菜单打开时的全屏拦截层：吃掉所有触摸，避免穿透到下面的选区。 */
-    private lateinit var shield: View
-
     /** 第一层固定项；有启用的 AI 动作时末尾再加「更多」。 */
     private val baseItems = listOf("取消", "全屏", "识字", "保存", "复制", "退出")
 

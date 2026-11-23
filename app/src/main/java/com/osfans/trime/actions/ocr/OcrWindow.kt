@@ -174,9 +174,6 @@ class OcrWindow : BoardWindow.BarBoardWindow() {
 
     private var frameErrors = 0
 
-    /** 实时识别只 dump 第一张裁切图，避免刷屏。 */
-    private var liveDumped = false
-
     /** 预览容器：显示确认卡片时整块让位。 */
     private var previewWrap: FrameLayout? = null
 
@@ -325,9 +322,6 @@ class OcrWindow : BoardWindow.BarBoardWindow() {
         private const val FRAME_TOP = 0.32f
         private const val FRAME_RIGHT = 0.95f
         private const val FRAME_BOTTOM = 0.68f
-
-        /** 单字模式：方格边长占预览高度的比例（设置页可调，这里只是默认值）。 */
-        const val SINGLE_FRAME_RATIO = 0.34f
 
         /** 数字变焦上限：超过这个倍率画面已经没意义了。 */
         const val MAX_ZOOM = 8f

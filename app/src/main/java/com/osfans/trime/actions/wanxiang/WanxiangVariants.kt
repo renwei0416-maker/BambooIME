@@ -19,11 +19,6 @@ object WanxiangVariants {
     const val TAG = "v18.1.13"
 
     const val GRAM_FILE = "wanxiang-lts-zh-hans.gram"
-    const val GRAM_BYTES = 408_552_492L
-
-    /** 国内镜像根地址，供「自定义下载地址」示例使用。 */
-    const val MIRROR_HINT = "https://cnb.cool/amzxyz/rime-wanxiang"
-
     data class Variant(
         val id: String,
         val title: String,

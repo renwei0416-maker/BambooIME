@@ -23,7 +23,6 @@ object SymbolPages {
         /** 默认（常用）内容。 */
         val items: List<String> get() = groups.firstOrNull()?.items ?: emptyList()
 
-        fun itemsAt(index: Int): List<String> = groups.getOrNull(index)?.items ?: items
     }
 
     private val P0: List<Group> = listOf(
@@ -930,9 +929,6 @@ object SymbolPages {
 
     /** `BambooNumber` 指向的页。 */
     const val PAGE_NUMBER = 0
-
-    /** 「邮箱」页。 */
-    const val PAGE_MAIL = 1
 
     /** 「中文」页（标点、中文符号）。 */
     const val PAGE_CN = 2

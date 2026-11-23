@@ -28,9 +28,6 @@ object WxAsrInfer {
     /** 10 ms of audio per feature frame, must match the native side. */
     const val FRAME_MS = 10
 
-    /** A partial result is worth refreshing after this many new frames (≈300 ms). */
-    const val PARTIAL_FRAMES = 30
-
     private const val LIB = "bamboo_wxasr_infer"
 
     @Volatile

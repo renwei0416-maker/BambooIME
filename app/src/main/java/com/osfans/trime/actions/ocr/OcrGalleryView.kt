@@ -23,7 +23,7 @@ import kotlin.math.min
 /**
  * 相册识字的「对齐视图」：把选中的照片按矩阵显示，上面盖一个和相机一样的取景框。
  *
- * 交互（用户 m09603 确认全要）：
+ * 交互：
  * - 单指拖动
  * - 双指缩放
  * - 双指旋转
@@ -51,8 +51,6 @@ class OcrGalleryView(context: Context) : FrameLayout(context) {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val imagePaint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
     private val tmpRect = RectF()
-    private val tmpArray = FloatArray(9)
-
     // 手势状态
     private var dragging = false
     private var transforming = false
@@ -102,8 +100,6 @@ class OcrGalleryView(context: Context) : FrameLayout(context) {
         matrix.reset()
         invalidate()
     }
-
-    fun hasImage(): Boolean = bitmap != null
 
     fun setSingleMode(value: Boolean) {
         single = value

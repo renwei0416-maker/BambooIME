@@ -40,8 +40,6 @@ import timber.log.Timber
 import java.io.File
 import java.io.FileOutputStream
 
-private const val WX_SUMMARY_TAG = "wx_summary_v1"
-
 class VoiceInputSettingsFragment : PreferenceDelegateFragment(AppPrefs.defaultInstance().voiceInput) {
 
     private val voiceInputPrefs = AppPrefs.defaultInstance().voiceInput
@@ -543,47 +541,6 @@ class VoiceInputSettingsFragment : PreferenceDelegateFragment(AppPrefs.defaultIn
             return
         }
         showModelPackActions(spec)
-    }
-
-    private fun showModelPackImportDelete(spec: SherpaModelPack.Spec) {
-        val ctx = requireContext()
-        val installed = SherpaModelPack.isInstalled(ctx, spec.id)
-        val actions = mutableListOf<Pair<String, () -> Unit>>()
-        actions +=
-            getString(R.string.multi_model_action_import) to {
-                pendingImportSpecId = spec.id
-                selectFileLauncher.launch(importMimeTypes)
-            }
-        if (installed) {
-            actions +=
-                getString(R.string.multi_model_action_delete) to {
-                    SherpaModelPack.delete(ctx, spec.id)
-                    refreshMmUi()
-                    ctx.toast(R.string.multi_model_deleted)
-                }
-        }
-        androidx.appcompat.app.AlertDialog.Builder(ctx)
-            .setTitle(spec.label)
-            .setItems(actions.map { it.first }.toTypedArray()) { _, index -> actions[index].second() }
-            .show()
-    }
-
-    private fun showModelPackPicker() {
-        val specs = SherpaModelPack.ALL
-        val labels =
-            specs.map { spec ->
-                val state =
-                    if (SherpaModelPack.isInstalled(requireContext(), spec.id)) {
-                        getString(R.string.multi_model_state_installed)
-                    } else {
-                        getString(R.string.multi_model_state_missing, spec.bytes / 1024 / 1024)
-                    }
-                "${spec.label}（$state）"
-            }.toTypedArray()
-        androidx.appcompat.app.AlertDialog.Builder(requireContext())
-            .setTitle(R.string.multi_model_manage)
-            .setItems(labels) { _, index -> showModelPackActions(specs[index]) }
-            .show()
     }
 
     private fun showModelPackActions(spec: SherpaModelPack.Spec) {

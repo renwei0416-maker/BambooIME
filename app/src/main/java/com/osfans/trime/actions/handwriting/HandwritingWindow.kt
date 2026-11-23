@@ -287,8 +287,6 @@ class HandwritingWindow : BoardWindow.BarBoardWindow() {
             "＝" to "=",
         )
 
-        private val PAGE_PUNCT_CN = SYMBOL_PAIRS.map { it.first }
-        private val PAGE_PUNCT_EN = SYMBOL_PAIRS.map { it.second }
         // 符号页：按"常用 → 数学 → 单位 → 图形 → 箭头 → 其它"排，靠滚动看全
         private val PAGE_SYMBOL = listOf(
             "／", "＼", "＠", "＃", "＄", "％",

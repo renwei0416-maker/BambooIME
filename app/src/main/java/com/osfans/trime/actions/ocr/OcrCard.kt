@@ -121,8 +121,6 @@ object OcrCard {
         box.setSelection((start + text.length).coerceIn(0, box.text.length))
     }
 
-    fun newline() = append("\n")
-
     /** 退格：有选区删选区，否则删光标前一个码点（中文一个字一个）。 */
     fun backspace() {
         val box = edit ?: return

@@ -468,7 +468,7 @@ object WxSpeechClient {
         return total
     }
 
-    /** 识别日志：恒定写盘（外置 Documents，我或用户都能直接读），滚动保留最近 200 行。 */
+    /** 识别日志：恒定写入外置 Documents 目录，滚动静默只保留最近 200 行。 */
     private fun logRecognition(
         service: TrimeInputMethodService,
         session: Int,
@@ -823,6 +823,4 @@ object WxAsrLog {
         runCatching { fallbackFile(ctx).delete() }
     }
 
-    /** `Build.VERSION.SDK_INT` guard kept for lint: only used through [append]. */
-    val apiLevel: Int get() = Build.VERSION.SDK_INT
 }

@@ -46,8 +46,6 @@ object MultiModelRecognizer {
     @Volatile
     private var punctLoaded = false
 
-    fun isLoaded(): Boolean = recognizer != null
-
     /** 当前设置选中、且已经装好的模型；没装返回 null。 */
     fun currentSpec(context: Context): SherpaModelPack.Spec? {
         val prefs = AppPrefs.defaultInstance().voiceInput

@@ -84,8 +84,6 @@ class HandwritingBoardView(context: Context) : View(context) {
 
     val isEmpty: Boolean get() = strokes.isEmpty()
 
-    val strokeCount: Int get() = strokes.size
-
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
         when (event.actionMasked) {

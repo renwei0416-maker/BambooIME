@@ -16,8 +16,6 @@ object HandwritingPrefs {
     private const val K_MAX_CANDIDATES = "max_candidates"
     private const val K_PEN_WIDTH = "pen_width"
 
-    private const val K_MULTI_CHAR = "multi_char"
-    private const val K_RECOGNIZE_WHILE_WRITING = "recognize_while_writing"
     private const val K_THEME_COLORS = "theme_colors"
     private const val K_INK_MODE = "ink_mode"
     private const val K_SHOW_PINYIN = "show_pinyin"
@@ -66,16 +64,6 @@ object HandwritingPrefs {
         get() = p().getInt(K_PEN_WIDTH, 3).coerceIn(1, 16)
         set(value) = p().edit().putInt(K_PEN_WIDTH, value.coerceIn(1, 16)).apply()
 
-
-    /** 一次可以连写多字。 */
-    var multiChar: Boolean
-        get() = p().getBoolean(K_MULTI_CHAR, true)
-        set(value) = p().edit().putBoolean(K_MULTI_CHAR, value).apply()
-
-    /** 边写边识别（默认关）。 */
-    var recognizeWhileWriting: Boolean
-        get() = p().getBoolean(K_RECOGNIZE_WHILE_WRITING, false)
-        set(value) = p().edit().putBoolean(K_RECOGNIZE_WHILE_WRITING, value).apply()
 
     /** 手写板跟随主题配色（默认开）。 */
     var themeColors: Boolean

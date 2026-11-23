@@ -35,23 +35,6 @@ object RevertLedger {
     @Synchronized
     fun lastCodePoints(): Int = entries.lastOrNull()?.codePoints ?: 0
 
-    /**
-     * 计划删除：从最新条目往前累计，最多 [limit] 个码点，返回应删除的码点数。
-     * 只做计划、不改账本——账本要等编辑器确认删掉了多少之后再更新。
-     */
-    @Synchronized
-    fun planDelete(limit: Int): Int {
-        var remaining = limit.coerceAtLeast(1)
-        var total = 0
-        for (i in entries.indices.reversed()) {
-            val take = minOf(entries[i].codePoints, remaining)
-            total += take
-            remaining -= take
-            if (remaining <= 0) break
-        }
-        return total
-    }
-
     /** 编辑器实际删掉了 [actual] 个码点之后，按这个数字扣账。 */
     @Synchronized
     fun consume(actual: Int) {

@@ -28,9 +28,6 @@ object IdsPrefs {
     const val FORMAT_PLAIN = "plain"
 
     const val SHUANGPIN_FLYPY = "flypy"
-    const val SHUANGPIN_ZRM = "zrm"
-    const val SHUANGPIN_QUANPIN = "quanpin"
-
     private val sp get() =
         TrimeApplication.getInstance().getSharedPreferences(SP_NAME, Context.MODE_PRIVATE)
 

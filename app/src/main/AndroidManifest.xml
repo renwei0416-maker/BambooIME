@@ -153,10 +153,6 @@ SPDX-License-Identifier: GPL-3.0-or-later
             android:name=".link.MicPermissionActivity"
             android:exported="false" />
 
-        <activity
-            android:name=".link.VoiceModelDownloadActivity"
-            android:exported="false" />
-
         <!-- Text Editor -->
         <activity
             android:name="com.osfans.trime.ui.texteditor.FileBrowserActivity"

@@ -71,8 +71,6 @@ object ShotCapture {
 
     /** 最近一次抓到的整屏位图（裁剪时当底图用）。 */
 
-    fun lastBitmap(): android.graphics.Bitmap? = pending
-
 
     fun takePending(): Bitmap? = pending.also { pending = null }
 

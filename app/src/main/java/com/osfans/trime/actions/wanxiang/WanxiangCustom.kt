@@ -687,11 +687,6 @@ object WanxiangCustom {
         return fixed
     }
 
-    /** 读回设备上实际的 custom（给「当前生效配置」预览用）。 */
-    fun readProCustom(pkgId: String = activePackage()): String =
-        runCatching { File(SchemaPackStore.dir(pkgId), customFileOf(pkgId)).readText() }
-            .getOrDefault("")
-
     /** 当前生效方案的简要摘要（预览页用）。 */
     fun summary(): String = buildString {
         append("输入方式：").append(
@@ -722,7 +717,4 @@ object WanxiangCustom {
         append("启用方案：").append(activeSchema(activePackage(), WanxiangPrefs.layout))
     }
 
-    /** manifest 里的版本号；找不到就返回空（下载功能用）。 */
-    fun packVersion(pkgId: String = activePackage()): String =
-        SchemaPackStore.manifest(pkgId)?.optString("version").orEmpty()
 }

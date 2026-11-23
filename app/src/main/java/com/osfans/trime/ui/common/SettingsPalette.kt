@@ -60,9 +60,6 @@ object SettingsPaletteResolver {
     const val MIN_ACCENT = 3.0
     const val MIN_WARNING = 3.0
 
-    /** 分隔线只需要看得见。 */
-    const val MIN_DIVIDER = 1.5
-
     private val LIGHT_BG = 0xFFF7F6F2.toInt()
     private val DARK_BG = 0xFF141414.toInt()
 

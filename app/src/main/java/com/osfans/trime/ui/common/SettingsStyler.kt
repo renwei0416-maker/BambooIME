@@ -143,11 +143,6 @@ object SettingsStyler {
         for (index in 0 until list.childCount) applyRowIn(list, list.getChildAt(index), tokens)
     }
 
-    /** 单行：标题用主文字色，摘要与其余文字用次文字色。 */
-    fun applyRow(row: View, palette: SettingsPalette) {
-        tintText(row, SettingsTokensResolver.resolve(row.context), isCategory = false)
-    }
-
     private fun applyRowIn(list: RecyclerView, view: View, tokens: SettingsTokens) {
         val adapter = list.adapter as? PreferenceGroupAdapter
         val position = list.getChildAdapterPosition(view)

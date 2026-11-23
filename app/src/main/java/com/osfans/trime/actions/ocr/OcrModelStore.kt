@@ -75,9 +75,6 @@ object OcrModelStore {
         return entry
     }
 
-    /** 是否内置了模型（`-PbundleOcrModel=false` 时为 false）。 */
-    fun isBundled(): Boolean = com.osfans.trime.BuildConfig.BUNDLED_OCR_MODEL
-
     fun delete(context: Context, version: String = VERSION_V5): Boolean =
         dirFor(context, version).deleteRecursively()
 }

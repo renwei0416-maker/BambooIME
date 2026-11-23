@@ -50,9 +50,6 @@ object SherpaModelPack {
     const val CNB_BASE: String =
         "https://cnb.cool/renwei.co/BambooIME/-/releases/download/sherpa-models-2026-11"
 
-    /** manifest 里记录的上游原始资产（只在 CNB 上，供人手动下载）。 */
-    const val MANIFEST_NAME: String = "manifest.json"
-
     private const val DIR_NAME = "sherpa-models"
     private const val BUFFER = 256 * 1024
 

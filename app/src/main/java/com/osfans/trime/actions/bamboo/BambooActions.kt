@@ -84,12 +84,7 @@ object BambooActions {
         if (!restarting || isSensitive(editorInfo)) RevertLedger.clear()
     }
 
-    val isArmed: Boolean get() = armed != null
-
     val armedName: String? get() = armed?.name
-
-    /** 当前是不是停在文曲星模式（不是 AI 模式）。 */
-    val armedIsTips: Boolean get() = armed?.key == TIPS_KEY
 
     /** 面板顶部显示的「当前」名字：文曲星单独显示，其余用模式名。 */
     val armedDisplayName: String?
@@ -924,11 +919,6 @@ object BambooActions {
                 clip.getItemAt(0)?.coerceToText(service)?.toString()
             }.getOrNull()
         }
-
-    /** 设置里改了「退出 AI 模式」之类时用。 */
-    fun disarm() {
-        armed = null
-    }
 
     // ---------------------------------------------------------------- 语音发AI
 

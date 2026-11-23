@@ -29,8 +29,8 @@ object VoiceAiPrefs {
     /**
      * 叠加在模式提示词前面的「语音纠错」提示。
      *
-     * 用两句任务说明代替一段命令式描述：先讲这是语音转来的文字、可能有错，
-     * 再要求先还原再照下面的要求办——这样它和模式提示词叠加时职责清楚。
+     * 分两句：前一句说明文字来自语音识别、可能有错；后一句要求先还原原意，再执行模式自身的提示词。
+     * 这样本提示与模式提示词叠加时职责清晰：纠错归纠正、改写归模式。
      */
     const val DEFAULT_FIX_PROMPT =
         "下面这段文字是用户用语音输入、由识别引擎转成文字的，其中可能有个别字或词被识别错了。" +
@@ -114,9 +114,4 @@ object VoiceAiPrefs {
             if (ensure()) sp.edit().putBoolean("show_status", value).apply()
         }
 
-    /** 把本页所有项恢复出厂值。 */
-    fun resetAll() {
-        if (!ensure()) return
-        sp.edit().clear().apply()
-    }
 }

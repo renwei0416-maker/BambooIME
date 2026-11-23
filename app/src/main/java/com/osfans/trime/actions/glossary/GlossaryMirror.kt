@@ -22,7 +22,7 @@ import java.util.concurrent.TimeUnit
  * 只希望点「下载」能下完。
  *
  * 用户自己填了镜像地址（[GlossaryPrefs.customDownloadUrl]）时只用那一个，不再自动换源，
- * 避免「我明明指定了地址却下了别处的包」。
+ * 避免「指定了地址却装到别处的包」。
  */
 object GlossaryMirror {
     enum class Host { GITHUB, CNB }

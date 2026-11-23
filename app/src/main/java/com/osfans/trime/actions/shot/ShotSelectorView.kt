@@ -47,7 +47,6 @@ class ShotSelectorView(context: Context) : View(context) {
     private val labelBgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x99000000.toInt() }
 
     private val handleR = dp(11)
-    private val hitSlop = dp(26)
     private val minSize = dp(24)
 
     private val modeNone = 0

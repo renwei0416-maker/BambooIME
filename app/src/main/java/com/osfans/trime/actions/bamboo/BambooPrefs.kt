@@ -73,11 +73,6 @@ object BambooPrefs {
     const val DEFAULT_REVERT_TRIGGERS = "qq/"
     const val DEFAULT_MAX_DELETE = 500
 
-    /**
-     * 老版本的「发送方式」二选一。1.1.0 起拆成两个独立开关
-     * （[K_AI_SEND_DOUBLE] / [K_AI_SEND_COMBO]），这两个常量只用于迁移旧存档。
-     */
-    const val TRIGGER_DOUBLE = "double"
     const val TRIGGER_COMBO = "combo"
 
     const val DEFAULT_AI_COMBO = "ctrl+;"
@@ -403,11 +398,4 @@ object BambooPrefs {
         get() = p().getString(K_AI_SENTENCE_MARKS, DEFAULT_SENTENCE_MARKS) ?: DEFAULT_SENTENCE_MARKS
         set(v) = p().edit().putString(K_AI_SENTENCE_MARKS, v).apply()
 
-    fun registerListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) {
-        p().registerOnSharedPreferenceChangeListener(listener)
-    }
-
-    fun unregisterListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) {
-        p().unregisterOnSharedPreferenceChangeListener(listener)
-    }
 }
