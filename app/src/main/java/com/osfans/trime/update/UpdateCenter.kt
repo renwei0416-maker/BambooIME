@@ -46,13 +46,17 @@ data class UpdateManifest(
  * 检查/下载/安装更新。
  *
  * 设计约束（见 repo\docs\version.json 的字段说明）：
- * - 清单是纯静态 json，放仓库 docs/ 下，GitHub release 资产为主源、GitHub raw 为备源；
- * - 普通用户不需要 token（raw 与 release 资产都是公开直链）；
+ * - 清单是纯静态 json，主源用 CNB 固定 release「update-manifest」里的 version.json，每次发版覆盖同名资产；
+ * - 备源用 GitHub release 的 latest/download/version.json，第三路退回仓库 raw；
+ * - 普通用户不需要 token（release 资产与 raw 都是公开直链）；
  * - 只能拉起系统安装器，不做静默安装；
  * - 主题包必须是 zip（app 内只有 ZipInputStream）。
  */
 object UpdateCenter {
     /** 主源：GitHub 最新 release 里的 version.json 资产（地址稳定，每次发版覆盖上传） */
+    private const val CNB_RELEASE_RAW =
+        "https://cnb.cool/renwei.co/BambooIME/-/releases/download/update-manifest/version.json"
+
     private const val GH_RELEASE_RAW =
         "https://github.com/renwei0416-maker/BambooIME/releases/latest/download/version.json"
     /** 备源：GitHub main 分支 docs/version.json */
@@ -118,13 +122,13 @@ object UpdateCenter {
         return latest.isNotEmpty() && latest != currentVersionName().trim()
     }
 
-    private fun urls(context: Context, cnb: String, github: String): List<String> = when (source(context)) {
+    private fun urls(context: Context, cnb: String, github: String, fallback: String = ""): List<String> = when (source(context)) {
         SOURCE_CNB -> listOf(cnb)
         SOURCE_GITHUB -> listOf(github)
         else -> listOf(cnb, github)
     }
 
-    private fun manifestUrls(context: Context) = urls(context, GH_RELEASE_RAW, GH_RAW)
+    private fun manifestUrls(context: Context) = urls(context, CNB_RELEASE_RAW, GH_RELEASE_RAW, GH_RAW)
 
     suspend fun fetchManifest(context: Context): Result<UpdateManifest> = withContext(Dispatchers.IO) {
         val errors = StringBuilder()

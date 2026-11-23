@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 
 <!--
   ~ SPDX-FileCopyrightText: 2015 - 2025 Rime community
@@ -749,9 +749,9 @@
     <string name="update_auto_check">Check for updates automatically</string>
     <string name="update_auto_check_summary">At most once a day after startup</string>
     <string name="update_source">Download source</string>
-    <string name="update_source_auto">Auto (fallback to backup)</string>
-    <string name="update_source_cnb">Primary (GitHub release)</string>
-    <string name="update_source_github">Backup (GitHub raw)</string>
+    <string name="update_source_auto">Auto (CNB first, fall back to GitHub)</string>
+    <string name="update_source_cnb">CNB only (fastest in China)</string>
+    <string name="update_source_github">GitHub only</string>
     <string name="update_downloading">Downloading %1$d%%</string>
     <string name="update_install_failed">Install failed: %s</string>
     <string name="update_theme_done">Theme pack updated (%d files)</string>
