@@ -37,6 +37,8 @@ import android.content.Context
 import com.osfans.trime.ime.keyboard.KeyboardWindow
 import com.osfans.trime.data.theme.Theme
 import com.osfans.trime.data.theme.ThemeManager
+import com.osfans.trime.actions.bamboo.BambooTokens
+import com.osfans.trime.ime.keyboard.KeyBehavior
 import com.osfans.trime.data.theme.ThemeResourceResolver
 import com.osfans.trime.data.theme.model.TextKeyboard
 import com.osfans.trime.data.theme.model.ColorScheme
@@ -69,6 +71,16 @@ class ThemeStyleFragment : Fragment() {
     private val subColor = 0xFF8A8F98.toInt()
     private val accentColor = 0xFFE8C87A.toInt()
     private val dividerColor = 0x1FFFFFFF
+
+    /** 「动作」页要展示的六个动作，顺序按用户习惯：单击在最前。 */
+    private val ACTIONS = listOf(
+        KeyBehavior.CLICK to "单击",
+        KeyBehavior.LONG_CLICK to "长按",
+        KeyBehavior.SWIPE_UP to "上滑",
+        KeyBehavior.SWIPE_DOWN to "下滑",
+        KeyBehavior.SWIPE_LEFT to "左滑",
+        KeyBehavior.SWIPE_RIGHT to "右滑",
+    )
 
     private lateinit var previewBox: FrameLayout
     private lateinit var preview: ThemePreviewView
@@ -135,19 +147,20 @@ class ThemeStyleFragment : Fragment() {
      * 序号一律走 [Tabs] 常量，禁止再写裸数字——否则挪页签必错位。
      */
     private val tabs = listOf(
-        "键盘", "配色", "按键", "候选栏", "预编辑", "气泡", "工具栏", "液态键盘", "高级",
+        "键盘", "配色", "按键", "动作", "候选栏", "预编辑", "气泡", "工具栏", "液态键盘", "高级",
     )
 
     private object Tabs {
         const val KEYBOARD = 0
         const val COLORS = 1
         const val KEY = 2
-        const val CANDIDATE = 3
-        const val PREEDIT = 4
-        const val POPUP = 5
-        const val TOOLBAR = 6
-        const val LIQUID = 7
-        const val ADVANCED = 8
+        const val ACTIONS = 3
+        const val CANDIDATE = 4
+        const val PREEDIT = 5
+        const val POPUP = 6
+        const val TOOLBAR = 7
+        const val LIQUID = 8
+        const val ADVANCED = 9
     }
 
     private companion object {
@@ -809,6 +822,7 @@ class ThemeStyleFragment : Fragment() {
             Tabs.KEYBOARD -> renderKeyboardAll()
             Tabs.COLORS -> renderColors()
             Tabs.KEY -> renderKeyTab()
+            Tabs.ACTIONS -> renderActions()
             Tabs.CANDIDATE -> renderCandidateAll()
             Tabs.PREEDIT -> renderPreedit()
             Tabs.POPUP -> renderBubble()
@@ -2069,6 +2083,132 @@ class ThemeStyleFragment : Fragment() {
         onChange()
         renderTab(Tabs.KEY)
         toast("已写入 ${targets.size} 个键的 $field")
+    }
+
+    /**
+     * 「动作」页：一个键的单击 / 长按 / 上滑 / 下滑 / 左滑 / 右滑。
+     *
+     * 动作值存在 `TextKey.behaviors`（序列化名 = 枚举名小写），主题 JSON 里
+     * 就是 `click` / `long_click` / `swipe_up` … 这些 snake_case 字段。
+     * 这里只读写「当前键自己写的那一份」，不动 preset_keys。
+     */
+    private fun renderActions() {
+        val path = selectedKey
+        val tk = path?.let {
+            ThemeManager.getKeyboard(it.keyboard)?.rows?.getOrNull(it.row)?.keys?.getOrNull(it.column)
+        }
+        if (path == null || tk == null) {
+            content.addView(sectionTitle("动作"))
+            content.addView(
+                hint("先在预览里点一个键，再回来这里改它的动作。"),
+            )
+            return
+        }
+
+        val keyboardLabel = keyboardLabels[path.keyboard] ?: path.keyboard
+        content.addView(sectionTitle("动作"))
+        content.addView(
+            hint("$keyboardLabel › 第 ${path.row + 1} 行 › 第 ${path.column + 1} 键"),
+        )
+        if (tk.spacer) {
+            content.addView(hint("这是占位空格键（spacer），改动作没有意义。"))
+            return
+        }
+
+        content.addView(
+            hint(
+                "留空 = 不定义。可填三种：① preset_keys 里的键名（如 BackSpace、Info）；" +
+                    "② 发按键的键码（如 a、space）；③ 苍竹动作（如 BambooRevert、BambooAbout，必须用 text 语义才会生效）。",
+            ),
+        )
+
+        ACTIONS.forEach { (behavior, label) ->
+            val field = behavior.name.lowercase()
+            val own = rawText(path, field)
+            val effective = tk.behaviors[behavior].orEmpty()
+            val shown = when {
+                own != null && own.isNotEmpty() -> own
+                effective.isNotEmpty() -> "继承：$effective"
+                else -> "继承（未定义）"
+            }
+            content.addView(
+                fieldRow(
+                    title = label,
+                    value = shown,
+                    swatch = null,
+                    onRestore = if (own != null) {
+                        {
+                            pushUndo()
+                            draft.removeField(path, field)
+                            onChange()
+                            renderTab(Tabs.ACTIONS)
+                        }
+                    } else {
+                        null
+                    },
+                ) {
+                    showActionPicker(path, field, label, own ?: "")
+                },
+            )
+            content.addView(divider())
+        }
+    }
+
+    private fun showActionPicker(path: KeyPath, field: String, label: String, current: String) {
+        val presetKeys = runCatching { ThemeManager.activeTheme.presetKeys.keys.sorted() }
+            .getOrDefault(emptyList())
+        val options = ArrayList<String>()
+        val values = ArrayList<String?>()
+        options.add("（清空：不定义）")
+        values.add(null)
+        BambooTokens.fixed.forEach { token ->
+            options.add("苍竹动作：$token")
+            values.add(token)
+        }
+        presetKeys.forEach { name ->
+            options.add("预设键：$name")
+            values.add(name)
+        }
+
+        AlertDialog.Builder(requireContext())
+            .setTitle("$label：选一个动作")
+            .setItems(options.toTypedArray()) { _, which ->
+                val picked = values[which]
+                pushUndo()
+                if (picked.isNullOrEmpty()) {
+                    draft.removeField(path, field)
+                } else {
+                    draft.setField(path, field, JsonPrimitive(picked))
+                }
+                onChange()
+                renderTab(Tabs.ACTIONS, keepScroll = false)
+            }
+            .setNeutralButton("手填…") { _, _ ->
+                val input = EditText(requireContext()).apply {
+                    setText(current)
+                    setHint("例如 BambooRevert / BackSpace / a")
+                    setSingleLine()
+                    setPadding(dp(20), dp(12), dp(20), dp(12))
+                }
+                AlertDialog.Builder(requireContext())
+                    .setTitle("$label：手填动作")
+                    .setView(input)
+                    .setPositiveButton("确定") { _, _ ->
+                        val text = input.text?.toString()?.trim().orEmpty()
+                        pushUndo()
+                        if (text.isEmpty()) {
+                            draft.removeField(path, field)
+                        } else {
+                            draft.setField(path, field, JsonPrimitive(text))
+                        }
+                        onChange()
+                        renderTab(Tabs.ACTIONS, keepScroll = false)
+                    }
+                    .setNegativeButton("取消", null)
+                    .show()
+            }
+            .setNegativeButton("取消", null)
+            .show()
     }
 
     private fun rawText(path: KeyPath, field: String): String? =

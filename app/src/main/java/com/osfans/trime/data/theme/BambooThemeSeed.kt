@@ -36,7 +36,7 @@ object BambooThemeSeed {
     private const val LIB_DIR = "lib"
 
     /** 内置主题/字体内容变化时 +1，用来触发一次重新铺设。 */
-    private const val STAMP = "2"
+    private const val STAMP = "3"
 
     private const val MARKER = ".bamboo-themes"
     private const val ADOPTED = ".bamboo-theme-default"
@@ -65,6 +65,7 @@ object BambooThemeSeed {
 
         val marker = File(themesDir, MARKER)
         if (marker.takeIf { it.isFile }?.readText()?.trim() != STAMP) {
+            migrateDeployedLib(themesDir)
             marker.writeText(STAMP)
             Timber.d("BambooThemeSeed: stamped $STAMP")
         }
@@ -144,6 +145,35 @@ object BambooThemeSeed {
             target.writeBytes(assetBytes)
             Timber.d("BambooThemeSeed: 主题 ${target.name}")
         }.onFailure { Timber.w(it, "BambooThemeSeed: 主题 ${target.name} 写入失败") }
+    }
+
+    /**
+     * 把用户目录里**已部署**的 lib 做一次就地迁移。
+     *
+     * `copyLibIfMissing` 只补不覆盖（用户可能自己改过 lib），所以修好的
+     * `preset_keys.lua` 不会自动生效。这里针对已知的两处错误做定点替换：
+     * - `send = "BambooAbout"`：「关于」键必须用 `text` 才会走 token 派发，
+     *   用 `send` 只是发一个不存在的按键，点了没反应；
+     * - `click = "BambooAbout"`：layouts 里引用的是 preset_keys 的**键名**，
+     *   应指回上游自带的 `Info` 预设键。
+     */
+    private fun migrateDeployedLib(themesDir: File) {
+        val libGboard = File(File(themesDir, LIB_DIR), "gboard")
+        patchDeployedText(File(libGboard, "preset_keys.lua"), "send = \"BambooAbout\"", "text = \"BambooAbout\"")
+        patchDeployedText(
+            File(File(libGboard, "layouts"), "settings.lua"),
+            "click = \"BambooAbout\"",
+            "click = \"Info\"",
+        )
+    }
+
+    private fun patchDeployedText(file: File, from: String, to: String) {
+        if (!file.isFile) return
+        val text = runCatching { file.readText() }.getOrNull() ?: return
+        if (!text.contains(from)) return
+        runCatching { file.writeText(text.replace(from, to)) }
+            .onSuccess { Timber.d("BambooThemeSeed: 迁移 ${file.name}") }
+            .onFailure { Timber.w(it, "BambooThemeSeed: 迁移 ${file.name} 失败") }
     }
 
     /**
