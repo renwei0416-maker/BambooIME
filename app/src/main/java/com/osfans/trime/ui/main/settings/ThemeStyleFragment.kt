@@ -2136,15 +2136,14 @@ class ThemeStyleFragment : Fragment() {
                     title = label,
                     value = shown,
                     swatch = null,
-                    onRestore = if (own != null) {
-                        {
+                    restoreEnabled = own != null,
+                    onRestore = {
+                        if (own != null) {
                             pushUndo()
                             draft.removeField(path, field)
                             onChange()
                             renderTab(Tabs.ACTIONS)
                         }
-                    } else {
-                        null
                     },
                 ) {
                     showActionPicker(path, field, label, own ?: "")
@@ -2511,6 +2510,7 @@ class ThemeStyleFragment : Fragment() {
         swatch: Int?,
         onRestore: (() -> Unit)?,
         swatchDashed: Boolean = false,
+        restoreEnabled: Boolean = true,
         onValueClick: (() -> Unit)? = null,
         onClick: () -> Unit,
     ): View {
@@ -2563,10 +2563,14 @@ class ThemeStyleFragment : Fragment() {
                 TextView(requireContext()).apply {
                     text = "↺"
                     setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
-                    setTextColor(subColor)
+                    setTextColor(
+                        if (restoreEnabled) subColor else (subColor and 0x00FFFFFF) or 0x66000000,
+                    )
                     gravity = Gravity.CENTER
                     setPadding(dp(10), 0, 0, 0)
-                    setOnClickListener { onRestore() }
+                    if (restoreEnabled) {
+                        setOnClickListener { onRestore() }
+                    }
                 },
                 LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT),
             )
