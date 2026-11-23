@@ -76,7 +76,7 @@ android {
         minSdk = 29
         targetSdk = 37
         versionCode = LocalDate.now(ZoneId.of("Asia/Shanghai")).format(DateTimeFormatter.BASIC_ISO_DATE).toInt() * 100 + ((project.findProperty("buildVersionCodeSeq") as String?)?.toIntOrNull() ?: 1)
-        versionName = "3.9.1"
+        versionName = "3.9.2"
 
         multiDexEnabled = true
         buildConfigField("String", "BUILDER", "\"${project.builder}\"")
