@@ -13,12 +13,12 @@
     ]
   },
   "themes": {
-    "name": "themes-3.6.0.zip",
-    "size": 14975917,
-    "sha256": "c13a1bcc08ef6bb008bc812692cdd82b71e4a7858f6bb85d935f9f71852a3fed",
+    "name": "themes-3.6.1.zip",
+    "size": 14983810,
+    "sha256": "d352a9cdcc8127a3999d89eace2a2c87262e43f292ef7c4af2b326a9f91a302d",
     "urls": [
-      "https://cnb.cool/renwei.co/BambooIME/-/releases/download/v3.9.2/themes-3.6.0.zip",
-      "https://github.com/renwei0416-maker/BambooIME/releases/download/v3.9.2/themes-3.6.0.zip"
+      "https://cnb.cool/renwei.co/BambooIME/-/releases/download/v3.9.2/themes-3.6.1.zip",
+      "https://github.com/renwei0416-maker/BambooIME/releases/download/v3.9.2/themes-3.6.1.zip"
     ]
   }
 }
