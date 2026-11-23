@@ -11,7 +11,7 @@ import timber.log.Timber
 import java.io.File
 
 /**
- * 把「出厂主题」从 APK 资产铺到用户主题目录。
+ * 把「出厂主题」从 APK 资产铺到用户主题目录，并按**主题版本**做整体更新。
  *
  * 为什么不用 `assets/themes/`：
  * 那条通道会被 `DataManager.sync` 按校验和自动同步进**应用私有**的 `themesDir`，
@@ -19,13 +19,17 @@ import java.io.File
  * 而 `ThemeManager.getAllThemes()` 是把两个目录直接相加、不按 id 去重 ——
  * 主题列表里就会出现两条同名主题（点哪条都是用户那份生效）。
  *
- * 所以内置资产放 `assets/bamboo-themes/`（不进 sync 清单），由这里**只往用户目录铺一份**：
- * - 磁盘上永远只有一份 `Gboard.lua`，列表天然不重复，`getAllThemes()` 不用改（不碰上游）；
- * - 用户解压 `themes.7z` 覆盖同名文件 = 覆盖它，行为和以前一致；
- * - 我们更新了内置主题而用户没换 APK：用户覆盖即生效（同一目录同一文件名）。
+ * 所以内置资产放 `assets/bamboo-themes/`（不进 sync 清单），由这里**只往用户目录铺一份**。
  *
- * 字体：`FontManager` 只认 `userDataBaseDir/themes/fonts/`，所以字体也铺到这里，
- * 且**只在缺失时补**（用户可能自己换过字体，不覆盖）。
+ * 版本化更新（本轮改造）：
+ * 以前 `lib/` 是「只补不覆盖」，导致改了 `lib/gboard/preset_keys.lua` 这类共享文件，
+ * 用户装了新 APK 也永远用手机里那份旧的 —— 「更新一版主题」实际到不了用户手里。
+ * 现在 `assets/bamboo-themes/VERSION` 是唯一版本号：
+ * - 手机副本的版本与资产不同 → 把**全部内置主题（themes 目录下的 lua）与共享 lib 目录整体覆盖**一遍；
+ * - 版本相同 → 只补齐缺失文件（保留用户自己的改动）。
+ *
+ * 边界：只覆盖「资产里存在的那一份」；用户自建主题、自己往 `lib/` 加的文件不会被删。
+ * 字体始终**只补不覆盖**（用户可能自己换过字体）。
  */
 object BambooThemeSeed {
     private const val ASSET_ROOT = "bamboo-themes"
@@ -35,8 +39,8 @@ object BambooThemeSeed {
     /** 主题共用的 `lib/`（配色、布局、preset_keys…）：内置主题 require 的就是它。 */
     private const val LIB_DIR = "lib"
 
-    /** 内置主题/字体内容变化时 +1，用来触发一次重新铺设。 */
-    private const val STAMP = "3"
+    /** 出厂主题包的版本号文件：内容变化即触发一次整体覆盖。 */
+    private const val VERSION_ASSET = "$ASSET_ROOT/VERSION"
 
     private const val MARKER = ".bamboo-themes"
     private const val ADOPTED = ".bamboo-theme-default"
@@ -56,22 +60,35 @@ object BambooThemeSeed {
         val themesDir = DataManager.userThemesDir
         val fontsDir = File(DataManager.userDataBaseDir, "$THEME_DIR/$FONT_DIR").also { it.mkdirs() }
 
-        copyFontsIfMissing(context, fontsDir)
-        copyLibIfMissing(context)
-
-        val themeAsset = "$ASSET_ROOT/$THEME_DIR/$THEME_ID.lua"
-        val themeTarget = File(themesDir, "$THEME_ID.lua")
-        syncBundledFile(context, themeAsset, themeTarget)
-
+        val version = readAssetText(context, VERSION_ASSET)?.trim().orEmpty()
         val marker = File(themesDir, MARKER)
-        if (marker.takeIf { it.isFile }?.readText()?.trim() != STAMP) {
-            migrateDeployedLib(themesDir)
-            marker.writeText(STAMP)
-            Timber.d("BambooThemeSeed: stamped $STAMP")
+        val deployed = marker.takeIf { it.isFile }
+            ?.let { f -> runCatching { f.readText().trim() }.getOrNull() }
+            .orEmpty()
+
+        val needUpdate = version.isNotEmpty() && deployed != version
+
+        if (needUpdate) {
+            // 版本不同：内置内容整体覆盖（所有主题 + 共享 lib）
+            mirrorAssetTree(context, "$ASSET_ROOT/$THEME_DIR", themesDir)
+            mirrorAssetTree(context, "$ASSET_ROOT/$LIB_DIR", File(themesDir, LIB_DIR))
+            runCatching { marker.writeText(version) }
+                .onSuccess { Timber.i("BambooThemeSeed: 主题更新到 $version") }
+                .onFailure { Timber.w(it, "BambooThemeSeed: 版本戳写入失败") }
+        } else {
+            // 版本相同（或资产没有版本戳）：只补齐缺失文件，不动用户改动
+            copyAssetTreeIfMissing(context, "$ASSET_ROOT/$THEME_DIR", themesDir)
+            copyAssetTreeIfMissing(context, "$ASSET_ROOT/$LIB_DIR", File(themesDir, LIB_DIR))
         }
 
-        adoptDefaultThemeOnce(themesDir)
+        copyFontsIfMissing(context, fontsDir)
+        adoptDefaultThemeOnce(themesDir, version)
     }
+
+    private fun readAssetText(context: Context, assetPath: String): String? =
+        runCatching { context.assets.open(assetPath).use { it.readBytes().decodeToString() } }
+            .onFailure { Timber.w(it, "BambooThemeSeed: 读取 $assetPath 失败") }
+            .getOrNull()
 
     /** 字体只补不管：目标已存在就认为用户自备/已装，绝不覆盖。 */
     private fun copyFontsIfMissing(context: Context, fontsDir: File) {
@@ -89,18 +106,27 @@ object BambooThemeSeed {
     }
 
     /**
-     * 主题共用库 `lib/`（82 个文件 / 0.77 MB）：`Gboard.lua` 里 `safe_require("colors.gboard")`、
-     * `layouts.*`、`preset_keys` 全落在这里，缺了它主题会直接加载失败（首次安装没有 themes.7z 时就是这种情况）。
+     * 整体镜像：目录递归，叶子文件**无条件覆盖**。
      *
-     * 同样**只补不覆盖**：用户装过 themes.7z 的话 `lib/` 已是自己的那份，不能抢。
+     * 不删「资产里没有、用户目录里有」的文件：用户可能自建主题或往 `lib/` 加过布局。
      */
-    private fun copyLibIfMissing(context: Context) {
-        val root = File(DataManager.userDataBaseDir, THEME_DIR).also { it.mkdirs() }
-        runCatching { copyAssetTree(context, "$ASSET_ROOT/$LIB_DIR", File(root, LIB_DIR)) }
-            .onFailure { Timber.w(it, "BambooThemeSeed: lib 铺设失败") }
+    private fun mirrorAssetTree(context: Context, assetPath: String, dest: File) {
+        val children = runCatching { context.assets.list(assetPath) }.getOrNull() ?: return
+        if (children.isEmpty()) {
+            runCatching {
+                context.assets.open(assetPath).use { input ->
+                    dest.parentFile?.mkdirs()
+                    dest.outputStream().use { output -> input.copyTo(output) }
+                }
+            }.onFailure { Timber.w(it, "BambooThemeSeed: $assetPath 覆盖失败") }
+            return
+        }
+        dest.mkdirs()
+        children.forEach { mirrorAssetTree(context, "$assetPath/$it", File(dest, it)) }
     }
 
-    private fun copyAssetTree(context: Context, assetPath: String, dest: File) {
+    /** 只补不覆盖：仅在目标缺失或为空时铺设。 */
+    private fun copyAssetTreeIfMissing(context: Context, assetPath: String, dest: File) {
         val children = runCatching { context.assets.list(assetPath) }.getOrNull() ?: return
         if (children.isEmpty()) {
             if (dest.exists() && dest.length() > 0L) return
@@ -113,67 +139,7 @@ object BambooThemeSeed {
             return
         }
         dest.mkdirs()
-        children.forEach { copyAssetTree(context, "$assetPath/$it", File(dest, it)) }
-    }
-
-    /**
-     * 主题文件与内置保持同步。
-     *
-     * `Gboard.lua` 这个 id 只由我们发行，所以内容不同就说明是**旧版内置**（或用户改过）。
-     * 两种情况都直接覆盖成新版（否则老用户的「默认深色」永远不生效）。
-     * 不另存 `.bak` 副本：用户明确要求 App 不在磁盘上留备份文件。
-     */
-    private fun syncBundledFile(
-        context: Context,
-        assetPath: String,
-        target: File,
-    ) {
-        val assetBytes = runCatching { context.assets.open(assetPath).use { it.readBytes() } }
-            .getOrNull() ?: run {
-            Timber.w("BambooThemeSeed: 资产缺失 $assetPath")
-            return
-        }
-        val assetSha = assetBytes.sha256()
-
-        if (target.isFile) {
-            val current = runCatching { target.readBytes() }.getOrNull()
-            if (current != null && current.sha256() == assetSha) return
-        }
-
-        runCatching {
-            target.parentFile?.mkdirs()
-            target.writeBytes(assetBytes)
-            Timber.d("BambooThemeSeed: 主题 ${target.name}")
-        }.onFailure { Timber.w(it, "BambooThemeSeed: 主题 ${target.name} 写入失败") }
-    }
-
-    /**
-     * 把用户目录里**已部署**的 lib 做一次就地迁移。
-     *
-     * `copyLibIfMissing` 只补不覆盖（用户可能自己改过 lib），所以修好的
-     * `preset_keys.lua` 不会自动生效。这里针对已知的两处错误做定点替换：
-     * - `send = "BambooAbout"`：「关于」键必须用 `text` 才会走 token 派发，
-     *   用 `send` 只是发一个不存在的按键，点了没反应；
-     * - `click = "BambooAbout"`：layouts 里引用的是 preset_keys 的**键名**，
-     *   应指回上游自带的 `Info` 预设键。
-     */
-    private fun migrateDeployedLib(themesDir: File) {
-        val libGboard = File(File(themesDir, LIB_DIR), "gboard")
-        patchDeployedText(File(libGboard, "preset_keys.lua"), "send = \"BambooAbout\"", "text = \"BambooAbout\"")
-        patchDeployedText(
-            File(File(libGboard, "layouts"), "settings.lua"),
-            "click = \"BambooAbout\"",
-            "click = \"Info\"",
-        )
-    }
-
-    private fun patchDeployedText(file: File, from: String, to: String) {
-        if (!file.isFile) return
-        val text = runCatching { file.readText() }.getOrNull() ?: return
-        if (!text.contains(from)) return
-        runCatching { file.writeText(text.replace(from, to)) }
-            .onSuccess { Timber.d("BambooThemeSeed: 迁移 ${file.name}") }
-            .onFailure { Timber.w(it, "BambooThemeSeed: 迁移 ${file.name} 失败") }
+        children.forEach { copyAssetTreeIfMissing(context, "$assetPath/$it", File(dest, it)) }
     }
 
     /**
@@ -183,7 +149,7 @@ object BambooThemeSeed {
      * 之后用户自己换主题不会被我们再抢回来。不改上游 `ThemePrefs` 的默认值，
      * 因为那是上游文件；这里只是替用户点一次「选择主题」。
      */
-    private fun adoptDefaultThemeOnce(themesDir: File) {
+    private fun adoptDefaultThemeOnce(themesDir: File, version: String) {
         val adopted = File(themesDir, ADOPTED)
         if (adopted.exists()) return
 
@@ -195,11 +161,6 @@ object BambooThemeSeed {
                 Timber.d("BambooThemeSeed: 默认主题 -> $THEME_ID")
             }.onFailure { Timber.w(it, "BambooThemeSeed: 设置默认主题失败") }
         }
-        runCatching { adopted.writeText("$THEME_ID/$STAMP") }
+        runCatching { adopted.writeText("$THEME_ID/$version") }
     }
-
-    private fun ByteArray.sha256(): String =
-        java.security.MessageDigest.getInstance("SHA-256")
-            .digest(this)
-            .joinToString("") { "%02x".format(it) }
 }

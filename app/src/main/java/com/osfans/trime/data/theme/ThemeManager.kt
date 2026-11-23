@@ -11,7 +11,6 @@ import android.os.Looper
 import android.widget.Toast
 import com.osfans.trime.data.base.DataManager
 import com.osfans.trime.data.prefs.AppPrefs
-import com.osfans.trime.actions.bamboo.BambooTokens
 import com.osfans.trime.data.theme.model.GeneralStyle
 import com.osfans.trime.data.theme.model.TextKeyboard
 import com.osfans.trime.ime.symbol.LiquidData
@@ -186,46 +185,13 @@ object ThemeManager {
                 }
             }
 
-            Theme.json.decodeFromJsonElement<Theme>(strippedObj).let { normalizeBambooPresets(it) }.also {
+            Theme.json.decodeFromJsonElement<Theme>(strippedObj).also {
                 themeCache[id] = (file.lastModified() xor BambooThemeOverrides.stampOf(id)) to it
             }
         } catch (e: Exception) {
             Timber.e(e, "Failed to parse theme JSON for '$id'")
             null
         }
-    }
-
-    /**
-     * 苍竹动作键的兼容归一（加载时处理，不依赖磁盘上的主题副本）。
-     *
-     * 背景：内置主题模板里有键把动作写进 `send`，而按键动作只有走「纯文本」通道才会被
-     * [BambooTokens] 识别；`send` 会被当成发按键事件，于是点了没有任何反应。反过来，若布局里
-     * 直接写 `click = "BambooXxx"` 而预设键里没有这个名字，也会落到一个空动作。
-     *
-     * 这里统一成两种已知可用的形态：
-     * - `BambooAbout` → 改走「设置」同一条 KeyCode 通道（`SETTINGS` + `option = "about"`），和齿轮键完全一致；
-     * - 其它 `BambooXxx` → 从 `send` 挪到 `text`，交给文本通道命中 token。
-     */
-    private fun normalizeBambooPresets(theme: Theme): Theme {
-        if (theme.presetKeys.isEmpty()) return theme
-        var changed = false
-        val keys = theme.presetKeys.mapValues { (_, key) ->
-            when {
-                key.send == BambooTokens.ABOUT && key.text.isEmpty() -> {
-                    changed = true
-                    key.copy(send = "SETTINGS", option = "about")
-                }
-
-                key.text.isEmpty() && key.send.startsWith(BambooTokens.PREFIX) -> {
-                    changed = true
-                    key.copy(text = key.send)
-                }
-
-                else -> key
-            }
-        }
-        if (changed) Timber.d("bamboo: normalized preset keys for '${theme.name}'")
-        return if (changed) theme.copy(presetKeys = keys) else theme
     }
 
     private fun getThemeById(id: String): ResolvedTheme {

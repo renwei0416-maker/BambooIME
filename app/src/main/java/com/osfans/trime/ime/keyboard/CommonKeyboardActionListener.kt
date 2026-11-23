@@ -564,7 +564,6 @@ class CommonKeyboardActionListener {
                     "color" -> showColorPicker()
                     "schema" -> AppUtils.launchMainToSchemaList(context)
                     "sound" -> showSoundEffectPicker()
-                    "about" -> AppUtils.launchMainToAbout(service)
                     else -> AppUtils.launchMainActivity(service)
                 }
             }
