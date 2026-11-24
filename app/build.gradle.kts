@@ -277,6 +277,31 @@ configurations {
     }
 }
 
+// ---- BambooIME: librime plugin link ---------------------------------------
+// librime's plugins/CMakeLists.txt globs its own subdirectories, so every plugin
+// needs a sibling link there. The link is not tracked by this repository
+// (app/src/main/jni/librime is a submodule), hence it is recreated on each build.
+val librimePluginLink =
+    layout.projectDirectory.dir("src/main/jni/librime/plugins/bamboo-nnlm").asFile
+
+tasks.matching { it.name.startsWith("preBuild") || it.name.startsWith("externalNativeBuild") }
+    .configureEach {
+        doFirst {
+            if (!librimePluginLink.exists()) {
+                val target = layout.projectDirectory
+                    .dir("src/main/jni/librime-plugins/bamboo-nnlm").asFile
+                librimePluginLink.parentFile.mkdirs()
+                val ok = runCatching {
+                    ProcessBuilder("cmd", "/c", "mklink", "/J",
+                        librimePluginLink.absolutePath, target.absolutePath)
+                        .redirectErrorStream(true)
+                        .start().waitFor() == 0
+                }.getOrDefault(false)
+                if (!ok) logger.warn("bamboo-nnlm: failed to create plugin link")
+            }
+        }
+    }
+
 // ---- BambooIME: Rust inference (optional, run manually) -------------------
 // Not wired into assembleDebug/Release: builds still work without Rust installed.
 tasks.register<Exec>("buildWxAsrInfer") {
