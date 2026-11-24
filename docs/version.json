@@ -1,24 +1,33 @@
 {
-  "versionName": "3.9.2",
-  "versionCode": 2026112402,
+  "versionName": "3.9.3",
+  "versionCode": 2026112403,
   "publishedAt": "2026-11-24",
-  "notes": "离线语音可换引擎（Paraformer / SenseVoice / X-ASR）与自动标点、整句定稿；主题编辑新增「动作」页（含长按弹窗增删改与还原）；新增「更新」页与「隐藏数字行」开关；主题不再被 App 自动覆盖。",
+  "notes": "主题：「键盘样式」页加内置主题提示，「释放内置主题」改为全量覆盖；配套主题包 themes-3.6.2.zip；清理零引用代码与旧语音模型下载页。",
   "apk": {
-    "name": "com.bambooime-3.9.2-arm64-v8a-release.apk",
-    "size": 89553764,
-    "sha256": "d05b1889cc76265d1680570ab93c73b7d248e497dd2a2ad2bfd8833561d41c03",
+    "name": "com.bambooime-3.9.3-arm64-v8a-release.apk",
+    "size": 89551256,
+    "sha256": "3b823c57044101deeaec14ab366bf2887a121cd162bd0578be87548a0b7ad2bf",
     "urls": [
-      "https://cnb.cool/renwei.co/BambooIME/-/releases/download/v3.9.2/com.bambooime-3.9.2-arm64-v8a-release.apk",
-      "https://github.com/renwei0416-maker/BambooIME/releases/download/v3.9.2/com.bambooime-3.9.2-arm64-v8a-release.apk"
+      "https://cnb.cool/renwei.co/BambooIME/-/releases/download/v3.9.3/com.bambooime-3.9.3-arm64-v8a-release.apk",
+      "https://github.com/renwei0416-maker/BambooIME/releases/download/v3.9.3/com.bambooime-3.9.3-arm64-v8a-release.apk"
     ]
   },
   "themes": {
-    "name": "themes-3.6.1.zip",
+    "name": "themes-3.6.2.zip",
     "size": 14983810,
-    "sha256": "d352a9cdcc8127a3999d89eace2a2c87262e43f292ef7c4af2b326a9f91a302d",
+    "sha256": "36659203c33c81ed19d6cd323c8b2f08b9604fbee4981f4196824184e0a848b9",
     "urls": [
-      "https://cnb.cool/renwei.co/BambooIME/-/releases/download/v3.9.2/themes-3.6.1.zip",
-      "https://github.com/renwei0416-maker/BambooIME/releases/download/v3.9.2/themes-3.6.1.zip"
+      "https://cnb.cool/renwei.co/BambooIME/-/releases/download/v3.9.3/themes-3.6.2.zip",
+      "https://github.com/renwei0416-maker/BambooIME/releases/download/v3.9.3/themes-3.6.2.zip"
+    ]
+  },
+  "nnlm": {
+    "name": "nnlm.bin",
+    "size": 8640942,
+    "sha256": "d50289dfd10c8a4a0da49fc412bdc61a37c6f63ef1a1cbec4bdb74bf5bb7b52b",
+    "urls": [
+      "https://cnb.cool/renwei.co/BambooIME/-/releases/download/nnlm-model-2026-11/nnlm.bin",
+      "https://github.com/renwei0416-maker/BambooIME/releases/download/nnlm-model-2026-11/nnlm.bin"
     ]
   }
 }
