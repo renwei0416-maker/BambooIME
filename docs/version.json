@@ -1,15 +1,15 @@
 {
-  "versionName": "3.9.3",
-  "versionCode": 2026112403,
-  "publishedAt": "2026-11-24",
-  "notes": "主题：「键盘样式」页加内置主题提示，「释放内置主题」改为全量覆盖；配套主题包 themes-3.6.2.zip；清理零引用代码与旧语音模型下载页。",
+  "versionName": "3.9.4",
+  "versionCode": 2026112601,
+  "publishedAt": "2026-11-26",
+  "notes": "万象方案包升级 v18.2.1；长句重排拆独立子页（换位门槛默认 8、生效字数默认 3、三档滑动条），正式版关闭全部长句重排日志；成对符号补全拆独立子页；语法模型新增检查更新；万象方案包与语法模型下载加进度；配套主题包 themes-3.6.2.zip。",
   "apk": {
-    "name": "com.bambooime-3.9.3-arm64-v8a-release.apk",
-    "size": 89551256,
-    "sha256": "3b823c57044101deeaec14ab366bf2887a121cd162bd0578be87548a0b7ad2bf",
+    "name": "com.bambooime-3.9.4-arm64-v8a-release.apk",
+    "size": 88740928,
+    "sha256": "e542db6d88ce19a8e7521ab2a16bb00f8aaf6ba708729a8b88060b0716744b2b",
     "urls": [
-      "https://cnb.cool/renwei.co/BambooIME/-/releases/download/v3.9.3/com.bambooime-3.9.3-arm64-v8a-release.apk",
-      "https://github.com/renwei0416-maker/BambooIME/releases/download/v3.9.3/com.bambooime-3.9.3-arm64-v8a-release.apk"
+      "https://cnb.cool/renwei.co/BambooIME/-/releases/download/v3.9.4/com.bambooime-3.9.4-arm64-v8a-release.apk",
+      "https://github.com/renwei0416-maker/BambooIME/releases/download/v3.9.4/com.bambooime-3.9.4-arm64-v8a-release.apk"
     ]
   },
   "themes": {
@@ -17,8 +17,8 @@
     "size": 14983810,
     "sha256": "36659203c33c81ed19d6cd323c8b2f08b9604fbee4981f4196824184e0a848b9",
     "urls": [
-      "https://cnb.cool/renwei.co/BambooIME/-/releases/download/v3.9.3/themes-3.6.2.zip",
-      "https://github.com/renwei0416-maker/BambooIME/releases/download/v3.9.3/themes-3.6.2.zip"
+      "https://cnb.cool/renwei.co/BambooIME/-/releases/download/v3.9.4/themes-3.6.2.zip",
+      "https://github.com/renwei0416-maker/BambooIME/releases/download/v3.9.4/themes-3.6.2.zip"
     ]
   },
   "nnlm": {
